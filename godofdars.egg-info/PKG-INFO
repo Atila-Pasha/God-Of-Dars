@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: godofdars
+Version: 0.1.0
+Summary: Educational strategy game Telegram bot
+Requires-Python: >=3.12
+Requires-Dist: aiogram>=3.0
+Requires-Dist: aiohttp-socks>=0.8
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: asyncpg>=0.29
+Requires-Dist: alembic>=1.13
+Requires-Dist: pydantic-settings>=2.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
