@@ -13,6 +13,9 @@ MENU_SECTIONS = (
 MENU_SECTION_KEYS = frozenset(section for _, section, _ in MENU_SECTIONS)
 MENU_SECTION_BY_LABEL = {label: section for label, section, _ in MENU_SECTIONS}
 MENU_SECTION_LABELS = frozenset(MENU_SECTION_BY_LABEL)
+NON_SCHOOL_MENU_SECTION_LABELS = frozenset(
+    label for label, section, _ in MENU_SECTIONS if section != "school"
+)
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:

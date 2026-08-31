@@ -10,7 +10,7 @@ env/
 __pycache__/
 *.py[cod]
 *.pyo
-
+godofdars.egg-info/*
 # Testing
 .pytest_cache/
 .coverage

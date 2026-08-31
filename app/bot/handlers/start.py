@@ -11,7 +11,7 @@ from app.bot.callbacks import ChannelCallback
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     MENU_SECTION_KEYS,
-    MENU_SECTION_LABELS,
+    NON_SCHOOL_MENU_SECTION_LABELS,
     main_menu_keyboard,
 )
 from app.bot.keyboards.start import join_channel_keyboard
@@ -159,7 +159,7 @@ async def check_membership_handler(
     await callback.answer("عضویت تأیید شد.")
 
 
-@router.message(F.text.in_(MENU_SECTION_LABELS))
+@router.message(F.text.in_(NON_SCHOOL_MENU_SECTION_LABELS))
 async def main_menu_handler(
     message: Message,
 ) -> None:

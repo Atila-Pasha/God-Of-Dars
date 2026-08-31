@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.repositories.user import UserRepository
+from app.services.school_errors import SchoolUserNotFound
 
 
 class UserInitializationError(RuntimeError):
@@ -75,6 +76,21 @@ class UserService:
         except SQLAlchemyError as exc:
             await session.rollback()
             raise UserInitializationError from exc
+
+    async def get_active_by_telegram_user_id(
+        self, session: AsyncSession, telegram_user_id: int
+    ) -> User:
+        try:
+            user = await self.repository.get_by_telegram_user_id(
+                session, telegram_user_id
+            )
+        except SQLAlchemyError as exc:
+            raise UserInitializationError from exc
+        if user is None:
+            raise SchoolUserNotFound
+        if user.is_active is False:
+            raise UserInactiveError
+        return user
 
     @staticmethod
     def _profile_changed(user: User, telegram_user: TelegramUser) -> bool:

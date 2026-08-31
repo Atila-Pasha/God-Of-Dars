@@ -1,0 +1,53 @@
+# Central game balance. Change this file instead of editing handlers/services.
+
+max_teacher_slots = 4
+initial_castle_strength = 100
+initial_defense_power = 25
+teacher_activation_cost = 120
+teacher_sell_ratio = 0.5
+
+[teacher_slots]
+level_1 = 1
+level_3 = 2
+level_6 = 3
+level_10 = 4
+
+[teacher_damage]
+level_2 = 1.25
+level_3 = 1.55
+level_4 = 1.9
+level_5 = 2.3
+level_6 = 2.8
+level_7 = 3.4
+level_8 = 4.1
+level_9 = 4.9
+level_10 = 5.8
+
+[teacher_damage.explicit]
+# Optional per-teacher overrides: "teacher_id:level" = damage
+
+[castle_upgrades."1"]
+coin_cost = 500
+strength_delta = 25
+defense_delta = 10
+
+[castle_upgrades."2"]
+coin_cost = 800
+strength_delta = 35
+defense_delta = 15
+
+[castle_upgrades."3"]
+coin_cost = 1200
+strength_delta = 50
+defense_delta = 20
+
+[castle_upgrades."4"]
+coin_cost = 1800
+strength_delta = 70
+defense_delta = 30
+
+[recovery_minutes]
+strength_0 = 240
+strength_150 = 180
+strength_250 = 120
+strength_400 = 90
