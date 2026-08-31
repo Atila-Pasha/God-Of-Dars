@@ -31,3 +31,11 @@ class TeacherCallback(CallbackData, prefix="teacher"):
 class HospitalCallback(CallbackData, prefix="hospital"):
     action: Literal["activate", "recover", "back"]
     teacher_id: int
+
+
+class LibraryCallback(CallbackData, prefix="library"):
+    action: Literal["daily", "group", "back", "cancel"]
+
+
+class ReferralCallback(CallbackData, prefix="referral"):
+    action: Literal["back"]

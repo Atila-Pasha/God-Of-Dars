@@ -38,6 +38,38 @@ class Reward(Base):
                 "source = 'DAILY_LOGIN' AND activity_date IS NOT NULL"
             ),
         ),
+        Index(
+            "uq_library_reward_per_reference",
+            "user_id",
+            "source",
+            "reference_type",
+            "reference_id",
+            unique=True,
+            postgresql_where=text(
+                "source IN ('DAILY_QUESTION', 'GROUP_QUESTION') "
+                "AND reference_type IS NOT NULL AND reference_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "source IN ('DAILY_QUESTION', 'GROUP_QUESTION') "
+                "AND reference_type IS NOT NULL AND reference_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            "uq_referral_reward_per_reference",
+            "user_id",
+            "source",
+            "reference_type",
+            "reference_id",
+            unique=True,
+            postgresql_where=text(
+                "source = 'REFERRAL' AND reference_type IS NOT NULL "
+                "AND reference_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "source = 'REFERRAL' AND reference_type IS NOT NULL "
+                "AND reference_id IS NOT NULL"
+            ),
+        ),
         CheckConstraint("amount >= 0", name="ck_rewards_amount_non_negative"),
     )
 

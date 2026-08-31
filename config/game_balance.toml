@@ -51,3 +51,8 @@ strength_0 = 240
 strength_150 = 180
 strength_250 = 120
 strength_400 = 90
+
+[referral_reward]
+# Change inviter_amount and restart the bot to change the reward for new referrals.
+inviter_resource = "DIAMOND"
+inviter_amount = 10

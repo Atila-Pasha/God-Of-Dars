@@ -19,6 +19,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.group import Group
+    from app.models.group_question import GroupQuestion
     from app.models.question import Question
     from app.models.user import User
 
@@ -29,12 +30,31 @@ class Answer(Base):
         Index("ix_answers_question_id", "question_id"),
         Index("ix_answers_group_id", "group_id"),
         Index("ix_answers_user_id", "user_id"),
+        Index("ix_answers_group_question_id", "group_question_id"),
+        Index(
+            "uq_daily_answer_per_user",
+            "question_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("group_id IS NULL"),
+            sqlite_where=text("group_id IS NULL"),
+        ),
+        Index(
+            "uq_group_answer_per_user",
+            "question_id",
+            "group_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("group_id IS NOT NULL"),
+            sqlite_where=text("group_id IS NOT NULL"),
+        ),
         Index(
             "uq_valid_group_question_answer",
             "question_id",
             "group_id",
             unique=True,
             postgresql_where=text("group_id IS NOT NULL AND is_valid = true"),
+            sqlite_where=text("group_id IS NOT NULL AND is_valid = 1"),
         ),
     )
 
@@ -47,6 +67,11 @@ class Answer(Base):
     )
     group_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("groups.id", ondelete="RESTRICT"), nullable=True
+    )
+    group_question_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("group_questions.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     answer_content: Mapped[str] = mapped_column(Text, nullable=False)
     is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -63,3 +88,6 @@ class Answer(Base):
     user: Mapped[User] = relationship("User", back_populates="answers")
     question: Mapped[Question] = relationship("Question", back_populates="answers")
     group: Mapped[Group | None] = relationship("Group", back_populates="answers")
+    group_question: Mapped[GroupQuestion | None] = relationship(
+        "GroupQuestion", back_populates="answers"
+    )

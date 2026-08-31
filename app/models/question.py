@@ -12,6 +12,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.answer import Answer
+    from app.models.group_question import GroupQuestion
 
 
 class Question(Base):
@@ -55,4 +56,7 @@ class Question(Base):
 
     answers: Mapped[list[Answer]] = relationship(
         "Answer", back_populates="question", passive_deletes=True
+    )
+    group_questions: Mapped[list[GroupQuestion]] = relationship(
+        "GroupQuestion", back_populates="question", passive_deletes=True
     )

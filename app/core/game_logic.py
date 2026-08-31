@@ -4,6 +4,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.core.enums import ResourceType
+
 
 class GameConfigurationError(RuntimeError):
     """Raised when a required game balance value is missing or invalid."""
@@ -36,6 +38,8 @@ class GameConfig:
     recovery_minutes_by_strength: tuple[tuple[int, int], ...] = ()
     initial_castle_strength: int = 0
     initial_defense_power: int = 0
+    referral_reward_resource: ResourceType = ResourceType.DIAMOND
+    referral_reward_amount: int | None = None
 
     def __post_init__(self) -> None:
         if self.max_teacher_slots < 1:
@@ -61,6 +65,8 @@ class GameConfig:
             for level, multiplier in self.teacher_damage_multipliers_by_level.items()
         ):
             raise ValueError("teacher damage multipliers are invalid")
+        if self.referral_reward_amount is not None and self.referral_reward_amount < 0:
+            raise ValueError("referral_reward_amount cannot be negative")
 
     def teacher_slots(self, player_level: int) -> int:
         capacity = 0
@@ -174,6 +180,13 @@ class GameConfig:
                 for strength, minutes in data.get("recovery_minutes", {}).items()
             )
         )
+        referral_reward = data.get("referral_reward", {})
+        referral_reward_amount_raw = referral_reward.get("inviter_amount")
+        referral_reward_amount = (
+            None
+            if referral_reward_amount_raw is None
+            else int(referral_reward_amount_raw)
+        )
         return cls(
             max_teacher_slots=int(data.get("max_teacher_slots", 4)),
             teacher_slots_by_level=slots,
@@ -193,6 +206,14 @@ class GameConfig:
             recovery_minutes_by_strength=recovery,
             initial_castle_strength=int(data.get("initial_castle_strength", 0)),
             initial_defense_power=int(data.get("initial_defense_power", 0)),
+            referral_reward_resource=ResourceType(
+                str(
+                    referral_reward.get(
+                        "inviter_resource", ResourceType.DIAMOND.value
+                    )
+                ).upper()
+            ),
+            referral_reward_amount=referral_reward_amount,
         )
 
 

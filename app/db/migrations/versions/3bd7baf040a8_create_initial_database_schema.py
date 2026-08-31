@@ -222,6 +222,7 @@ def upgrade() -> None:
         ["question_id", "group_id"],
         unique=True,
         postgresql_where=sa.text("group_id IS NOT NULL AND is_valid = true"),
+        sqlite_where=sa.text("group_id IS NOT NULL AND is_valid = 1"),
     )
     op.create_table(
         "castles",

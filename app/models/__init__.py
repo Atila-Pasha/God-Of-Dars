@@ -4,6 +4,7 @@ from app.models.bot_settings import BotSettings
 from app.models.castle import Castle
 from app.models.defense import Defense
 from app.models.group import Group
+from app.models.group_question import GroupQuestion
 from app.models.question import Question
 from app.models.recovery import Recovery
 from app.models.resource import Resource
@@ -20,6 +21,7 @@ __all__ = [
     "Castle",
     "Defense",
     "Group",
+    "GroupQuestion",
     "Question",
     "Recovery",
     "Resource",
