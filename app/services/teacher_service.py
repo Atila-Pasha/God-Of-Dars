@@ -62,6 +62,17 @@ class TeacherService:
     async def owned(self, session: AsyncSession, user_id: int) -> list[UserTeacher]:
         return await self.repository.list_owned(session, user_id)
 
+    async def get_owned(
+        self, session: AsyncSession, user_id: int, user_teacher_id: int
+    ) -> UserTeacher:
+        """Return one teacher owned by the user for the detail view."""
+        owned_teacher = await self.repository.get_owned_for_update(
+            session, user_id, user_teacher_id
+        )
+        if owned_teacher is None:
+            raise TeacherNotOwned
+        return owned_teacher
+
     async def catalog(self, session: AsyncSession, user_id: int) -> list[Teacher]:
         return await self.repository.list_catalog(session, user_id)
 

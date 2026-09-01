@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, Index, Text, func
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Index, Text, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,15 @@ class Question(Base):
         Index("ix_questions_scope_status", "scope", "status"),
         Index("ix_questions_published_at", "published_at"),
         Index("ix_questions_expires_at", "expires_at"),
+        CheckConstraint(
+            "coin_reward >= 0", name="ck_questions_coin_reward_non_negative"
+        ),
+        CheckConstraint(
+            "diamond_reward >= 0", name="ck_questions_diamond_reward_non_negative"
+        ),
+        CheckConstraint(
+            "banana_reward >= 0", name="ck_questions_banana_reward_non_negative"
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -32,6 +41,17 @@ class Question(Base):
     )
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     correct_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # The reward belongs to the question, so it is fixed when the question is
+    # created and cannot accidentally change between different answers.
+    coin_reward: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    diamond_reward: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    banana_reward: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     status: Mapped[QuestionStatus] = mapped_column(
         SAEnum(QuestionStatus, name="question_status"),
         nullable=False,

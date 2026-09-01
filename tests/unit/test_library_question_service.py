@@ -24,6 +24,7 @@ class FakeQuestionRepository:
         self.question = question
         self.publication = publication
         self.daily_answer = None
+        self.daily_answers = {}
         self.group_answers = {}
         self.active_publications = False
 
@@ -31,7 +32,7 @@ class FakeQuestionRepository:
         return self.question if question_id == self.question.id else None
 
     async def get_daily_answer(self, session, **kwargs):
-        return self.daily_answer
+        return self.daily_answers.get(kwargs["user_id"], self.daily_answer)
 
     async def get_group_question(self, session, **kwargs):
         if self.publication and kwargs["group_id"] == self.publication.group_id:
@@ -62,7 +63,7 @@ def session():
 
 
 @pytest.mark.asyncio
-async def test_daily_correct_answer_persists_and_closes_question():
+async def test_daily_correct_answer_does_not_close_question_for_other_users():
     question = daily_question()
     repository = FakeQuestionRepository(question)
     result = await QuestionService(repository).answer_daily_question(
@@ -71,7 +72,15 @@ async def test_daily_correct_answer_persists_and_closes_question():
 
     assert result.correct is True
     assert result.answer.is_valid is True
-    assert question.status is QuestionStatus.ANSWERED
+    assert question.status is QuestionStatus.ACTIVE
+
+    repository.daily_answers[21] = None
+    second = await QuestionService(repository).answer_daily_question(
+        session(), 21, question.id, "4"
+    )
+
+    assert second.correct is True
+    assert question.status is QuestionStatus.ACTIVE
 
 
 @pytest.mark.asyncio
@@ -180,7 +189,7 @@ async def test_group_wrong_group_is_rejected():
 
 
 @pytest.mark.asyncio
-async def test_group_first_wrong_answer_does_not_consume_winner():
+async def test_group_first_answer_consumes_the_group_question():
     question, publication = group_fixture()
     repository = FakeQuestionRepository(question, publication)
     service = QuestionService(repository)
@@ -188,14 +197,14 @@ async def test_group_first_wrong_answer_does_not_consume_winner():
     first = await service.answer_group_question(
         session(), 20, question.id, publication.group_id, "مشهد"
     )
-    second = await service.answer_group_question(
-        session(), 21, question.id, publication.group_id, "تهران"
-    )
-
     assert first.valid is False
-    assert second.valid is True
     assert publication.status is QuestionStatus.ANSWERED
     assert question.status is QuestionStatus.ANSWERED
+
+    with pytest.raises(QuestionAlreadyAnswered):
+        await service.answer_group_question(
+            session(), 21, question.id, publication.group_id, "تهران"
+        )
 
 
 @pytest.mark.asyncio
@@ -212,3 +221,34 @@ async def test_group_second_user_is_rejected_after_first_valid_answer():
         await service.answer_group_question(
             session(), 21, question.id, publication.group_id, "تهران"
         )
+
+
+@pytest.mark.asyncio
+async def test_group_question_is_published_to_every_active_group():
+    repository = AsyncMock()
+    groups = [
+        Group(id=30, telegram_chat_id=-30, title="اول", is_active=True),
+        Group(id=31, telegram_chat_id=-31, title="دوم", is_active=True),
+    ]
+    question = Question(
+        id=10,
+        scope=QuestionScope.GROUP,
+        question_text="پایتخت ایران؟",
+        correct_answer="تهران",
+    )
+    repository.list_active_groups.return_value = groups
+    repository.create_question.return_value = question
+
+    async def create_publication(session, *, question, group, **kwargs):
+        return GroupQuestion(question=question, group=group)
+
+    repository.create_group_question.side_effect = create_publication
+
+    publications = await QuestionService(repository).create_group_question_for_all(
+        session(),
+        question_text=question.question_text,
+        correct_answer=question.correct_answer,
+    )
+
+    assert [publication.group.id for publication in publications] == [30, 31]
+    assert repository.create_group_question.await_count == 2

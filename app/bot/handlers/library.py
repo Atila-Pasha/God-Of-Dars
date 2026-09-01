@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -13,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.callbacks import LibraryCallback
 from app.bot.keyboards.library import (
     answer_keyboard,
-    group_answer_keyboard,
     library_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
@@ -31,6 +32,13 @@ from app.services.user_service import UserInactiveError, UserService
 router = Router(name="library")
 question_service = QuestionService()
 user_service = UserService()
+logger = logging.getLogger(__name__)
+
+RESOURCE_LABELS = {
+    "COIN": "طلا",
+    "DIAMOND": "الماس",
+    "BANANA": "موز",
+}
 
 LIBRARY_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "library"
@@ -39,7 +47,6 @@ LIBRARY_LABEL = next(
 
 class LibraryState(StatesGroup):
     waiting_daily_answer = State()
-    waiting_group_answer = State()
 
 
 def _now() -> datetime:
@@ -60,13 +67,29 @@ def _question_text(
 
 def _result_text(result: AnswerResult) -> str:
     if result.correct:
-        if result.reward is None:
-            return "✅ پاسخ شما درست بود!\n\nپاسخ شما با موفقیت ثبت شد."
+        rewards = getattr(result, "rewards", None)
+        if rewards is None:
+            reward = getattr(result, "reward", None)
+            rewards = (reward,) if reward is not None else ()
+        rewards = tuple(reward for reward in rewards if reward and reward.amount > 0)
+        if not rewards:
+            return "✅ درست جواب دادی!\n\nپاسخ تو ثبت شد؛ این سؤال پاداشی نداشت."
+        reward_text = "\n".join(
+            f"{RESOURCE_LABELS.get(_resource_name(reward), _resource_name(reward))}: "
+            f"{reward.amount}"
+            for reward in rewards
+        )
         return (
-            "✅ پاسخ شما درست بود!\n\n"
-            f"🎁 پاداش: {result.reward.amount} {result.reward.resource_type.value}"
+            "✅ درست جواب دادی!\n\n"
+            "مقدار منابع دریافتی:\n"
+            f"{reward_text}"
         )
     return "❌ پاسخ شما اشتباه بود.\n\nپاسخ شما ثبت شد؛ امکان تلاش دوباره وجود ندارد."
+
+
+def _resource_name(reward: Any) -> str:
+    resource_type = reward.resource_type
+    return getattr(resource_type, "value", str(resource_type))
 
 
 async def _user_id(session: AsyncSession, message: Message | CallbackQuery) -> int:
@@ -88,6 +111,28 @@ async def _show_library(target: Message | CallbackQuery) -> None:
         await target.answer(text, reply_markup=library_keyboard())
 
 
+async def _safe_callback_answer(
+    callback: CallbackQuery, text: str | None = None, *, show_alert: bool = False
+) -> None:
+    """Acknowledge a callback without allowing an expired query to crash polling."""
+    try:
+        if text is None:
+            await callback.answer()
+        else:
+            await callback.answer(text, show_alert=show_alert)
+    except TelegramAPIError:
+        logger.debug("Ignoring an expired or already-answered library callback")
+
+
+async def _notify_callback(callback: CallbackQuery, text: str) -> None:
+    if callback.message is None:
+        return
+    try:
+        await callback.message.answer(text)
+    except TelegramAPIError:
+        logger.debug("Could not send library callback notice")
+
+
 @router.message(Command("library"))
 @router.message(F.text == LIBRARY_LABEL)
 async def library_handler(message: Message, state: FSMContext) -> None:
@@ -102,8 +147,10 @@ async def library_callback_handler(
     session: AsyncSession,
     state: FSMContext,
 ) -> None:
+    # Telegram expects callback_query.answer within a short deadline. Do this
+    # before the database lookup, then use a normal message for notices.
+    await _safe_callback_answer(callback)
     if callback.from_user is None:
-        await callback.answer()
         return
 
     try:
@@ -112,7 +159,7 @@ async def library_callback_handler(
                 session, now=_now()
             )
             if daily_question is None:
-                await callback.answer("فعلاً سؤال روزانه‌ای وجود ندارد.", show_alert=True)
+                await _notify_callback(callback, "فعلاً سؤال روزانه‌ای وجود ندارد.")
                 return
             await state.set_state(LibraryState.waiting_daily_answer)
             await state.update_data(question_id=daily_question.id)
@@ -123,40 +170,26 @@ async def library_callback_handler(
                     reply_markup=answer_keyboard(),
                 )
         elif callback_data.action == "group":
-            if callback.message is None or not hasattr(callback.message, "chat"):
-                await callback.answer("این گزینه فقط داخل گروه قابل استفاده است.", show_alert=True)
-                return
-            callback_message = cast(Message, callback.message)
-            group_question = await question_service.get_active_group_question_for_chat(
-                session,
-                telegram_chat_id=callback_message.chat.id,
-                now=_now(),
+            await _notify_callback(
+                callback,
+                "برای پاسخ به سؤال گروهی، روی خود پیام سؤال Reply بزن.",
             )
-            if group_question is None:
-                await callback.answer("فعلاً سؤال فعالی برای این گروه وجود ندارد.", show_alert=True)
-                return
-            await state.set_state(LibraryState.waiting_group_answer)
-            await state.update_data(
-                question_id=group_question.question_id,
-                group_id=group_question.group_id,
-            )
-            await callback_message.edit_text(
-                _question_text(
-                    group_question.question,
-                    title="👥 سؤال گروه",
-                    expires_at=group_question.expires_at
-                    or group_question.question.expires_at,
-                ),
-                reply_markup=group_answer_keyboard(),
-            )
+        elif callback_data.action == "cancel":
+            await state.clear()
+            if callback.message is not None:
+                if callback.message.chat.type in {"group", "supergroup"}:
+                    await callback.message.edit_text("❌ پاسخ‌گویی لغو شد.")
+                else:
+                    await _show_library(callback)
         else:
             await state.clear()
             if callback.message is not None:
                 await _show_library(callback)
-        await callback.answer()
     except (UserInactiveError, LibraryError):
         await state.clear()
-        await callback.answer("امکان استفاده از کتابخانه در حال حاضر وجود ندارد.", show_alert=True)
+        await _notify_callback(
+            callback, "امکان استفاده از کتابخانه در حال حاضر وجود ندارد."
+        )
 
 
 @router.message(LibraryState.waiting_daily_answer, F.text)
@@ -175,7 +208,11 @@ async def daily_answer_handler(
         result = await question_service.answer_daily_question(
             session, user_id, question_id, message.text, now=_now()
         )
-        await message.answer(_result_text(result), reply_markup=library_keyboard())
+        await message.answer(
+            _result_text(result),
+            reply_markup=library_keyboard(),
+            reply_to_message_id=getattr(message, "message_id", None),
+        )
     except DuplicateAnswer:
         await message.answer("این سؤال را قبلاً پاسخ داده‌اید.", reply_markup=library_keyboard())
     except QuestionExpired:
@@ -188,43 +225,69 @@ async def daily_answer_handler(
         await state.clear()
 
 
-@router.message(LibraryState.waiting_group_answer, F.text)
-async def group_answer_handler(
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.reply_to_message,
+    F.text,
+    ~F.text.startswith("/"),
+)
+async def group_reply_answer_handler(
     message: Message,
-    state: FSMContext,
     session: AsyncSession,
 ) -> None:
-    data = await state.get_data()
-    question_id = data.get("question_id")
-    group_id = data.get("group_id")
-    if (
-        question_id is None
-        or group_id is None
-        or message.from_user is None
-        or message.text is None
-    ):
-        await state.clear()
+    if message.from_user is None or message.text is None:
         return
+
+    publication = await question_service.get_group_question_by_message(
+        session,
+        telegram_chat_id=message.chat.id,
+        telegram_message_id=message.reply_to_message.message_id,
+    )
+    if publication is None:
+        return
+
     try:
-        user_id = await _user_id(session, message)
+        user = await user_service.get_or_create_from_telegram(
+            session, message.from_user
+        )
         result = await question_service.answer_group_question(
             session,
-            user_id,
-            question_id,
-            group_id,
+            user.id,
+            publication.question_id,
+            publication.group_id,
             message.text,
             now=_now(),
         )
-        await message.answer(_result_text(result), reply_markup=library_keyboard())
+        await _answer_group_reply(message, _result_text(result))
     except WrongGroup:
-        await message.answer("این سؤال به گروه فعلی مربوط نیست.", reply_markup=library_keyboard())
+        await _answer_group_reply(message, "این سؤال به گروه فعلی مربوط نیست.")
     except DuplicateAnswer:
-        await message.answer("شما قبلاً به این سؤال پاسخ داده‌اید.", reply_markup=library_keyboard())
+        await _answer_group_reply(
+            message, "پاسخ شما قبلاً برای این سؤال ثبت شده است."
+        )
     except QuestionExpired:
-        await message.answer("مهلت پاسخ‌گویی به سؤال گروه تمام شده است.", reply_markup=library_keyboard())
+        await _answer_group_reply(message, "مهلت پاسخ‌گویی به سؤال گروه تمام شده است.")
     except QuestionAlreadyAnswered:
-        await message.answer("برندهٔ این سؤال قبلاً مشخص شده است.", reply_markup=library_keyboard())
+        winner = await question_service.first_group_answer(session, publication.id)
+        winner_name = _answerer_name(winner)
+        await _answer_group_reply(
+            message,
+            f"⏰ دیر اومدی رفیق! {winner_name} زودتر پاسخ داده و جوابش ثبت شده."
+        )
     except (QuestionNotFound, UserInactiveError, LibraryError):
-        await message.answer("پاسخ شما ثبت نشد. لطفاً دوباره از کتابخانه وارد شوید.")
-    finally:
-        await state.clear()
+        await _answer_group_reply(message, "پاسخ شما ثبت نشد؛ دوباره امتحان کن.")
+
+
+async def _answer_group_reply(message: Message, text: str) -> None:
+    await message.answer(
+        text,
+        reply_to_message_id=message.message_id,
+    )
+
+
+def _answerer_name(answer: Any) -> str:
+    if answer is None or answer.user is None:
+        return "یک نفر"
+    return " ".join(
+        part for part in (answer.user.first_name, answer.user.last_name) if part
+    ) or "یک نفر"

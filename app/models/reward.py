@@ -44,6 +44,7 @@ class Reward(Base):
             "source",
             "reference_type",
             "reference_id",
+            "resource_type",
             unique=True,
             postgresql_where=text(
                 "source IN ('DAILY_QUESTION', 'GROUP_QUESTION') "

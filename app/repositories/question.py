@@ -21,6 +21,9 @@ class QuestionRepository:
         scope: QuestionScope,
         expires_at: datetime | None = None,
         published_at: datetime | None = None,
+        coin_reward: int = 0,
+        diamond_reward: int = 0,
+        banana_reward: int = 0,
     ) -> Question:
         question = Question(
             question_text=question_text,
@@ -28,6 +31,9 @@ class QuestionRepository:
             scope=scope,
             expires_at=expires_at,
             published_at=published_at,
+            coin_reward=coin_reward,
+            diamond_reward=diamond_reward,
+            banana_reward=banana_reward,
         )
         session.add(question)
         await session.flush()
@@ -63,6 +69,12 @@ class QuestionRepository:
         result = await session.execute(select(Group).where(Group.id == group_id))
         return result.scalar_one_or_none()
 
+    async def list_active_groups(self, session: AsyncSession) -> list[Group]:
+        result = await session.execute(
+            select(Group).where(Group.is_active.is_(True)).order_by(Group.id)
+        )
+        return list(result.scalars().all())
+
     async def get_active_group_question_for_chat(
         self,
         session: AsyncSession,
@@ -84,6 +96,43 @@ class QuestionRepository:
             )
             .options(selectinload(GroupQuestion.question))
             .order_by(GroupQuestion.published_at.desc(), GroupQuestion.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_group_question_by_message(
+        self,
+        session: AsyncSession,
+        *,
+        telegram_chat_id: int,
+        telegram_message_id: int,
+        for_update: bool = False,
+    ) -> GroupQuestion | None:
+        statement = (
+            select(GroupQuestion)
+            .join(GroupQuestion.group)
+            .join(GroupQuestion.question)
+            .where(
+                Group.telegram_chat_id == telegram_chat_id,
+                Group.is_active.is_(True),
+                Question.scope == QuestionScope.GROUP,
+                GroupQuestion.telegram_message_id == telegram_message_id,
+            )
+            .options(selectinload(GroupQuestion.question))
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
+
+    async def get_first_group_answer(
+        self, session: AsyncSession, group_question_id: int
+    ) -> Answer | None:
+        result = await session.execute(
+            select(Answer)
+            .where(Answer.group_question_id == group_question_id)
+            .options(selectinload(Answer.user))
+            .order_by(Answer.created_at, Answer.id)
             .limit(1)
         )
         return result.scalar_one_or_none()

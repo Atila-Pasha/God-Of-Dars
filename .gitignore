@@ -10,7 +10,9 @@ env/
 __pycache__/
 *.py[cod]
 *.pyo
+delete_db_recoreds.py
 godofdars.egg-info/*
+
 # Testing
 .pytest_cache/
 .coverage

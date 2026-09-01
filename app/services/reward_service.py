@@ -61,6 +61,7 @@ class RewardService:
             source=source,
             reference_type=reference_type,
             reference_id=reference_id,
+            resource_type=spec.resource_type,
             for_update=True,
         )
         if existing is not None:

@@ -39,3 +39,7 @@ class LibraryCallback(CallbackData, prefix="library"):
 
 class ReferralCallback(CallbackData, prefix="referral"):
     action: Literal["back"]
+
+
+class ProfileCallback(CallbackData, prefix="profile"):
+    action: Literal["refresh", "back"]

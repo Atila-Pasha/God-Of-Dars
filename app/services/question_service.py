@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import QuestionScope, QuestionStatus
+from app.core.enums import QuestionScope, QuestionStatus, ResourceType
 from app.models.answer import Answer
 from app.models.group_question import GroupQuestion
 from app.models.question import Question
@@ -29,7 +29,12 @@ class AnswerResult:
     answer: Answer
     correct: bool
     valid: bool
-    reward: Reward | None = None
+    rewards: tuple[Reward, ...] = ()
+
+    @property
+    def reward(self) -> Reward | None:
+        """Backward-compatible access to the first reward, if there is one."""
+        return self.rewards[0] if self.rewards else None
 
     @property
     def is_correct(self) -> bool:
@@ -70,9 +75,17 @@ class QuestionService:
         scope: QuestionScope = QuestionScope.DAILY,
         expires_at: datetime | None = None,
         published_at: datetime | None = None,
+        coin_reward: int = 0,
+        diamond_reward: int = 0,
+        banana_reward: int = 0,
     ) -> Question:
         scope = self._scope(scope)
         self._validate_content(question_text, correct_answer)
+        rewards = self._validate_rewards(
+            coin_reward=coin_reward,
+            diamond_reward=diamond_reward,
+            banana_reward=banana_reward,
+        )
         return await self.repository.create_question(
             session,
             question_text=question_text.strip(),
@@ -80,6 +93,7 @@ class QuestionService:
             scope=scope,
             expires_at=expires_at,
             published_at=published_at,
+            **rewards,
         )
 
     async def create_daily_question(
@@ -89,6 +103,9 @@ class QuestionService:
         question_text: str,
         correct_answer: str,
         expires_at: datetime | None = None,
+        coin_reward: int = 0,
+        diamond_reward: int = 0,
+        banana_reward: int = 0,
     ) -> Question:
         return await self.create_question(
             session,
@@ -96,6 +113,9 @@ class QuestionService:
             correct_answer=correct_answer,
             scope=QuestionScope.DAILY,
             expires_at=expires_at,
+            coin_reward=coin_reward,
+            diamond_reward=diamond_reward,
+            banana_reward=banana_reward,
         )
 
     async def create_group_question(
@@ -107,6 +127,9 @@ class QuestionService:
         group_id: int,
         expires_at: datetime | None = None,
         published_at: datetime | None = None,
+        coin_reward: int = 0,
+        diamond_reward: int = 0,
+        banana_reward: int = 0,
     ) -> GroupQuestion:
         group = await self.repository.get_group(session, group_id)
         if group is None or not group.is_active:
@@ -118,6 +141,9 @@ class QuestionService:
             scope=QuestionScope.GROUP,
             expires_at=expires_at,
             published_at=published_at,
+            coin_reward=coin_reward,
+            diamond_reward=diamond_reward,
+            banana_reward=banana_reward,
         )
         return await self.repository.create_group_question(
             session,
@@ -126,6 +152,45 @@ class QuestionService:
             expires_at=expires_at,
             published_at=published_at,
         )
+
+    async def create_group_question_for_all(
+        self,
+        session: AsyncSession,
+        *,
+        question_text: str,
+        correct_answer: str,
+        expires_at: datetime | None = None,
+        published_at: datetime | None = None,
+        coin_reward: int = 0,
+        diamond_reward: int = 0,
+        banana_reward: int = 0,
+    ) -> list[GroupQuestion]:
+        """Create one question and publish an independent copy to every group."""
+        groups = await self.repository.list_active_groups(session)
+        if not groups:
+            raise GroupNotFound
+
+        question = await self.create_question(
+            session,
+            question_text=question_text,
+            correct_answer=correct_answer,
+            scope=QuestionScope.GROUP,
+            expires_at=expires_at,
+            published_at=published_at,
+            coin_reward=coin_reward,
+            diamond_reward=diamond_reward,
+            banana_reward=banana_reward,
+        )
+        return [
+            await self.repository.create_group_question(
+                session,
+                question=question,
+                group=group,
+                expires_at=expires_at,
+                published_at=published_at,
+            )
+            for group in groups
+        ]
 
     async def publish_group_question(
         self,
@@ -171,6 +236,24 @@ class QuestionService:
             now=self._now(now),
         )
 
+    async def get_group_question_by_message(
+        self,
+        session: AsyncSession,
+        *,
+        telegram_chat_id: int,
+        telegram_message_id: int,
+    ) -> GroupQuestion | None:
+        return await self.repository.get_group_question_by_message(
+            session,
+            telegram_chat_id=telegram_chat_id,
+            telegram_message_id=telegram_message_id,
+        )
+
+    async def first_group_answer(
+        self, session: AsyncSession, group_question_id: int
+    ) -> Answer | None:
+        return await self.repository.get_first_group_answer(session, group_question_id)
+
     async def answer_daily_question(
         self,
         session: AsyncSession,
@@ -213,20 +296,18 @@ class QuestionService:
         session.add(answer)
         await session.flush()
 
-        reward: Reward | None = None
+        rewards: tuple[Reward, ...] = ()
         if correct:
-            question.status = QuestionStatus.ANSWERED
-            reward_result = await self.reward_service.grant(
+            rewards = await self._grant_question_rewards(
                 session,
                 user_id=user_id,
-                spec=self.daily_reward,
+                question=question,
+                fallback=self.daily_reward,
                 source="DAILY_QUESTION",
-                reference_type="ANSWER",
                 reference_id=answer.id,
             )
-            reward = reward_result.reward if reward_result else None
         await session.flush()
-        return AnswerResult(answer, correct=correct, valid=correct, reward=reward)
+        return AnswerResult(answer, correct=correct, valid=correct, rewards=rewards)
 
     async def answer_group_question(
         self,
@@ -286,25 +367,24 @@ class QuestionService:
         session.add(answer)
         await session.flush()
 
-        reward: Reward | None = None
+        rewards: tuple[Reward, ...] = ()
+        publication.status = QuestionStatus.ANSWERED
+        publication.answered_at = current_time
+        if not await self.repository.has_active_group_publications(
+            session, question_id=question_id, exclude_id=publication.id
+        ):
+            question.status = QuestionStatus.ANSWERED
         if correct:
-            publication.status = QuestionStatus.ANSWERED
-            publication.answered_at = current_time
-            if not await self.repository.has_active_group_publications(
-                session, question_id=question_id, exclude_id=publication.id
-            ):
-                question.status = QuestionStatus.ANSWERED
-            reward_result = await self.reward_service.grant(
+            rewards = await self._grant_question_rewards(
                 session,
                 user_id=user_id,
-                spec=self.group_reward,
+                question=question,
+                fallback=self.group_reward,
                 source="GROUP_QUESTION",
-                reference_type="ANSWER",
                 reference_id=answer.id,
             )
-            reward = reward_result.reward if reward_result else None
         await session.flush()
-        return AnswerResult(answer, correct=correct, valid=correct, reward=reward)
+        return AnswerResult(answer, correct=correct, valid=correct, rewards=rewards)
 
     async def submit_answer(
         self,
@@ -342,6 +422,56 @@ class QuestionService:
             raise InvalidQuestion
         if not isinstance(correct_answer, str) or not correct_answer.strip():
             raise InvalidQuestion
+
+    @staticmethod
+    def _validate_rewards(
+        *, coin_reward: int | None, diamond_reward: int | None, banana_reward: int | None
+    ) -> dict[str, int]:
+        values = {
+            "coin_reward": coin_reward,
+            "diamond_reward": diamond_reward,
+            "banana_reward": banana_reward,
+        }
+        for name, amount in values.items():
+            if amount is None:
+                values[name] = 0
+            elif isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
+                raise InvalidQuestion
+        return values
+
+    async def _grant_question_rewards(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        question: Question,
+        fallback: RewardSpec | None,
+        source: str,
+        reference_id: int,
+    ) -> tuple[Reward, ...]:
+        configured = tuple(
+            RewardSpec(resource_type, amount)
+            for resource_type, amount in (
+                (ResourceType.COIN, getattr(question, "coin_reward", 0) or 0),
+                (ResourceType.DIAMOND, getattr(question, "diamond_reward", 0) or 0),
+                (ResourceType.BANANA, getattr(question, "banana_reward", 0) or 0),
+            )
+            if amount > 0
+        )
+        specs = configured or ((fallback,) if fallback is not None else ())
+        rewards: list[Reward] = []
+        for spec in specs:
+            reward_result = await self.reward_service.grant(
+                session,
+                user_id=user_id,
+                spec=spec,
+                source=source,
+                reference_type="ANSWER",
+                reference_id=reference_id,
+            )
+            if reward_result is not None:
+                rewards.append(reward_result.reward)
+        return tuple(rewards)
 
     @staticmethod
     def _validate_question(

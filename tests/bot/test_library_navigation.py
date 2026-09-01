@@ -30,7 +30,7 @@ async def test_library_menu_is_shown_from_main_menu_button():
     target.answer.assert_awaited_once()
     keyboard = target.answer.await_args.kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].callback_data == "library:daily"
-    assert keyboard.inline_keyboard[1][0].callback_data == "library:group"
+    assert len(keyboard.inline_keyboard) == 1
 
 
 @pytest.mark.asyncio

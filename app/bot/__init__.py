@@ -1,10 +1,12 @@
 from aiogram import Dispatcher
 
 from app.bot.handlers.library import router as library_router
+from app.bot.handlers.profile import router as profile_router
 from app.bot.handlers.referral import router as referral_router
 from app.bot.handlers.school import router as school_router
 from app.bot.handlers.start import router as start_router
 from app.bot.middlewares.database import DatabaseSessionMiddleware
+from app.bot.middlewares.group import GroupAccessMiddleware
 from app.bot.middlewares.subscription import SubscriptionMiddleware
 
 
@@ -14,8 +16,13 @@ def create_dispatcher() -> Dispatcher:
     subscription_middleware = SubscriptionMiddleware()
     dispatcher.message.outer_middleware(subscription_middleware)
     dispatcher.callback_query.outer_middleware(subscription_middleware)
+    # Group policy must wrap subscription checks so blocked group commands are
+    # ignored before private-only handlers or membership prompts can run.
+    dispatcher.message.outer_middleware(GroupAccessMiddleware())
+    dispatcher.callback_query.outer_middleware(GroupAccessMiddleware())
     dispatcher.include_router(school_router)
     dispatcher.include_router(library_router)
+    dispatcher.include_router(profile_router)
     dispatcher.include_router(referral_router)
     dispatcher.include_router(start_router)
     return dispatcher

@@ -47,6 +47,9 @@ class GroupQuestion(Base):
     published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    telegram_message_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
     expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

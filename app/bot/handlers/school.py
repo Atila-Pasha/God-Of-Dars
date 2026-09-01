@@ -56,7 +56,7 @@ PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
 def _number(value: int) -> str:
-    return str(value).translate(PERSIAN_DIGITS)
+    return str(value)
 
 
 def _progress_bar(value: int, maximum: int, *, width: int = 10) -> str:
