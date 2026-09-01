@@ -76,6 +76,21 @@ class TeacherService:
     async def catalog(self, session: AsyncSession, user_id: int) -> list[Teacher]:
         return await self.repository.list_catalog(session, user_id)
 
+    async def catalog_teacher(self, session: AsyncSession, teacher_id: int) -> Teacher:
+        teacher = await self.repository.get_catalog_teacher(session, teacher_id)
+        if teacher is None:
+            raise TeacherNotFound
+        return teacher
+
+    def sell_price(self, owned_teacher: UserTeacher) -> int:
+        try:
+            return self.config.teacher_sell_price(
+                owned_teacher.teacher.id,
+                owned_teacher.teacher.purchase_price,
+            )
+        except GameConfigurationError as exc:
+            raise OperationNotConfigured from exc
+
     async def buy(
         self, session: AsyncSession, user_id: int, teacher_id: int
     ) -> UserTeacher:
@@ -272,11 +287,8 @@ class TeacherService:
 
     def can_sell(self, owned_teacher: UserTeacher) -> bool:
         try:
-            self.config.teacher_sell_price(
-                owned_teacher.teacher.id,
-                owned_teacher.teacher.purchase_price,
-            )
-        except GameConfigurationError:
+            self.sell_price(owned_teacher)
+        except OperationNotConfigured:
             return False
         return True
 

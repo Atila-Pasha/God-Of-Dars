@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.callbacks import (
     CastleCallback,
+    ConfirmationCallback,
     HospitalCallback,
     SchoolCallback,
     TeacherCallback,
@@ -54,6 +55,27 @@ def castle_keyboard(can_upgrade: bool) -> InlineKeyboardMarkup:
         )
     )
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+
+def confirmation_keyboard(*, action: str, target_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ تأیید",
+                    callback_data=ConfirmationCallback(
+                        action=action, target_id=target_id, decision="confirm"
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="❌ لغو",
+                    callback_data=ConfirmationCallback(
+                        action=action, target_id=target_id, decision="cancel"
+                    ).pack(),
+                ),
+            ]
+        ]
+    )
 
 
 def teachers_keyboard(

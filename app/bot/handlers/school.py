@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks import (
     CastleCallback,
+    ConfirmationCallback,
     HospitalCallback,
     SchoolCallback,
     TeacherCallback,
@@ -17,6 +18,7 @@ from app.bot.keyboards.main_menu import (
 )
 from app.bot.keyboards.school import (
     castle_keyboard,
+    confirmation_keyboard,
     hospital_keyboard,
     school_keyboard,
     teacher_catalog_keyboard,
@@ -347,9 +349,19 @@ async def castle_callback_handler(
             await _school_view(callback, session)
         elif callback_data.action == "upgrade":
             user = await _user(session, callback.from_user.id)
-            await castle_service.upgrade(session, user.id)
-            notice = "دژ با موفقیت ارتقا پیدا کرد."
-            await _castle_view(callback, session)
+            castle = await castle_service.snapshot(session, user.id)
+            upgrade = castle_service.config.castle_upgrade(castle.level)
+            await _send_or_edit(
+                callback,
+                f"⬆️ ارتقای دژ\n\n"
+                f"هزینه: {_number(upgrade.coin_cost)} سکه\n"
+                "آیا می‌خواهی ارتقای دژ را انجام بدهم؟",
+                reply_markup=confirmation_keyboard(
+                    action="castle_upgrade", target_id=0
+                ),
+            )
+            await callback.answer()
+            return
         else:
             await _castle_view(callback, session)
         await callback.answer(notice)
@@ -386,23 +398,111 @@ async def teacher_callback_handler(
             )
             await callback.answer()
         elif callback_data.action == "buy":
-            await teacher_service.buy(session, user.id, callback_data.teacher_id)
-            await _teachers_view(callback, session)
-            await callback.answer("دبیر با موفقیت خریداری شد.")
+            teacher = await teacher_service.catalog_teacher(
+                session, callback_data.teacher_id
+            )
+            await _send_or_edit(
+                callback,
+                f"🛒 خرید دبیر {teacher.name}\n\n"
+                f"قیمت: {_number(teacher.purchase_price)} سکه\n"
+                "آیا می‌خواهی این دبیر را بخری؟",
+                reply_markup=confirmation_keyboard(
+                    action="teacher_buy", target_id=teacher.id
+                ),
+            )
+            await callback.answer()
         elif callback_data.action == "upgrade":
-            await teacher_service.upgrade(session, user.id, callback_data.teacher_id)
-            await _teacher_view(callback, session, callback_data.teacher_id)
-            await callback.answer("دبیر با موفقیت ارتقا پیدا کرد.")
-        elif callback_data.action == "sell":
-            price = await teacher_service.sell(
+            owned = await teacher_service.get_owned(
                 session, user.id, callback_data.teacher_id
             )
-            await _teachers_view(callback, session)
-            await callback.answer(f"دبیر فروخته شد؛ {price} سکه دریافت کرد.")
+            await _send_or_edit(
+                callback,
+                f"⬆️ ارتقای دبیر {owned.teacher.name}\n\n"
+                f"هزینه: {_number(owned.teacher.upgrade_price)} سکه\n"
+                "آیا می‌خواهی دبیر را ارتقا بدهم؟",
+                reply_markup=confirmation_keyboard(
+                    action="teacher_upgrade", target_id=owned.id
+                ),
+            )
+            await callback.answer()
+        elif callback_data.action == "sell":
+            owned = await teacher_service.get_owned(
+                session, user.id, callback_data.teacher_id
+            )
+            price = teacher_service.sell_price(owned)
+            await _send_or_edit(
+                callback,
+                f"💰 فروش دبیر {owned.teacher.name}\n\n"
+                f"مبلغ دریافتی: {_number(price)} سکه\n"
+                "آیا می‌خواهی این دبیر را بفروشی؟",
+                reply_markup=confirmation_keyboard(
+                    action="teacher_sell", target_id=owned.id
+                ),
+            )
+            await callback.answer()
         elif callback_data.action == "activate":
-            await teacher_service.activate(session, user.id, callback_data.teacher_id)
-            await _teacher_view(callback, session, callback_data.teacher_id)
-            await callback.answer("دبیر فعال شد.")
+            cost = hospital_service.config.teacher_activation_cost
+            if cost is None:
+                raise SchoolError
+            owned = await teacher_service.get_owned(
+                session, user.id, callback_data.teacher_id
+            )
+            await _send_or_edit(
+                callback,
+                f"⚡ فعال‌سازی دبیر {owned.teacher.name}\n\n"
+                f"هزینه: {_number(cost)} سکه\n"
+                "آیا می‌خواهی دبیر را فعال کنم؟",
+                reply_markup=confirmation_keyboard(
+                    action="teacher_activate", target_id=owned.id
+                ),
+            )
+            await callback.answer()
+    except SchoolError:
+        await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
+
+
+@router.callback_query(ConfirmationCallback.filter())
+async def confirmation_callback_handler(
+    callback: CallbackQuery,
+    callback_data: ConfirmationCallback,
+    session: AsyncSession,
+) -> None:
+    if callback.from_user is None:
+        await callback.answer()
+        return
+    try:
+        user = await _user(session, callback.from_user.id)
+        if callback_data.decision == "cancel":
+            if callback_data.action == "castle_upgrade":
+                await _castle_view(callback, session)
+            else:
+                await _teachers_view(callback, session)
+            await callback.answer("عملیات لغو شد.")
+            return
+
+        if callback_data.action == "castle_upgrade":
+            await castle_service.upgrade(session, user.id)
+            await _castle_view(callback, session)
+            notice = "دژ با موفقیت ارتقا پیدا کرد."
+        elif callback_data.action == "teacher_buy":
+            await teacher_service.buy(session, user.id, callback_data.target_id)
+            await _teachers_view(callback, session)
+            notice = "دبیر با موفقیت خریداری شد."
+        elif callback_data.action == "teacher_upgrade":
+            await teacher_service.upgrade(session, user.id, callback_data.target_id)
+            await _teacher_view(callback, session, callback_data.target_id)
+            notice = "دبیر با موفقیت ارتقا پیدا کرد."
+        elif callback_data.action == "teacher_sell":
+            price = await teacher_service.sell(
+                session, user.id, callback_data.target_id
+            )
+            await _teachers_view(callback, session)
+            notice = f"دبیر فروخته شد؛ {_number(price)} سکه دریافت کرد."
+        else:  # teacher_activate
+            await teacher_service.activate(session, user.id, callback_data.target_id)
+            await _teacher_view(callback, session, callback_data.target_id)
+            notice = "دبیر فعال شد."
+        await callback.answer(notice)
     except SchoolError:
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 

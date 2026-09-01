@@ -33,6 +33,18 @@ class HospitalCallback(CallbackData, prefix="hospital"):
     teacher_id: int
 
 
+class ConfirmationCallback(CallbackData, prefix="confirm"):
+    action: Literal[
+        "castle_upgrade",
+        "teacher_buy",
+        "teacher_upgrade",
+        "teacher_sell",
+        "teacher_activate",
+    ]
+    target_id: int
+    decision: Literal["confirm", "cancel"]
+
+
 class LibraryCallback(CallbackData, prefix="library"):
     action: Literal["daily", "group", "back", "cancel"]
 
