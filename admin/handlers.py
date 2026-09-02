@@ -1,0 +1,453 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+import asyncio
+import re
+from io import BytesIO
+
+from aiogram import Bot, F, Router
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.exceptions import TelegramAPIError
+from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from admin import keyboards
+from admin.states import BroadcastStates, QuestionStates, TeacherStates, UserStates
+from app.core.config import settings
+from app.bot.group_question_publisher import GroupQuestionPublisher
+from app.services.library_errors import GroupNotFound
+from app.services.admin_service import AdminService
+from app.services.question_service import QuestionService
+
+router = Router(name="admin")
+service = AdminService()
+question_service = QuestionService()
+group_question_publisher = GroupQuestionPublisher()
+
+
+def allowed(message: Message | CallbackQuery) -> bool:
+    return message.from_user is not None and message.from_user.id in settings.admin_id_set
+
+
+def number(value: str, label: str, *, minimum: int = 0) -> int:
+    # Telegram admins often use Persian/Arabic digits or thousand separators.
+    normalized = str.maketrans(
+        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٬,",
+        "01234567890123456789  ",
+    )
+    raw_value = value.strip().translate(normalized).replace(" ", "")
+    if not re.fullmatch(r"\d+", raw_value):
+        raise ValueError(f"{label} باید عدد صحیح باشد؛ فقط عدد وارد کنید.")
+    try:
+        result = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{label} باید عدد صحیح باشد؛ فقط عدد وارد کنید.") from exc
+    if result < minimum:
+        raise ValueError(f"{label} نمی‌تواند کمتر از {minimum} باشد.")
+    return result
+
+
+def user_text(user) -> str:
+    name = " ".join(x for x in (user.first_name, user.last_name) if x)
+    r = user.resources
+    return (f"👤 {name or 'بدون نام'}\n🆔 شناسه داخلی: {user.id}\n"
+            f"📱 تلگرام: {user.telegram_user_id}\n🔗 نام کاربری: @{user.username or 'ندارد'}\n"
+            f"وضعیت: {'فعال' if user.is_active else 'مسدود'}\n"
+            f"منابع: 🪙 {r.coin if r else 0} | 💎 {r.diamond if r else 0} | 🍌 {r.banana if r else 0}")
+
+
+@router.message(CommandStart())
+@router.message(Command("admin"))
+async def start(message: Message, state: FSMContext) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    await message.answer("پنل مدیریت آماده است.", reply_markup=keyboards.main())
+
+
+@router.message(F.text == "❌ لغو")
+async def cancel(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=keyboards.main())
+
+
+@router.message(F.text == "📣 پیام همگانی")
+async def broadcast_start(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await state.set_state(BroadcastStates.content)
+        await message.answer(
+            "پیام همگانی را بفرستید.\n"
+            "می‌توانید فقط متن، یا عکس همراه کپشن ارسال کنید."
+        )
+
+
+@router.message(BroadcastStates.content)
+async def broadcast_send(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    if not message.text and not message.photo:
+        await message.answer("فقط پیام متنی یا عکس همراه کپشن قابل ارسال است.")
+        return
+
+    recipients = await service.list_broadcast_recipients(session)
+    if not recipients:
+        await state.clear()
+        await message.answer("هیچ کاربری برای ارسال پیام وجود ندارد.", reply_markup=keyboards.main())
+        return
+
+    await state.clear()
+    await message.answer(
+        f"📣 ارسال پیام برای {len(recipients)} کاربر شروع شد؛ لطفاً صبر کنید...",
+        reply_markup=keyboards.main(),
+    )
+
+    main_session = (
+        AiohttpSession(proxy=settings.TELEGRAM_PROXY)
+        if settings.TELEGRAM_PROXY
+        else None
+    )
+    sent = 0
+    failed = 0
+    async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
+        photo_file: BufferedInputFile | None = None
+        if message.photo:
+            buffer = BytesIO()
+            await message.bot.download(message.photo[-1].file_id, destination=buffer)
+            photo_file = BufferedInputFile(buffer.getvalue(), filename="broadcast.jpg")
+
+        for telegram_user_id in recipients:
+            try:
+                if photo_file is not None:
+                    # A new BufferedInputFile is needed because the Telegram
+                    # client consumes the file stream during each upload.
+                    await main_bot.send_photo(
+                        chat_id=telegram_user_id,
+                        photo=BufferedInputFile(photo_file.data, filename="broadcast.jpg"),
+                        caption=message.caption,
+                    )
+                else:
+                    await main_bot.send_message(
+                        chat_id=telegram_user_id,
+                        text=message.text,
+                    )
+                sent += 1
+            except TelegramAPIError:
+                failed += 1
+            await asyncio.sleep(0.04)
+
+    await message.answer(
+        f"✅ پیام همگانی تمام شد.\nموفق: {sent}\nناموفق: {failed}",
+        reply_markup=keyboards.main(),
+    )
+
+
+@router.message(F.text == "👤 مدیریت کاربران")
+async def users(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.set_state(UserStates.search)
+        await message.answer("شناسه تلگرام، شناسه داخلی یا نام کاربری کاربر را بفرستید:")
+
+
+@router.message(UserStates.search)
+async def user_search(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    found = await service.find_users(session, message.text)
+    if not found:
+        await message.answer("کاربری پیدا نشد. دوباره جستجو کنید یا لغو بزنید.")
+        return
+    await state.clear()
+    for user in found:
+        await message.answer(user_text(user), reply_markup=keyboards.user_actions(user.id, user.is_active))
+
+
+@router.callback_query(F.data.startswith("user:"))
+async def user_callback(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(callback) or not callback.data:
+        return
+    _, action, raw_id = callback.data.split(":")
+    user_id = int(raw_id)
+    user = await service.get_user(session, user_id)
+    if user is None:
+        await callback.answer("کاربر پیدا نشد.", show_alert=True); return
+    if action == "toggle":
+        user = await service.set_user_active(session, user_id, not user.is_active)
+        await callback.message.edit_text(user_text(user), reply_markup=keyboards.user_actions(user.id, user.is_active))
+        await callback.answer("وضعیت تغییر کرد."); return
+    await state.update_data(user_id=user_id)
+    await state.set_state(UserStates.resource_coin)
+    await callback.message.answer("چقدر سکه اضافه کنم؟\nبرای صفر، 0 بفرستید.")
+    await callback.answer()
+
+
+@router.message(UserStates.resource_coin)
+async def resource_coin(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        value = number(message.text, "مقدار سکه")
+    except ValueError as exc:
+        await message.answer(str(exc)); return
+    await state.update_data(coin=value)
+    await state.set_state(UserStates.resource_diamond)
+    await message.answer("چقدر الماس اضافه کنم؟\nبرای صفر، 0 بفرستید.")
+
+
+@router.message(UserStates.resource_diamond)
+async def resource_diamond(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        value = number(message.text, "مقدار الماس")
+    except ValueError as exc:
+        await message.answer(str(exc)); return
+    await state.update_data(diamond=value)
+    await state.set_state(UserStates.resource_banana)
+    await message.answer("چقدر موز اضافه کنم؟\nبرای صفر، 0 بفرستید.")
+
+
+@router.message(UserStates.resource_banana)
+async def save_resources(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        banana = number(message.text, "مقدار موز")
+    except ValueError as exc:
+        await message.answer(str(exc)); return
+    data = await state.get_data()
+    user = await service.add_resources(
+        session, data["user_id"], coin=data["coin"], diamond=data["diamond"], banana=banana
+    )
+    await state.clear()
+    if user is None:
+        await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.main())
+        return
+    amounts = f"🪙 {data['coin']} سکه، 💎 {data['diamond']} الماس و 🍌 {banana} موز"
+    await message.answer("منابع با موفقیت اضافه شد.\n" + user_text(user), reply_markup=keyboards.main())
+    try:
+        main_session = (
+            AiohttpSession(proxy=settings.TELEGRAM_PROXY)
+            if settings.TELEGRAM_PROXY
+            else None
+        )
+        async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
+            await main_bot.send_message(
+                chat_id=user.telegram_user_id,
+                text=f"🎁 شما {amounts} از طرف مدیریت دریافت کردید.",
+            )
+    except TelegramAPIError:
+        # The grant is already valid; an unavailable/blocked chat must not
+        # roll back the database operation.
+        await message.answer("منابع اضافه شد، اما ارسال اعلان برای کاربر ممکن نبود.")
+
+
+@router.message(F.text == "❓ ساخت سؤال روزانه")
+async def question_start(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear(); await state.update_data(scope="daily"); await state.set_state(QuestionStates.text); await message.answer("متن سؤال روزانه را بفرستید:")
+
+
+@router.message(F.text == "👥 ساخت سؤال گروهی")
+async def group_question_start(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await state.update_data(scope="group")
+        await state.set_state(QuestionStates.text)
+        await message.answer("متن سؤال گروهی را بفرستید:")
+
+
+async def question_step(message: Message, state: FSMContext, next_state, key: str, prompt: str) -> None:
+    if not allowed(message) or not message.text: return
+    await state.update_data(**{key: message.text.strip()})
+    await state.set_state(next_state)
+    await message.answer(prompt)
+
+
+@router.message(QuestionStates.text)
+async def q_text(message, state): await question_step(message, state, QuestionStates.answer, "text", "پاسخ صحیح را بفرستید:")
+@router.message(QuestionStates.answer)
+async def q_answer(message, state): await question_step(message, state, QuestionStates.hours, "answer", "مدت اعتبار به ساعت (مثلاً 24):")
+
+
+async def q_number(message: Message, state: FSMContext, next_state, key: str, prompt: str, default: int = 0) -> None:
+    if not allowed(message) or not message.text: return
+    try: value = default if message.text.strip() == "-" else number(message.text, "مقدار")
+    except ValueError as exc: await message.answer(str(exc)); return
+    await state.update_data(**{key: value}); await state.set_state(next_state); await message.answer(prompt)
+
+
+@router.message(QuestionStates.hours)
+async def q_hours(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        hours = number(message.text, "مدت اعتبار", minimum=1)
+    except ValueError as exc:
+        await message.answer(str(exc)); return
+    await state.update_data(hours=hours)
+    await state.set_state(QuestionStates.coin)
+    await message.answer("پاداش سکه را فقط به‌صورت عدد بفرستید (برای صفر: 0):")
+@router.message(QuestionStates.coin)
+async def q_coin(message, state):
+    await q_number(
+        message,
+        state,
+        QuestionStates.diamond,
+        "coin",
+        "پاداش الماس را فقط به‌صورت عدد بفرستید (برای صفر: 0):",
+    )
+@router.message(QuestionStates.diamond)
+async def q_diamond(message, state):
+    await q_number(
+        message,
+        state,
+        QuestionStates.banana,
+        "diamond",
+        "پاداش موز را فقط به‌صورت عدد بفرستید (برای صفر: 0):",
+    )
+
+
+@router.message(QuestionStates.banana)
+async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text: return
+    try: banana = 0 if message.text.strip() == "-" else number(message.text, "پاداش موز")
+    except ValueError as exc: await message.answer(str(exc)); return
+    data = await state.get_data()
+    expires_at = datetime.now(UTC) + timedelta(hours=data["hours"])
+    if data.get("scope") == "group":
+        main_session = (
+            AiohttpSession(proxy=settings.TELEGRAM_PROXY)
+            if settings.TELEGRAM_PROXY
+            else None
+        )
+        try:
+            async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
+                result = await group_question_publisher.create_and_publish(
+                    main_bot,
+                    session,
+                    question_text=data["text"],
+                    correct_answer=data["answer"],
+                    expires_at=expires_at,
+                    coin_reward=data["coin"],
+                    diamond_reward=data["diamond"],
+                    banana_reward=banana,
+                )
+        except GroupNotFound:
+            await state.clear()
+            await message.answer("هیچ گروه فعال و ثبت‌شده‌ای برای ارسال سؤال وجود ندارد.", reply_markup=keyboards.main())
+            return
+        await state.clear()
+        await message.answer(
+            f"✅ سؤال گروهی ساخته و ارسال شد.\nشناسه: {result.question.id}\n"
+            f"گروه‌های موفق: {len(result.sent_chat_ids)}\nگروه‌های ناموفق: {len(result.failed_chat_ids)}",
+            reply_markup=keyboards.main(),
+        )
+        return
+
+    question = await question_service.create_daily_question(
+        session,
+        question_text=data["text"],
+        correct_answer=data["answer"],
+        expires_at=expires_at,
+        coin_reward=data["coin"],
+        diamond_reward=data["diamond"],
+        banana_reward=banana,
+    )
+    await state.clear()
+    await message.answer(f"✅ سؤال روزانه ساخته شد. شناسه: {question.id}", reply_markup=keyboards.main())
+
+
+@router.message(F.text == "👨‍🏫 مدیریت دبیرها")
+async def teachers(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    items = await service.list_teachers(session)
+    if not items:
+        await message.answer("هنوز دبیرهی ثبت نشده است.")
+    for teacher in items:
+        await message.answer(
+            f"👨‍🏫 {teacher.name}\nشناسه: {teacher.id}\nآسیب: {teacher.damage} | جان: {teacher.max_hp}\n"
+            f"خرید: {teacher.purchase_price} | ارتقا: {teacher.upgrade_price}\n"
+            f"بازشدن در سطح: {teacher.unlock_level}\nوضعیت: {'فعال' if teacher.is_active else 'غیرفعال'}",
+            reply_markup=keyboards.teacher_actions(teacher.id),
+        )
+    await message.answer("برای ساخت دبیر جدید، /teacher را بفرستید.", reply_markup=keyboards.main())
+
+
+@router.message(Command("teacher"))
+async def teacher_start(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear(); await state.update_data(mode="create"); await state.set_state(TeacherStates.name)
+        await message.answer("نام دبیر:")
+
+
+async def teacher_value(message: Message, state: FSMContext, key: str, next_state, prompt: str, *, numeric: bool = True) -> None:
+    if not allowed(message) or not message.text:
+        return
+    value = message.text.strip()
+    if numeric:
+        try: value = number(value, key)
+        except ValueError as exc: await message.answer(str(exc)); return
+    await state.update_data(**{key: value})
+    await state.set_state(next_state)
+    await message.answer(prompt)
+
+
+@router.message(TeacherStates.name)
+async def t_name(message, state): await teacher_value(message, state, "name", TeacherStates.damage, "میزان آسیب:", numeric=False)
+@router.message(TeacherStates.damage)
+async def t_damage(message, state): await teacher_value(message, state, "damage", TeacherStates.max_hp, "حداکثر جان:")
+@router.message(TeacherStates.max_hp)
+async def t_hp(message, state): await teacher_value(message, state, "max_hp", TeacherStates.purchase_price, "قیمت خرید:")
+@router.message(TeacherStates.purchase_price)
+async def t_buy(message, state): await teacher_value(message, state, "purchase_price", TeacherStates.upgrade_price, "قیمت ارتقا:")
+@router.message(TeacherStates.upgrade_price)
+async def t_upgrade(message, state): await teacher_value(message, state, "upgrade_price", TeacherStates.unlock_level, "سطح بازشدن:")
+@router.message(TeacherStates.unlock_level)
+async def t_unlock(message, state): await teacher_value(message, state, "unlock_level", TeacherStates.ability_text, "متن توانایی (برای خالی بودن - بفرستید):")
+
+
+@router.message(TeacherStates.ability_text)
+async def t_ability(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    data = await state.get_data()
+    data["ability_text"] = None if message.text.strip() == "-" else message.text.strip()
+    mode = data.pop("mode", "create")
+    teacher_id = data.pop("teacher_id", None)
+    teacher = (
+        await service.update_teacher(session, teacher_id, **data)
+        if mode == "edit"
+        else await service.create_teacher(session, **data)
+    )
+    await state.clear()
+    await message.answer(
+        f"✅ دبیر «{teacher.name}» با شناسه {teacher.id} {'ویرایش شد' if mode == 'edit' else 'ساخته شد'}.",
+        reply_markup=keyboards.main(),
+    )
+
+
+@router.callback_query(F.data.startswith("teacher:"))
+async def teacher_callback(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(callback) or not callback.data:
+        return
+    _, action, raw_id = callback.data.split(":")
+    teacher_id = int(raw_id)
+    teacher = await service.get_teacher(session, teacher_id)
+    if teacher is None:
+        await callback.answer("دبیر پیدا نشد.", show_alert=True); return
+    if action == "delete":
+        deleted, teacher = await service.delete_teacher(session, teacher_id)
+        await callback.answer("حذف شد." if deleted else "این دبیر استفاده شده؛ غیرفعال شد.", show_alert=True)
+        await callback.message.edit_reply_markup(reply_markup=None); return
+    # Editing is a complete replacement form, which avoids partial invalid data.
+    await state.clear(); await state.update_data(mode="edit", teacher_id=teacher_id)
+    await state.set_state(TeacherStates.name)
+    await callback.message.answer(f"ویرایش دبیر {teacher.name}. نام جدید:")
+    await callback.answer()
