@@ -1,5 +1,6 @@
 from aiogram import Dispatcher
 
+from app.bot.handlers.buffet import router as buffet_router
 from app.bot.handlers.library import router as library_router
 from app.bot.handlers.profile import router as profile_router
 from app.bot.handlers.referral import router as referral_router
@@ -21,6 +22,7 @@ def create_dispatcher() -> Dispatcher:
     dispatcher.message.outer_middleware(GroupAccessMiddleware())
     dispatcher.callback_query.outer_middleware(GroupAccessMiddleware())
     dispatcher.include_router(school_router)
+    dispatcher.include_router(buffet_router)
     dispatcher.include_router(library_router)
     dispatcher.include_router(profile_router)
     dispatcher.include_router(referral_router)

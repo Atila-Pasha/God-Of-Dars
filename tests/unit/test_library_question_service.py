@@ -189,7 +189,7 @@ async def test_group_wrong_group_is_rejected():
 
 
 @pytest.mark.asyncio
-async def test_group_first_answer_consumes_the_group_question():
+async def test_group_incorrect_answer_does_not_consume_the_group_question():
     question, publication = group_fixture()
     repository = FakeQuestionRepository(question, publication)
     service = QuestionService(repository)
@@ -198,13 +198,15 @@ async def test_group_first_answer_consumes_the_group_question():
         session(), 20, question.id, publication.group_id, "مشهد"
     )
     assert first.valid is False
+    assert publication.status is QuestionStatus.ACTIVE
+    assert question.status is QuestionStatus.ACTIVE
+
+    second = await service.answer_group_question(
+        session(), 21, question.id, publication.group_id, "تهران"
+    )
+    assert second.correct is True
     assert publication.status is QuestionStatus.ANSWERED
     assert question.status is QuestionStatus.ANSWERED
-
-    with pytest.raises(QuestionAlreadyAnswered):
-        await service.answer_group_question(
-            session(), 21, question.id, publication.group_id, "تهران"
-        )
 
 
 @pytest.mark.asyncio

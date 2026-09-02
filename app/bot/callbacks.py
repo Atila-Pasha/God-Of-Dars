@@ -55,3 +55,9 @@ class ReferralCallback(CallbackData, prefix="referral"):
 
 class ProfileCallback(CallbackData, prefix="profile"):
     action: Literal["refresh", "back"]
+
+
+class BuffetCallback(CallbackData, prefix="buffet"):
+    action: Literal["convert"]
+    source: str
+    target: str

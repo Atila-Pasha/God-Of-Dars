@@ -19,6 +19,16 @@ class CastleUpgrade:
 
 
 @dataclass(frozen=True)
+class BuffetConversion:
+    """The price and result of one buffet conversion package."""
+
+    source: ResourceType
+    target: ResourceType
+    source_amount: int
+    target_amount: int
+
+
+@dataclass(frozen=True)
 class GameConfig:
     """Central home for game balance and progression rules.
 
@@ -40,6 +50,7 @@ class GameConfig:
     initial_defense_power: int = 0
     referral_reward_resource: ResourceType = ResourceType.DIAMOND
     referral_reward_amount: int | None = None
+    buffet_conversions: tuple[BuffetConversion, ...] = ()
 
     def __post_init__(self) -> None:
         if self.max_teacher_slots < 1:
@@ -67,6 +78,16 @@ class GameConfig:
             raise ValueError("teacher damage multipliers are invalid")
         if self.referral_reward_amount is not None and self.referral_reward_amount < 0:
             raise ValueError("referral_reward_amount cannot be negative")
+        seen: set[tuple[ResourceType, ResourceType]] = set()
+        for conversion in self.buffet_conversions:
+            key = (conversion.source, conversion.target)
+            if conversion.source == conversion.target:
+                raise ValueError("buffet conversion cannot use the same resource")
+            if key in seen:
+                raise ValueError("duplicate buffet conversion")
+            if conversion.source_amount <= 0 or conversion.target_amount <= 0:
+                raise ValueError("buffet conversion amounts must be positive")
+            seen.add(key)
 
     def teacher_slots(self, player_level: int) -> int:
         capacity = 0
@@ -142,6 +163,17 @@ class GameConfig:
     def recovery_is_configured(self) -> bool:
         return bool(self.recovery_minutes_by_strength)
 
+    def buffet_conversion(
+        self, source: ResourceType, target: ResourceType
+    ) -> BuffetConversion:
+        for conversion in self.buffet_conversions:
+            if conversion.source == source and conversion.target == target:
+                return conversion
+        raise GameConfigurationError("Buffet conversion is not configured")
+
+    def buffet_options(self) -> tuple[BuffetConversion, ...]:
+        return self.buffet_conversions
+
     @classmethod
     def from_toml(cls, path: str | Path) -> GameConfig:
         config_path = Path(path)
@@ -187,6 +219,15 @@ class GameConfig:
             if referral_reward_amount_raw is None
             else int(referral_reward_amount_raw)
         )
+        buffet_conversions = tuple(
+            BuffetConversion(
+                source=ResourceType(str(item["source"]).upper()),
+                target=ResourceType(str(item["target"]).upper()),
+                source_amount=int(item["source_amount"]),
+                target_amount=int(item["target_amount"]),
+            )
+            for item in data.get("buffet", {}).get("conversions", [])
+        )
         return cls(
             max_teacher_slots=int(data.get("max_teacher_slots", 4)),
             teacher_slots_by_level=slots,
@@ -214,6 +255,7 @@ class GameConfig:
                 ).upper()
             ),
             referral_reward_amount=referral_reward_amount,
+            buffet_conversions=buffet_conversions,
         )
 
 

@@ -368,13 +368,15 @@ class QuestionService:
         await session.flush()
 
         rewards: tuple[Reward, ...] = ()
-        publication.status = QuestionStatus.ANSWERED
-        publication.answered_at = current_time
-        if not await self.repository.has_active_group_publications(
-            session, question_id=question_id, exclude_id=publication.id
-        ):
-            question.status = QuestionStatus.ANSWERED
+        # An incorrect attempt must not consume the group question.  The
+        # publication is closed only after a correct answer wins.
         if correct:
+            publication.status = QuestionStatus.ANSWERED
+            publication.answered_at = current_time
+            if not await self.repository.has_active_group_publications(
+                session, question_id=question_id, exclude_id=publication.id
+            ):
+                question.status = QuestionStatus.ANSWERED
             rewards = await self._grant_question_rewards(
                 session,
                 user_id=user_id,

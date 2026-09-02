@@ -12,6 +12,10 @@ class BroadcastStates(StatesGroup):
     content = State()
 
 
+class BuffetStates(StatesGroup):
+    convert_amount = State()
+
+
 class QuestionStates(StatesGroup):
     text = State()
     answer = State()
