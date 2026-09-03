@@ -6,6 +6,13 @@ initial_defense_power = 25
 teacher_activation_cost = 120
 teacher_sell_ratio = 0.5
 
+[shield_rules]
+# Global limits for shield values. Individual shield prices and strength are
+# managed from the admin panel, while this section protects the game balance.
+min_reduction_percent = 0
+max_reduction_percent = 100
+max_flat_absorption = 1000000
+
 # Buffet exchange rates. Change these values and restart the bot.
 [[buffet.conversions]]
 source = "COIN"

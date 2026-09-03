@@ -49,28 +49,36 @@ def castle_keyboard(can_upgrade: bool) -> InlineKeyboardMarkup:
             )
         )
     buttons.append(
-        InlineKeyboardButton(
-            text="🔙 مدرسه من",
+            InlineKeyboardButton(
+                    text="🔙 مدرسه من",
             callback_data=CastleCallback(action="back").pack(),
         )
     )
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
 
-def confirmation_keyboard(*, action: str, target_id: int) -> InlineKeyboardMarkup:
+def confirmation_keyboard(
+    *, action: str, target_id: int, origin: str = "school"
+) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ تأیید",
                     callback_data=ConfirmationCallback(
-                        action=action, target_id=target_id, decision="confirm"
+                        action=action,
+                        target_id=target_id,
+                        decision="confirm",
+                        origin=origin,
                     ).pack(),
                 ),
                 InlineKeyboardButton(
                     text="❌ لغو",
                     callback_data=ConfirmationCallback(
-                        action=action, target_id=target_id, decision="cancel"
+                        action=action,
+                        target_id=target_id,
+                        decision="cancel",
+                        origin=origin,
                     ).pack(),
                 ),
             ]
@@ -83,6 +91,7 @@ def teachers_keyboard(
     catalog: list[Teacher],
     *,
     can_buy: bool,
+    back_action: str = "back_school",
 ) -> InlineKeyboardMarkup:
     rows = [
         [
@@ -107,10 +116,12 @@ def teachers_keyboard(
     rows.append(
         [
             InlineKeyboardButton(
-                    text="🔙 مدرسه من",
-                    callback_data=TeacherCallback(
-                        action="back_school", teacher_id=0
-                    ).pack(),
+                    text="🔙 بوفه" if back_action == "back_buffet" else "🔙 مدرسه من",
+                callback_data=TeacherCallback(
+                    action=back_action,
+                    teacher_id=0,
+                    origin="buffet" if back_action == "back_buffet" else "school",
+                ).pack(),
             )
         ]
     )
@@ -118,14 +129,18 @@ def teachers_keyboard(
 
 
 def teacher_catalog_keyboard(
-    teachers: list[Teacher], *, player_level: int
+    teachers: list[Teacher],
+    *,
+    player_level: int,
+    back_action: str = "back_teachers",
+    origin: str = "school",
 ) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
                 text=f"🛒 {teacher.name} — {teacher.purchase_price} سکه",
                 callback_data=TeacherCallback(
-                    action="buy", teacher_id=teacher.id
+                    action="buy", teacher_id=teacher.id, origin=origin
                 ).pack(),
             )
         ]
@@ -137,7 +152,7 @@ def teacher_catalog_keyboard(
             InlineKeyboardButton(
                 text="🔙 دبیرها",
                 callback_data=TeacherCallback(
-                    action="back_teachers", teacher_id=0
+                    action=back_action, teacher_id=0, origin=origin
                 ).pack(),
             )
         ]

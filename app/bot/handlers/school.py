@@ -25,6 +25,7 @@ from app.bot.keyboards.school import (
     teacher_detail_keyboard,
     teachers_keyboard,
 )
+from app.bot.utils.telegram import safe_edit_text
 from app.core.enums import TeacherStatus
 from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
@@ -108,7 +109,7 @@ async def _send_or_edit(
         if target.message is None:
             return
         try:
-            await target.message.edit_text(text, reply_markup=reply_markup)
+            await safe_edit_text(target.message, text, reply_markup=reply_markup)
         except TelegramAPIError:
             await target.message.answer(text, reply_markup=reply_markup)
         return
@@ -159,6 +160,8 @@ async def _castle_view(
 async def _teachers_view(
     target: Message | CallbackQuery,
     session: AsyncSession,
+    *,
+    from_buffet: bool = False,
 ) -> None:
     user = await _user(session, target.from_user.id)
     capacity = await teacher_service.capacity(session, user.id)
@@ -209,11 +212,13 @@ async def _teachers_view(
         reply_markup=teachers_keyboard(
             teachers,
             catalog,
-            can_buy=(
+            can_buy=from_buffet
+            and (
                 capacity.owned < capacity.available
                 and capacity.owned < capacity.maximum
                 and any(teacher.unlock_level <= user.level for teacher in catalog)
             ),
+            back_action="back_buffet" if from_buffet else "back_school",
         ),
     )
 
@@ -389,12 +394,22 @@ async def teacher_callback_handler(
         elif callback_data.action == "back_teachers":
             await _teachers_view(callback, session)
             await callback.answer()
+        elif callback_data.action == "back_buffet":
+            from app.bot.handlers.buffet import _buffet_menu_view
+
+            await _buffet_menu_view(callback, session)
+            await callback.answer()
         elif callback_data.action == "buy" and callback_data.teacher_id == 0:
             catalog = await teacher_service.catalog(session, user.id)
             await _send_or_edit(
                 callback,
                 "🛒 خرید دبیر\n\nدبیر موردنظر را انتخاب کنید:",
-                reply_markup=teacher_catalog_keyboard(catalog, player_level=user.level),
+                reply_markup=teacher_catalog_keyboard(
+                    catalog,
+                    player_level=user.level,
+                    back_action="back_buffet",
+                    origin="buffet",
+                ),
             )
             await callback.answer()
         elif callback_data.action == "buy":
@@ -407,7 +422,9 @@ async def teacher_callback_handler(
                 f"قیمت: {_number(teacher.purchase_price)} سکه\n"
                 "آیا می‌خواهی این دبیر را بخری؟",
                 reply_markup=confirmation_keyboard(
-                    action="teacher_buy", target_id=teacher.id
+                    action="teacher_buy",
+                    target_id=teacher.id,
+                    origin=callback_data.origin,
                 ),
             )
             await callback.answer()
@@ -476,7 +493,11 @@ async def confirmation_callback_handler(
             if callback_data.action == "castle_upgrade":
                 await _castle_view(callback, session)
             else:
-                await _teachers_view(callback, session)
+                await _teachers_view(
+                    callback,
+                    session,
+                    from_buffet=callback_data.origin == "buffet",
+                )
             await callback.answer("عملیات لغو شد.")
             return
 
@@ -486,7 +507,11 @@ async def confirmation_callback_handler(
             notice = "دژ با موفقیت ارتقا پیدا کرد."
         elif callback_data.action == "teacher_buy":
             await teacher_service.buy(session, user.id, callback_data.target_id)
-            await _teachers_view(callback, session)
+            await _teachers_view(
+                callback,
+                session,
+                from_buffet=callback_data.origin == "buffet",
+            )
             notice = "دبیر با موفقیت خریداری شد."
         elif callback_data.action == "teacher_upgrade":
             await teacher_service.upgrade(session, user.id, callback_data.target_id)

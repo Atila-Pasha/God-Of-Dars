@@ -18,6 +18,7 @@ from app.bot.keyboards.library import (
     library_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
+from app.bot.utils.telegram import safe_edit_text
 from app.services.library_errors import (
     DuplicateAnswer,
     LibraryError,
@@ -79,11 +80,7 @@ def _result_text(result: AnswerResult) -> str:
             f"{reward.amount}"
             for reward in rewards
         )
-        return (
-            "✅ درست جواب دادی!\n\n"
-            "مقدار منابع دریافتی:\n"
-            f"{reward_text}"
-        )
+        return f"✅ درست جواب دادی!\n\nمقدار منابع دریافتی:\n{reward_text}"
     return "❌ پاسخ شما اشتباه بود.\n\nپاسخ شما ثبت شد؛ امکان تلاش دوباره وجود ندارد."
 
 
@@ -106,7 +103,7 @@ async def _show_library(target: Message | CallbackQuery) -> None:
     if isinstance(target, CallbackQuery):
         if target.message is not None:
             target_message = cast(Message, target.message)
-            await target_message.edit_text(text, reply_markup=library_keyboard())
+            await safe_edit_text(target_message, text, reply_markup=library_keyboard())
     else:
         await target.answer(text, reply_markup=library_keyboard())
 
@@ -165,7 +162,8 @@ async def library_callback_handler(
             await state.update_data(question_id=daily_question.id)
             if callback.message is not None:
                 callback_message = cast(Message, callback.message)
-                await callback_message.edit_text(
+                await safe_edit_text(
+                    callback_message,
                     _question_text(daily_question, title="📅 سؤال روزانه"),
                     reply_markup=answer_keyboard(),
                 )
@@ -178,7 +176,7 @@ async def library_callback_handler(
             await state.clear()
             if callback.message is not None:
                 if callback.message.chat.type in {"group", "supergroup"}:
-                    await callback.message.edit_text("❌ پاسخ‌گویی لغو شد.")
+                    await safe_edit_text(callback.message, "❌ پاسخ‌گویی لغو شد.")
                 else:
                     await _show_library(callback)
         else:
@@ -214,11 +212,17 @@ async def daily_answer_handler(
             reply_to_message_id=getattr(message, "message_id", None),
         )
     except DuplicateAnswer:
-        await message.answer("این سؤال را قبلاً پاسخ داده‌اید.", reply_markup=library_keyboard())
+        await message.answer(
+            "این سؤال را قبلاً پاسخ داده‌اید.", reply_markup=library_keyboard()
+        )
     except QuestionExpired:
-        await message.answer("مهلت پاسخ‌گویی به این سؤال تمام شده است.", reply_markup=library_keyboard())
+        await message.answer(
+            "مهلت پاسخ‌گویی به این سؤال تمام شده است.", reply_markup=library_keyboard()
+        )
     except QuestionAlreadyAnswered:
-        await message.answer("این سؤال قبلاً پاسخ داده شده است.", reply_markup=library_keyboard())
+        await message.answer(
+            "این سؤال قبلاً پاسخ داده شده است.", reply_markup=library_keyboard()
+        )
     except (QuestionNotFound, UserInactiveError, LibraryError):
         await message.answer("پاسخ شما ثبت نشد. لطفاً دوباره از کتابخانه وارد شوید.")
     finally:
@@ -262,9 +266,7 @@ async def group_reply_answer_handler(
     except WrongGroup:
         await _answer_group_reply(message, "این سؤال به گروه فعلی مربوط نیست.")
     except DuplicateAnswer:
-        await _answer_group_reply(
-            message, "پاسخ شما قبلاً برای این سؤال ثبت شده است."
-        )
+        await _answer_group_reply(message, "پاسخ شما قبلاً برای این سؤال ثبت شده است.")
     except QuestionExpired:
         await _answer_group_reply(message, "مهلت پاسخ‌گویی به سؤال گروه تمام شده است.")
     except QuestionAlreadyAnswered:
@@ -272,7 +274,7 @@ async def group_reply_answer_handler(
         winner_name = _answerer_name(winner)
         await _answer_group_reply(
             message,
-            f"⏰ دیر اومدی رفیق! {winner_name} زودتر پاسخ داده و جوابش ثبت شده."
+            f"⏰ دیر اومدی رفیق! {winner_name} زودتر پاسخ داده و جوابش ثبت شده.",
         )
     except (QuestionNotFound, UserInactiveError, LibraryError):
         await _answer_group_reply(message, "پاسخ شما ثبت نشد؛ دوباره امتحان کن.")
@@ -288,6 +290,9 @@ async def _answer_group_reply(message: Message, text: str) -> None:
 def _answerer_name(answer: Any) -> str:
     if answer is None or answer.user is None:
         return "یک نفر"
-    return " ".join(
-        part for part in (answer.user.first_name, answer.user.last_name) if part
-    ) or "یک نفر"
+    return (
+        " ".join(
+            part for part in (answer.user.first_name, answer.user.last_name) if part
+        )
+        or "یک نفر"
+    )

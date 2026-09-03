@@ -6,7 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ResourceType
-from app.core.game_logic import BuffetConversion, GameConfig, GameConfigurationError, game_config
+from app.core.game_logic import (
+    BuffetConversion,
+    GameConfig,
+    GameConfigurationError,
+    game_config,
+)
 from app.models.resource import Resource
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -48,7 +53,9 @@ class BuffetService:
         return self.config.buffet_options()
 
     async def resources(self, session: AsyncSession, user_id: int) -> Resource | None:
-        result = await session.execute(select(Resource).where(Resource.user_id == user_id))
+        result = await session.execute(
+            select(Resource).where(Resource.user_id == user_id)
+        )
         return result.scalar_one_or_none()
 
     async def exchange(
@@ -91,9 +98,10 @@ class BuffetService:
                 f"موجودی {source.value} برای این تبدیل کافی نیست."
             )
         old_target_balance = getattr(resources, target_field)
-        target_balance = old_target_balance + (
-            source_amount // conversion.source_amount
-        ) * conversion.target_amount
+        target_balance = (
+            old_target_balance
+            + (source_amount // conversion.source_amount) * conversion.target_amount
+        )
         new_source_balance = source_balance - source_amount
         setattr(resources, source_field, new_source_balance)
         setattr(resources, target_field, target_balance)

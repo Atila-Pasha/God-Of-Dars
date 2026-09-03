@@ -24,8 +24,10 @@ class TeacherCallback(CallbackData, prefix="teacher"):
         "activate",
         "back_school",
         "back_teachers",
+        "back_buffet",
     ]
     teacher_id: int
+    origin: Literal["school", "buffet"] = "school"
 
 
 class HospitalCallback(CallbackData, prefix="hospital"):
@@ -43,6 +45,7 @@ class ConfirmationCallback(CallbackData, prefix="confirm"):
     ]
     target_id: int
     decision: Literal["confirm", "cancel"]
+    origin: Literal["school", "buffet"] = "school"
 
 
 class LibraryCallback(CallbackData, prefix="library"):
@@ -61,3 +64,12 @@ class BuffetCallback(CallbackData, prefix="buffet"):
     action: Literal["convert"]
     source: str
     target: str
+
+
+class BuffetMenuCallback(CallbackData, prefix="buffet_menu"):
+    action: Literal["convert", "teachers", "shields", "back"]
+
+
+class ShieldCallback(CallbackData, prefix="shield"):
+    action: Literal["buy", "equip", "back"]
+    shield_id: int

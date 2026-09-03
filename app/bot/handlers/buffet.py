@@ -5,24 +5,45 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import BuffetCallback
-from app.bot.keyboards.buffet import buffet_keyboard
+from app.bot.callbacks import BuffetCallback, BuffetMenuCallback, ShieldCallback
+from app.bot.keyboards.buffet import (
+    buffet_cancel_keyboard,
+    buffet_keyboard,
+    buffet_menu_keyboard,
+    shield_catalog_keyboard,
+    shield_inventory_keyboard,
+)
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, main_menu_keyboard
-from app.core.enums import ResourceType
 from app.bot.states import BuffetStates
+from app.bot.utils.telegram import safe_edit_text
+from app.core.enums import ResourceType
 from app.services.buffet_service import (
     BuffetService,
     ConversionAmountError,
     InsufficientResource,
     InvalidBuffetConversion,
 )
+from app.services.school_errors import (
+    InsufficientCoins,
+    ShieldLocked,
+    ShieldNotFound,
+    ShieldNotPurchasable,
+)
+from app.services.shield_service import ShieldService
 from app.services.user_service import UserInactiveError, UserService
 
 router = Router(name="buffet")
 buffet_service = BuffetService()
 user_service = UserService()
-BUFFET_LABEL = next(label for label, section in MENU_SECTION_BY_LABEL.items() if section == "buffet")
-RESOURCE_LABELS = {ResourceType.COIN: "طلا", ResourceType.DIAMOND: "الماس", ResourceType.BANANA: "موز"}
+shield_service = ShieldService()
+BUFFET_LABEL = next(
+    label for label, section in MENU_SECTION_BY_LABEL.items() if section == "buffet"
+)
+RESOURCE_LABELS = {
+    ResourceType.COIN: "طلا",
+    ResourceType.DIAMOND: "الماس",
+    ResourceType.BANANA: "موز",
+}
 
 
 def _resource_text(resources) -> str:
@@ -38,19 +59,139 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return
     try:
-        user = await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
+        await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
+        await message.answer(
+            "🍽 بوفه\n\nاز بخش‌های زیر یکی را انتخاب کنید:",
+            reply_markup=buffet_menu_keyboard(),
+        )
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
+
+
+async def _buffet_menu_view(
+    target: Message | CallbackQuery, session: AsyncSession
+) -> None:
+    text = "🍽 بوفه\n\nاز بخش‌های زیر یکی را انتخاب کنید:"
+    if isinstance(target, CallbackQuery) and target.message is not None:
+        # Reply keyboards cannot be attached to editMessageText. Send a fresh
+        # message so Telegram replaces the user's keyboard at the bottom.
+        await target.message.answer(text, reply_markup=buffet_menu_keyboard())
+    else:
+        await target.answer(text, reply_markup=buffet_menu_keyboard())
+
+
+@router.message(F.text == "🔄 تبدیل منابع")
+async def buffet_conversion_message(
+    message: Message, session: AsyncSession, state: FSMContext
+) -> None:
+    if message.from_user is None:
+        return
+    try:
+        await state.clear()
+        user = await user_service.get_active_by_telegram_user_id(
+            session, message.from_user.id
+        )
         resources = await buffet_service.resources(session, user.id)
         if resources is None:
-            await message.answer("منابع شما هنوز آماده نشده است.", reply_markup=main_menu_keyboard())
-            return
+            raise UserInactiveError
         await message.answer(
-            "🍽 بوفه\n\nموجودی فعلی شما:\n"
+            "🔄 تبدیل منابع\n\nموجودی فعلی شما:\n"
             + _resource_text(resources)
             + "\n\nیک تبدیل را انتخاب کنید:",
             reply_markup=buffet_keyboard(buffet_service.options()),
         )
     except UserInactiveError:
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
+
+
+@router.message(F.text == "🛡 خرید سپر")
+async def buffet_shields_message(
+    message: Message, session: AsyncSession, state: FSMContext
+) -> None:
+    if message.from_user is None:
+        return
+    try:
+        await state.clear()
+        await _shields_view(message, session)
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
+
+
+@router.message(F.text == "👨‍🏫 خرید دبیر")
+async def buffet_teachers_message(
+    message: Message, session: AsyncSession, state: FSMContext
+) -> None:
+    if message.from_user is None:
+        return
+    try:
+        await state.clear()
+        await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
+        from app.bot.handlers.school import _teachers_view
+
+        await _teachers_view(message, session, from_buffet=True)
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
+
+
+@router.message(F.text.in_({"🔙 منوی اصلی", "❌ لغو"}))
+async def buffet_back_to_main(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard())
+
+
+async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None:
+    user = await user_service.get_active_by_telegram_user_id(
+        session, target.from_user.id
+    )
+    resources = await buffet_service.resources(session, user.id)
+    if resources is None:
+        raise UserInactiveError
+    text = (
+        "🔄 تبدیل منابع\n\nموجودی فعلی شما:\n"
+        + _resource_text(resources)
+        + "\n\nیک تبدیل را انتخاب کنید:"
+    )
+    await safe_edit_text(
+        target.message, text, reply_markup=buffet_keyboard(buffet_service.options())
+    )
+
+
+async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) -> None:
+    user = await user_service.get_active_by_telegram_user_id(
+        session, target.from_user.id
+    )
+    owned = await shield_service.list_owned(session, user.id)
+    catalog = await shield_service.catalog(session, player_level=user.level)
+    lines = [f"🛡 سپرهای بوفه\n\n🎖 سطح شما: {user.level}"]
+    if owned:
+        lines.append("\n📦 موجودی شما:")
+        for item in owned:
+            state = "✅ فعال" if item.is_equipped else "⚪ آماده‌سازی"
+            lines.append(
+                f"\n{state} — {item.shield.name} × {item.quantity}"
+                f"\nکاهش آسیب: {item.shield.reduction_percent}% + {item.shield.flat_absorption} واحد"
+            )
+    else:
+        lines.append("\nهنوز سپری ندارید.")
+    lines.append("\n\nسپرهای قابل خرید در سطح شما:")
+    if not catalog:
+        lines.append("\nفعلاً سپری برای سطح شما تعریف نشده است.")
+    else:
+        for shield in catalog:
+            lines.append(
+                f"\n🛡 {shield.name} — {shield.purchase_price} سکه"
+                f"\nکاهش آسیب: {shield.reduction_percent}% + {shield.flat_absorption} واحد"
+                + (f"\n{shield.description}" if shield.description else "")
+            )
+    reply_markup = (
+        shield_catalog_keyboard(catalog, owned)
+        if catalog
+        else shield_inventory_keyboard(owned)
+    )
+    if isinstance(target, CallbackQuery) and target.message is not None:
+        await safe_edit_text(target.message, "".join(lines), reply_markup=reply_markup)
+    else:
+        await target.answer("".join(lines), reply_markup=reply_markup)
 
 
 @router.callback_query(BuffetCallback.filter())
@@ -66,7 +207,9 @@ async def buffet_callback(
     try:
         source = ResourceType(callback_data.source)
         target = ResourceType(callback_data.target)
-        user = await user_service.get_active_by_telegram_user_id(session, callback.from_user.id)
+        await user_service.get_active_by_telegram_user_id(
+            session, callback.from_user.id
+        )
         option = buffet_service.config.buffet_conversion(source, target)
         await state.set_state(BuffetStates.convert_amount)
         await state.update_data(source=source.value, target=target.value)
@@ -76,10 +219,80 @@ async def buffet_callback(
             f"هر {option.source_amount} {RESOURCE_LABELS[source]} = "
             f"{option.target_amount} {RESOURCE_LABELS[target]}\n"
             f"مقدار باید مضربی از {option.source_amount} باشد.\n"
-            f"مثال: {option.source_amount}"
+            f"مثال: {option.source_amount}",
+            reply_markup=buffet_cancel_keyboard(),
         )
     except (UserInactiveError, InvalidBuffetConversion):
         await callback.answer("این تبدیل در دسترس نیست.", show_alert=True)
+
+
+@router.callback_query(BuffetMenuCallback.filter())
+async def buffet_menu_callback(
+    callback: CallbackQuery,
+    callback_data: BuffetMenuCallback,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    if callback.from_user is None or callback.message is None:
+        await callback.answer()
+        return
+    try:
+        if callback_data.action == "convert":
+            await _conversion_view(callback, session)
+        elif callback_data.action == "teachers":
+            from app.bot.handlers.school import _teachers_view
+
+            await _teachers_view(callback, session, from_buffet=True)
+        elif callback_data.action == "shields":
+            await _shields_view(callback, session)
+        else:
+            await state.clear()
+            await callback.message.answer(
+                "به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard()
+            )
+        await callback.answer()
+    except (UserInactiveError, ShieldNotFound):
+        await callback.answer("اطلاعات بوفه در دسترس نیست.", show_alert=True)
+
+
+@router.callback_query(ShieldCallback.filter())
+async def shield_callback(
+    callback: CallbackQuery,
+    callback_data: ShieldCallback,
+    session: AsyncSession,
+) -> None:
+    if callback.from_user is None or callback.message is None:
+        await callback.answer()
+        return
+    try:
+        user = await user_service.get_active_by_telegram_user_id(
+            session, callback.from_user.id
+        )
+        if callback_data.action == "back":
+            await _buffet_menu_view(callback, session)
+        elif callback_data.action == "equip":
+            item = await shield_service.equip(session, user.id, callback_data.shield_id)
+            await _shields_view(callback, session)
+            await callback.answer(f"سپر «{item.shield.name}» فعال شد.")
+            return
+        else:
+            shield = await shield_service.get_shield(session, callback_data.shield_id)
+            if shield is None:
+                raise ShieldNotFound
+            purchase = await shield_service.buy(session, user.id, shield.id)
+            await _shields_view(callback, session)
+            await callback.answer(
+                f"سپر «{purchase.shield.name}» خریداری شد؛ {purchase.quantity} عدد در موجودی.",
+                show_alert=True,
+            )
+            return
+        await callback.answer()
+    except InsufficientCoins:
+        await callback.answer("سکه کافی ندارید.", show_alert=True)
+    except ShieldLocked:
+        await callback.answer("این سپر برای سطح شما باز نشده است.", show_alert=True)
+    except (ShieldNotFound, ShieldNotPurchasable, UserInactiveError):
+        await callback.answer("این سپر در دسترس نیست.", show_alert=True)
 
 
 @router.message(BuffetStates.convert_amount, F.text)
@@ -91,9 +304,13 @@ async def buffet_exchange_message(
     if message.from_user is None or message.text is None:
         return
     try:
-        normalized = message.text.strip().translate(
-            str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٬,", "01234567890123456789  ")
-        ).replace(" ", "")
+        normalized = (
+            message.text.strip()
+            .translate(
+                str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩٬,", "01234567890123456789  ")
+            )
+            .replace(" ", "")
+        )
         amount = int(normalized)
     except ValueError:
         await message.answer("لطفاً فقط مقدار عددی وارد کنید.")
@@ -102,7 +319,9 @@ async def buffet_exchange_message(
     try:
         source = ResourceType(data["source"])
         target = ResourceType(data["target"])
-        user = await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
+        user = await user_service.get_active_by_telegram_user_id(
+            session, message.from_user.id
+        )
         result = await buffet_service.exchange(
             session,
             user.id,
@@ -118,14 +337,16 @@ async def buffet_exchange_message(
         return
     except (UserInactiveError, InvalidBuffetConversion):
         await state.clear()
-        await message.answer("این تبدیل در دسترس نیست.", reply_markup=main_menu_keyboard())
+        await message.answer(
+            "این تبدیل در دسترس نیست.", reply_markup=main_menu_keyboard()
+        )
         return
 
     resources = await buffet_service.resources(session, user.id)
     await state.clear()
     await message.answer(
         f"✅ تبدیل انجام شد.\n"
-                f"مصرف‌شده: {amount} {RESOURCE_LABELS[source]}\n"
+        f"مصرف‌شده: {amount} {RESOURCE_LABELS[source]}\n"
         f"دریافت‌شده: {result.packages * result.conversion.target_amount} {RESOURCE_LABELS[target]}\n\n"
         "موجودی جدید:\n" + _resource_text(resources),
         reply_markup=main_menu_keyboard(),

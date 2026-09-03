@@ -33,3 +33,12 @@ class TeacherStates(StatesGroup):
     upgrade_price = State()
     unlock_level = State()
     ability_text = State()
+
+
+class ShieldStates(StatesGroup):
+    name = State()
+    reduction_percent = State()
+    flat_absorption = State()
+    purchase_price = State()
+    unlock_level = State()
+    description = State()

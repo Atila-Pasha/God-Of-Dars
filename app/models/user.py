@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.models.resource import Resource
     from app.models.reward import Reward
     from app.models.transaction import Transaction
+    from app.models.user_shield import UserShield
     from app.models.user_teacher import UserTeacher
 
 
@@ -83,6 +84,12 @@ class User(Base):
     )
     teachers: Mapped[list[UserTeacher]] = relationship(
         "UserTeacher",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    shields: Mapped[list[UserShield]] = relationship(
+        "UserShield",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,

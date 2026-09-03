@@ -16,6 +16,7 @@ from app.bot.keyboards.main_menu import (
 )
 from app.bot.keyboards.start import join_channel_keyboard
 from app.bot.middlewares.subscription import subscription_service
+from app.bot.utils.telegram import safe_edit_text
 from app.services.referral_service import (
     ReferralCycle,
     ReferralError,
@@ -82,7 +83,9 @@ async def _initialize_and_show_menu(
             except SelfReferral:
                 referral_notice = "می‌خوای خودتو دعوت کنی رفیق؟ 😁"
             except ReferralCycle:
-                referral_notice = "این لینک دعوت قابل استفاده نیست؛ دعوت متقابل مجاز نیست."
+                referral_notice = (
+                    "این لینک دعوت قابل استفاده نیست؛ دعوت متقابل مجاز نیست."
+                )
             except ReferralError:
                 # Referral attribution must never prevent a valid user from
                 # entering the bot. Invalid or already-used links are ignored.
@@ -108,9 +111,7 @@ async def _initialize_and_show_menu(
             return False
     else:
         try:
-            await target.answer(
-                MAIN_MENU_MESSAGE, reply_markup=main_menu_keyboard()
-            )
+            await target.answer(MAIN_MENU_MESSAGE, reply_markup=main_menu_keyboard())
         except TelegramAPIError:
             logger.exception("Could not send main menu message")
             return False
@@ -177,7 +178,8 @@ async def check_membership_handler(
     if not is_member:
         await callback.answer("هنوز عضویت شما تأیید نشده است.", show_alert=True)
         try:
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback.message,
                 JOIN_MESSAGE,
                 reply_markup=join_channel_keyboard(subscription_service),
             )

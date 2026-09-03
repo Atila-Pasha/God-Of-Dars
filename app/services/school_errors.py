@@ -56,3 +56,15 @@ class CastleUpgradeUnavailable(SchoolError):
 
 class OperationNotConfigured(SchoolError):
     pass
+
+
+class ShieldNotFound(SchoolError):
+    pass
+
+
+class ShieldLocked(SchoolError):
+    pass
+
+
+class ShieldNotPurchasable(SchoolError):
+    pass

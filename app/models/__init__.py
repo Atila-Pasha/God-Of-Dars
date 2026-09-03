@@ -9,9 +9,11 @@ from app.models.question import Question
 from app.models.recovery import Recovery
 from app.models.resource import Resource
 from app.models.reward import Reward
+from app.models.shield import Shield
 from app.models.teacher import Teacher
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.user_shield import UserShield
 from app.models.user_teacher import UserTeacher
 
 __all__ = [
@@ -26,8 +28,10 @@ __all__ = [
     "Recovery",
     "Resource",
     "Reward",
+    "Shield",
     "Teacher",
     "Transaction",
     "User",
+    "UserShield",
     "UserTeacher",
 ]

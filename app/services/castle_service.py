@@ -12,6 +12,7 @@ from app.services.school_errors import (
     InsufficientCoins,
     ResourceNotFound,
 )
+from app.services.shield_service import ShieldService
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,15 @@ class CastleSnapshot:
     level: int
     strength: int
     defense_power: int
+
+
+@dataclass(frozen=True)
+class CastleDamageResult:
+    incoming_damage: int
+    blocked_damage: int
+    applied_damage: int
+    castle_strength_before: int
+    castle_strength_after: int
 
 
 class CastleService:
@@ -30,6 +40,7 @@ class CastleService:
     ) -> None:
         self.repository = repository or CastleRepository()
         self.config = config or game_config
+        self.shield_service = ShieldService(config=self.config)
 
     async def get_or_create(self, session: AsyncSession, user_id: int) -> Castle:
         castle = await self.repository.get_by_user(session, user_id)
@@ -114,3 +125,24 @@ class CastleService:
         self, session: AsyncSession, user_id: int
     ) -> CastleSnapshot:
         return await self.snapshot(session, user_id)
+
+    async def receive_attack_damage(
+        self, session: AsyncSession, user_id: int, incoming_damage: int
+    ) -> CastleDamageResult:
+        """Apply incoming damage after consuming the equipped buffet shield."""
+        castle = await self.repository.get_by_user(session, user_id, for_update=True)
+        if castle is None:
+            raise CastleNotFound
+        mitigation = await self.shield_service.consume_for_attack(
+            session, user_id, incoming_damage
+        )
+        before = castle.strength
+        castle.strength = max(0, before - mitigation.remaining_damage)
+        await session.flush()
+        return CastleDamageResult(
+            incoming_damage=mitigation.incoming_damage,
+            blocked_damage=mitigation.blocked_damage,
+            applied_damage=mitigation.remaining_damage,
+            castle_strength_before=before,
+            castle_strength_after=castle.strength,
+        )

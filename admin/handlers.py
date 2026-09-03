@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
 import asyncio
 import re
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 
 from aiogram import Bot, F, Router
@@ -15,21 +14,32 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin import keyboards
-from admin.states import BroadcastStates, QuestionStates, TeacherStates, UserStates
-from app.core.config import settings
+from admin.states import (
+    BroadcastStates,
+    QuestionStates,
+    ShieldStates,
+    TeacherStates,
+    UserStates,
+)
 from app.bot.group_question_publisher import GroupQuestionPublisher
-from app.services.library_errors import GroupNotFound
+from app.bot.utils.telegram import safe_edit_reply_markup, safe_edit_text
+from app.core.config import settings
 from app.services.admin_service import AdminService
+from app.services.library_errors import GroupNotFound
 from app.services.question_service import QuestionService
+from app.services.shield_service import ShieldAdminService
 
 router = Router(name="admin")
 service = AdminService()
 question_service = QuestionService()
+shield_service = ShieldAdminService()
 group_question_publisher = GroupQuestionPublisher()
 
 
 def allowed(message: Message | CallbackQuery) -> bool:
-    return message.from_user is not None and message.from_user.id in settings.admin_id_set
+    return (
+        message.from_user is not None and message.from_user.id in settings.admin_id_set
+    )
 
 
 def number(value: str, label: str, *, minimum: int = 0) -> int:
@@ -53,10 +63,12 @@ def number(value: str, label: str, *, minimum: int = 0) -> int:
 def user_text(user) -> str:
     name = " ".join(x for x in (user.first_name, user.last_name) if x)
     r = user.resources
-    return (f"👤 {name or 'بدون نام'}\n🆔 شناسه داخلی: {user.id}\n"
-            f"📱 تلگرام: {user.telegram_user_id}\n🔗 نام کاربری: @{user.username or 'ندارد'}\n"
-            f"وضعیت: {'فعال' if user.is_active else 'مسدود'}\n"
-            f"منابع: 🪙 {r.coin if r else 0} | 💎 {r.diamond if r else 0} | 🍌 {r.banana if r else 0}")
+    return (
+        f"👤 {name or 'بدون نام'}\n🆔 شناسه داخلی: {user.id}\n"
+        f"📱 تلگرام: {user.telegram_user_id}\n🔗 نام کاربری: @{user.username or 'ندارد'}\n"
+        f"وضعیت: {'فعال' if user.is_active else 'مسدود'}\n"
+        f"منابع: 🪙 {r.coin if r else 0} | 💎 {r.diamond if r else 0} | 🍌 {r.banana if r else 0}"
+    )
 
 
 @router.message(CommandStart())
@@ -81,13 +93,14 @@ async def broadcast_start(message: Message, state: FSMContext) -> None:
         await state.clear()
         await state.set_state(BroadcastStates.content)
         await message.answer(
-            "پیام همگانی را بفرستید.\n"
-            "می‌توانید فقط متن، یا عکس همراه کپشن ارسال کنید."
+            "پیام همگانی را بفرستید.\nمی‌توانید فقط متن، یا عکس همراه کپشن ارسال کنید."
         )
 
 
 @router.message(BroadcastStates.content)
-async def broadcast_send(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def broadcast_send(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message):
         return
     if not message.text and not message.photo:
@@ -97,7 +110,9 @@ async def broadcast_send(message: Message, state: FSMContext, session: AsyncSess
     recipients = await service.list_broadcast_recipients(session)
     if not recipients:
         await state.clear()
-        await message.answer("هیچ کاربری برای ارسال پیام وجود ندارد.", reply_markup=keyboards.main())
+        await message.answer(
+            "هیچ کاربری برای ارسال پیام وجود ندارد.", reply_markup=keyboards.main()
+        )
         return
 
     await state.clear()
@@ -127,7 +142,9 @@ async def broadcast_send(message: Message, state: FSMContext, session: AsyncSess
                     # client consumes the file stream during each upload.
                     await main_bot.send_photo(
                         chat_id=telegram_user_id,
-                        photo=BufferedInputFile(photo_file.data, filename="broadcast.jpg"),
+                        photo=BufferedInputFile(
+                            photo_file.data, filename="broadcast.jpg"
+                        ),
                         caption=message.caption,
                     )
                 else:
@@ -150,11 +167,15 @@ async def broadcast_send(message: Message, state: FSMContext, session: AsyncSess
 async def users(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(UserStates.search)
-        await message.answer("شناسه تلگرام، شناسه داخلی یا نام کاربری کاربر را بفرستید:")
+        await message.answer(
+            "شناسه تلگرام، شناسه داخلی یا نام کاربری کاربر را بفرستید:"
+        )
 
 
 @router.message(UserStates.search)
-async def user_search(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def user_search(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     found = await service.find_users(session, message.text)
@@ -163,22 +184,33 @@ async def user_search(message: Message, state: FSMContext, session: AsyncSession
         return
     await state.clear()
     for user in found:
-        await message.answer(user_text(user), reply_markup=keyboards.user_actions(user.id, user.is_active))
+        await message.answer(
+            user_text(user),
+            reply_markup=keyboards.user_actions(user.id, user.is_active),
+        )
 
 
 @router.callback_query(F.data.startswith("user:"))
-async def user_callback(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+async def user_callback(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(callback) or not callback.data:
         return
     _, action, raw_id = callback.data.split(":")
     user_id = int(raw_id)
     user = await service.get_user(session, user_id)
     if user is None:
-        await callback.answer("کاربر پیدا نشد.", show_alert=True); return
+        await callback.answer("کاربر پیدا نشد.", show_alert=True)
+        return
     if action == "toggle":
         user = await service.set_user_active(session, user_id, not user.is_active)
-        await callback.message.edit_text(user_text(user), reply_markup=keyboards.user_actions(user.id, user.is_active))
-        await callback.answer("وضعیت تغییر کرد."); return
+        await safe_edit_text(
+            callback.message,
+            user_text(user),
+            reply_markup=keyboards.user_actions(user.id, user.is_active),
+        )
+        await callback.answer("وضعیت تغییر کرد.")
+        return
     await state.update_data(user_id=user_id)
     await state.set_state(UserStates.resource_coin)
     await callback.message.answer("چقدر سکه اضافه کنم؟\nبرای صفر، 0 بفرستید.")
@@ -192,7 +224,8 @@ async def resource_coin(message: Message, state: FSMContext) -> None:
     try:
         value = number(message.text, "مقدار سکه")
     except ValueError as exc:
-        await message.answer(str(exc)); return
+        await message.answer(str(exc))
+        return
     await state.update_data(coin=value)
     await state.set_state(UserStates.resource_diamond)
     await message.answer("چقدر الماس اضافه کنم؟\nبرای صفر، 0 بفرستید.")
@@ -205,30 +238,40 @@ async def resource_diamond(message: Message, state: FSMContext) -> None:
     try:
         value = number(message.text, "مقدار الماس")
     except ValueError as exc:
-        await message.answer(str(exc)); return
+        await message.answer(str(exc))
+        return
     await state.update_data(diamond=value)
     await state.set_state(UserStates.resource_banana)
     await message.answer("چقدر موز اضافه کنم؟\nبرای صفر، 0 بفرستید.")
 
 
 @router.message(UserStates.resource_banana)
-async def save_resources(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def save_resources(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     try:
         banana = number(message.text, "مقدار موز")
     except ValueError as exc:
-        await message.answer(str(exc)); return
+        await message.answer(str(exc))
+        return
     data = await state.get_data()
     user = await service.add_resources(
-        session, data["user_id"], coin=data["coin"], diamond=data["diamond"], banana=banana
+        session,
+        data["user_id"],
+        coin=data["coin"],
+        diamond=data["diamond"],
+        banana=banana,
     )
     await state.clear()
     if user is None:
         await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.main())
         return
     amounts = f"🪙 {data['coin']} سکه، 💎 {data['diamond']} الماس و 🍌 {banana} موز"
-    await message.answer("منابع با موفقیت اضافه شد.\n" + user_text(user), reply_markup=keyboards.main())
+    await message.answer(
+        "منابع با موفقیت اضافه شد.\n" + user_text(user), reply_markup=keyboards.main()
+    )
     try:
         main_session = (
             AiohttpSession(proxy=settings.TELEGRAM_PROXY)
@@ -249,7 +292,10 @@ async def save_resources(message: Message, state: FSMContext, session: AsyncSess
 @router.message(F.text == "❓ ساخت سؤال روزانه")
 async def question_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
-        await state.clear(); await state.update_data(scope="daily"); await state.set_state(QuestionStates.text); await message.answer("متن سؤال روزانه را بفرستید:")
+        await state.clear()
+        await state.update_data(scope="daily")
+        await state.set_state(QuestionStates.text)
+        await message.answer("متن سؤال روزانه را بفرستید:")
 
 
 @router.message(F.text == "👥 ساخت سؤال گروهی")
@@ -261,24 +307,50 @@ async def group_question_start(message: Message, state: FSMContext) -> None:
         await message.answer("متن سؤال گروهی را بفرستید:")
 
 
-async def question_step(message: Message, state: FSMContext, next_state, key: str, prompt: str) -> None:
-    if not allowed(message) or not message.text: return
+async def question_step(
+    message: Message, state: FSMContext, next_state, key: str, prompt: str
+) -> None:
+    if not allowed(message) or not message.text:
+        return
     await state.update_data(**{key: message.text.strip()})
     await state.set_state(next_state)
     await message.answer(prompt)
 
 
 @router.message(QuestionStates.text)
-async def q_text(message, state): await question_step(message, state, QuestionStates.answer, "text", "پاسخ صحیح را بفرستید:")
+async def q_text(message, state):
+    await question_step(
+        message, state, QuestionStates.answer, "text", "پاسخ صحیح را بفرستید:"
+    )
+
+
 @router.message(QuestionStates.answer)
-async def q_answer(message, state): await question_step(message, state, QuestionStates.hours, "answer", "مدت اعتبار به ساعت (مثلاً 24):")
+async def q_answer(message, state):
+    await question_step(
+        message, state, QuestionStates.hours, "answer", "مدت اعتبار به ساعت (مثلاً 24):"
+    )
 
 
-async def q_number(message: Message, state: FSMContext, next_state, key: str, prompt: str, default: int = 0) -> None:
-    if not allowed(message) or not message.text: return
-    try: value = default if message.text.strip() == "-" else number(message.text, "مقدار")
-    except ValueError as exc: await message.answer(str(exc)); return
-    await state.update_data(**{key: value}); await state.set_state(next_state); await message.answer(prompt)
+async def q_number(
+    message: Message,
+    state: FSMContext,
+    next_state,
+    key: str,
+    prompt: str,
+    default: int = 0,
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        value = (
+            default if message.text.strip() == "-" else number(message.text, "مقدار")
+        )
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(**{key: value})
+    await state.set_state(next_state)
+    await message.answer(prompt)
 
 
 @router.message(QuestionStates.hours)
@@ -288,10 +360,13 @@ async def q_hours(message: Message, state: FSMContext) -> None:
     try:
         hours = number(message.text, "مدت اعتبار", minimum=1)
     except ValueError as exc:
-        await message.answer(str(exc)); return
+        await message.answer(str(exc))
+        return
     await state.update_data(hours=hours)
     await state.set_state(QuestionStates.coin)
     await message.answer("پاداش سکه را فقط به‌صورت عدد بفرستید (برای صفر: 0):")
+
+
 @router.message(QuestionStates.coin)
 async def q_coin(message, state):
     await q_number(
@@ -301,6 +376,8 @@ async def q_coin(message, state):
         "coin",
         "پاداش الماس را فقط به‌صورت عدد بفرستید (برای صفر: 0):",
     )
+
+
 @router.message(QuestionStates.diamond)
 async def q_diamond(message, state):
     await q_number(
@@ -314,9 +391,13 @@ async def q_diamond(message, state):
 
 @router.message(QuestionStates.banana)
 async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    if not allowed(message) or not message.text: return
-    try: banana = 0 if message.text.strip() == "-" else number(message.text, "پاداش موز")
-    except ValueError as exc: await message.answer(str(exc)); return
+    if not allowed(message) or not message.text:
+        return
+    try:
+        banana = 0 if message.text.strip() == "-" else number(message.text, "پاداش موز")
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
     data = await state.get_data()
     expires_at = datetime.now(UTC) + timedelta(hours=data["hours"])
     if data.get("scope") == "group":
@@ -339,7 +420,10 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
                 )
         except GroupNotFound:
             await state.clear()
-            await message.answer("هیچ گروه فعال و ثبت‌شده‌ای برای ارسال سؤال وجود ندارد.", reply_markup=keyboards.main())
+            await message.answer(
+                "هیچ گروه فعال و ثبت‌شده‌ای برای ارسال سؤال وجود ندارد.",
+                reply_markup=keyboards.main(),
+            )
             return
         await state.clear()
         await message.answer(
@@ -359,7 +443,9 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
         banana_reward=banana,
     )
     await state.clear()
-    await message.answer(f"✅ سؤال روزانه ساخته شد. شناسه: {question.id}", reply_markup=keyboards.main())
+    await message.answer(
+        f"✅ سؤال روزانه ساخته شد. شناسه: {question.id}", reply_markup=keyboards.main()
+    )
 
 
 @router.message(F.text == "👨‍🏫 مدیریت دبیرها")
@@ -377,40 +463,85 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
             f"بازشدن در سطح: {teacher.unlock_level}\nوضعیت: {'فعال' if teacher.is_active else 'غیرفعال'}",
             reply_markup=keyboards.teacher_actions(teacher.id),
         )
-    await message.answer("برای ساخت دبیر جدید، /teacher را بفرستید.", reply_markup=keyboards.main())
+    await message.answer(
+        "برای ساخت دبیر جدید، /teacher را بفرستید.", reply_markup=keyboards.main()
+    )
 
 
 @router.message(Command("teacher"))
 async def teacher_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
-        await state.clear(); await state.update_data(mode="create"); await state.set_state(TeacherStates.name)
+        await state.clear()
+        await state.update_data(mode="create")
+        await state.set_state(TeacherStates.name)
         await message.answer("نام دبیر:")
 
 
-async def teacher_value(message: Message, state: FSMContext, key: str, next_state, prompt: str, *, numeric: bool = True) -> None:
+async def teacher_value(
+    message: Message,
+    state: FSMContext,
+    key: str,
+    next_state,
+    prompt: str,
+    *,
+    numeric: bool = True,
+) -> None:
     if not allowed(message) or not message.text:
         return
     value = message.text.strip()
     if numeric:
-        try: value = number(value, key)
-        except ValueError as exc: await message.answer(str(exc)); return
+        try:
+            value = number(value, key)
+        except ValueError as exc:
+            await message.answer(str(exc))
+            return
     await state.update_data(**{key: value})
     await state.set_state(next_state)
     await message.answer(prompt)
 
 
 @router.message(TeacherStates.name)
-async def t_name(message, state): await teacher_value(message, state, "name", TeacherStates.damage, "میزان آسیب:", numeric=False)
+async def t_name(message, state):
+    await teacher_value(
+        message, state, "name", TeacherStates.damage, "میزان آسیب:", numeric=False
+    )
+
+
 @router.message(TeacherStates.damage)
-async def t_damage(message, state): await teacher_value(message, state, "damage", TeacherStates.max_hp, "حداکثر جان:")
+async def t_damage(message, state):
+    await teacher_value(message, state, "damage", TeacherStates.max_hp, "حداکثر جان:")
+
+
 @router.message(TeacherStates.max_hp)
-async def t_hp(message, state): await teacher_value(message, state, "max_hp", TeacherStates.purchase_price, "قیمت خرید:")
+async def t_hp(message, state):
+    await teacher_value(
+        message, state, "max_hp", TeacherStates.purchase_price, "قیمت خرید:"
+    )
+
+
 @router.message(TeacherStates.purchase_price)
-async def t_buy(message, state): await teacher_value(message, state, "purchase_price", TeacherStates.upgrade_price, "قیمت ارتقا:")
+async def t_buy(message, state):
+    await teacher_value(
+        message, state, "purchase_price", TeacherStates.upgrade_price, "قیمت ارتقا:"
+    )
+
+
 @router.message(TeacherStates.upgrade_price)
-async def t_upgrade(message, state): await teacher_value(message, state, "upgrade_price", TeacherStates.unlock_level, "سطح بازشدن:")
+async def t_upgrade(message, state):
+    await teacher_value(
+        message, state, "upgrade_price", TeacherStates.unlock_level, "سطح بازشدن:"
+    )
+
+
 @router.message(TeacherStates.unlock_level)
-async def t_unlock(message, state): await teacher_value(message, state, "unlock_level", TeacherStates.ability_text, "متن توانایی (برای خالی بودن - بفرستید):")
+async def t_unlock(message, state):
+    await teacher_value(
+        message,
+        state,
+        "unlock_level",
+        TeacherStates.ability_text,
+        "متن توانایی (برای خالی بودن - بفرستید):",
+    )
 
 
 @router.message(TeacherStates.ability_text)
@@ -434,20 +565,186 @@ async def t_ability(message: Message, state: FSMContext, session: AsyncSession) 
 
 
 @router.callback_query(F.data.startswith("teacher:"))
-async def teacher_callback(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+async def teacher_callback(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(callback) or not callback.data:
         return
     _, action, raw_id = callback.data.split(":")
     teacher_id = int(raw_id)
     teacher = await service.get_teacher(session, teacher_id)
     if teacher is None:
-        await callback.answer("دبیر پیدا نشد.", show_alert=True); return
+        await callback.answer("دبیر پیدا نشد.", show_alert=True)
+        return
     if action == "delete":
         deleted, teacher = await service.delete_teacher(session, teacher_id)
-        await callback.answer("حذف شد." if deleted else "این دبیر استفاده شده؛ غیرفعال شد.", show_alert=True)
-        await callback.message.edit_reply_markup(reply_markup=None); return
+        await callback.answer(
+            "حذف شد." if deleted else "این دبیر استفاده شده؛ غیرفعال شد.",
+            show_alert=True,
+        )
+        await safe_edit_reply_markup(callback.message, reply_markup=None)
+        return
     # Editing is a complete replacement form, which avoids partial invalid data.
-    await state.clear(); await state.update_data(mode="edit", teacher_id=teacher_id)
+    await state.clear()
+    await state.update_data(mode="edit", teacher_id=teacher_id)
     await state.set_state(TeacherStates.name)
     await callback.message.answer(f"ویرایش دبیر {teacher.name}. نام جدید:")
+    await callback.answer()
+
+
+@router.message(F.text == "🛡 مدیریت سپرها")
+async def shields(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    items = await shield_service.list_shields(session)
+    if not items:
+        await message.answer("هنوز سپری ثبت نشده است.")
+    for shield in items:
+        await message.answer(
+            f"🛡 {shield.name}\nشناسه: {shield.id}\n"
+            f"کاهش آسیب: {shield.reduction_percent}% + {shield.flat_absorption} واحد\n"
+            f"قیمت: {shield.purchase_price} سکه\nبازشدن در سطح: {shield.unlock_level}\n"
+            f"وضعیت: {'فعال' if shield.is_active else 'غیرفعال'}\n"
+            f"توضیح: {shield.description or '—'}",
+            reply_markup=keyboards.shield_actions(shield.id),
+        )
+    await message.answer(
+        "برای ساخت سپر جدید، /shield را بفرستید.", reply_markup=keyboards.main()
+    )
+
+
+@router.message(Command("shield"))
+async def shield_start(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await state.update_data(mode="create")
+        await state.set_state(ShieldStates.name)
+        await message.answer("نام سپر:")
+
+
+async def shield_value(
+    message: Message,
+    state: FSMContext,
+    key: str,
+    next_state,
+    prompt: str,
+    *,
+    minimum: int = 0,
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        value = number(message.text, key, minimum=minimum)
+        if key == "reduction_percent" and value > 100:
+            raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(**{key: value})
+    await state.set_state(next_state)
+    await message.answer(prompt)
+
+
+@router.message(ShieldStates.name)
+async def s_name(message, state):
+    if not allowed(message) or not message.text:
+        return
+    await state.update_data(name=message.text.strip())
+    await state.set_state(ShieldStates.reduction_percent)
+    await message.answer("درصد کاهش آسیب (0 تا 100):")
+
+
+@router.message(ShieldStates.reduction_percent)
+async def s_reduction(message, state):
+    await shield_value(
+        message,
+        state,
+        "reduction_percent",
+        ShieldStates.flat_absorption,
+        "جذب ثابت آسیب:",
+    )
+
+
+@router.message(ShieldStates.flat_absorption)
+async def s_absorption(message, state):
+    await shield_value(
+        message,
+        state,
+        "flat_absorption",
+        ShieldStates.purchase_price,
+        "قیمت خرید به سکه:",
+    )
+
+
+@router.message(ShieldStates.purchase_price)
+async def s_price(message, state):
+    await shield_value(
+        message, state, "purchase_price", ShieldStates.unlock_level, "سطح بازشدن:"
+    )
+
+
+@router.message(ShieldStates.unlock_level)
+async def s_unlock(message, state):
+    await shield_value(
+        message,
+        state,
+        "unlock_level",
+        ShieldStates.description,
+        "توضیح سپر (برای خالی بودن - بفرستید):",
+        minimum=1,
+    )
+
+
+@router.message(ShieldStates.description)
+async def s_description(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    data = await state.get_data()
+    data["description"] = None if message.text.strip() == "-" else message.text.strip()
+    mode = data.pop("mode", "create")
+    shield_id = data.pop("shield_id", None)
+    try:
+        shield = (
+            await shield_service.update_shield(session, shield_id, **data)
+            if mode == "edit"
+            else await shield_service.create_shield(session, **data)
+        )
+    except ValueError as exc:
+        await state.clear()
+        await message.answer(f"خطا در ذخیره سپر: {exc}", reply_markup=keyboards.main())
+        return
+    await state.clear()
+    await message.answer(
+        f"✅ سپر «{shield.name}» با شناسه {shield.id} ذخیره شد.",
+        reply_markup=keyboards.main(),
+    )
+
+
+@router.callback_query(F.data.startswith("shield:"))
+async def shield_callback(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(callback) or not callback.data:
+        return
+    _, action, raw_id = callback.data.split(":")
+    shield_id = int(raw_id)
+    shield = await shield_service.get_shield(session, shield_id)
+    if shield is None:
+        await callback.answer("سپر پیدا نشد.", show_alert=True)
+        return
+    if action == "delete":
+        deleted, shield = await shield_service.delete_shield(session, shield_id)
+        await callback.answer(
+            "حذف شد." if deleted else "این سپر استفاده شده؛ غیرفعال شد.",
+            show_alert=True,
+        )
+        await safe_edit_reply_markup(callback.message, reply_markup=None)
+        return
+    await state.clear()
+    await state.update_data(mode="edit", shield_id=shield_id)
+    await state.set_state(ShieldStates.name)
+    await callback.message.answer(f"ویرایش سپر {shield.name}. نام جدید:")
     await callback.answer()

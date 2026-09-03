@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.callbacks import ProfileCallback
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, main_menu_keyboard
 from app.bot.keyboards.profile import profile_keyboard
+from app.bot.utils.telegram import safe_edit_text
 from app.repositories.profile import ProfileSnapshot
 from app.services.profile_service import ProfileNotFound, ProfileService
 from app.services.school_errors import SchoolUserNotFound
@@ -74,7 +75,7 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
         f"🌟 سطح فرمانده: {user.level}\n\n"
         ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
         "💰 کیف دارایی\n\n"
-        f"🪙 سکه: {coin}\n"  
+        f"🪙 سکه: {coin}\n"
         f"💎 الماس: {diamond}\n"
         f"🍌 موز: {banana}\n"
         f"🌟 سطح فرمانده: {user.level}\n\n"
@@ -94,12 +95,12 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
         f"💥 آسیب واردشده: {snapshot.damage_dealt}\n\n"
         ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
         "غنیمت‌های ثبت‌شده:\n\n"
-        f"🪙 {snapshot.loot_coin}\n"  
+        f"🪙 {snapshot.loot_coin}\n"
         f"💎 {snapshot.loot_diamond}\n"
         f"🍌 {snapshot.loot_banana}\n\n"
         ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
         "📚 دانش و ارتباطات\n\n"
-        f"✅ پاسخ‌های درست: {snapshot.correct_answers} از {snapshot.answers_count}\n"  
+        f"✅ پاسخ‌های درست: {snapshot.correct_answers} از {snapshot.answers_count}\n"
         f"دقت: {_accuracy(snapshot)}\n\n"
         ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
         f"🤝 دوستان دعوت‌شده: {snapshot.referrals_count}\n\n"
@@ -116,16 +117,14 @@ async def _user_id(session: AsyncSession, target: Message | CallbackQuery) -> in
     return user.id
 
 
-async def _show_profile(
-    target: Message | CallbackQuery, session: AsyncSession
-) -> None:
+async def _show_profile(target: Message | CallbackQuery, session: AsyncSession) -> None:
     snapshot = await profile_service.snapshot(session, await _user_id(session, target))
     text = _profile_text(snapshot)
     if isinstance(target, CallbackQuery):
         if target.message is None:
             return
         try:
-            await target.message.edit_text(text, reply_markup=profile_keyboard())
+            await safe_edit_text(target.message, text, reply_markup=profile_keyboard())
         except TelegramAPIError:
             await target.message.answer(text, reply_markup=profile_keyboard())
     else:

@@ -29,6 +29,24 @@ class BuffetConversion:
 
 
 @dataclass(frozen=True)
+class ShieldMitigation:
+    """Result of applying one shield to incoming damage."""
+
+    incoming_damage: int
+    blocked_damage: int
+    remaining_damage: int
+
+
+@dataclass(frozen=True)
+class ShieldRules:
+    """Global limits for shield values editable in the TOML balance file."""
+
+    min_reduction_percent: int = 0
+    max_reduction_percent: int = 100
+    max_flat_absorption: int = 1_000_000
+
+
+@dataclass(frozen=True)
 class GameConfig:
     """Central home for game balance and progression rules.
 
@@ -51,6 +69,7 @@ class GameConfig:
     referral_reward_resource: ResourceType = ResourceType.DIAMOND
     referral_reward_amount: int | None = None
     buffet_conversions: tuple[BuffetConversion, ...] = ()
+    shield_rules: ShieldRules = field(default_factory=ShieldRules)
 
     def __post_init__(self) -> None:
         if self.max_teacher_slots < 1:
@@ -69,7 +88,10 @@ class GameConfig:
             if strength < 0 or strength <= previous_strength or minutes <= 0:
                 raise ValueError("recovery strength thresholds are invalid")
             previous_strength = strength
-        if self.teacher_sell_ratio is not None and not 0 <= self.teacher_sell_ratio <= 1:
+        if (
+            self.teacher_sell_ratio is not None
+            and not 0 <= self.teacher_sell_ratio <= 1
+        ):
             raise ValueError("teacher_sell_ratio must be between 0 and 1")
         if any(
             level < 2 or multiplier < 1
@@ -78,6 +100,15 @@ class GameConfig:
             raise ValueError("teacher damage multipliers are invalid")
         if self.referral_reward_amount is not None and self.referral_reward_amount < 0:
             raise ValueError("referral_reward_amount cannot be negative")
+        if not (
+            0
+            <= self.shield_rules.min_reduction_percent
+            <= self.shield_rules.max_reduction_percent
+            <= 100
+        ):
+            raise ValueError("shield reduction limits are invalid")
+        if self.shield_rules.max_flat_absorption < 0:
+            raise ValueError("shield absorption limit cannot be negative")
         seen: set[tuple[ResourceType, ResourceType]] = set()
         for conversion in self.buffet_conversions:
             key = (conversion.source, conversion.target)
@@ -174,6 +205,34 @@ class GameConfig:
     def buffet_options(self) -> tuple[BuffetConversion, ...]:
         return self.buffet_conversions
 
+    def apply_shield(
+        self,
+        incoming_damage: int,
+        *,
+        reduction_percent: int,
+        flat_absorption: int,
+    ) -> ShieldMitigation:
+        """Calculate damage after one shield, without mutating game state."""
+        if incoming_damage < 0:
+            raise GameConfigurationError("Incoming damage cannot be negative")
+        if not (
+            self.shield_rules.min_reduction_percent
+            <= reduction_percent
+            <= self.shield_rules.max_reduction_percent
+        ):
+            raise GameConfigurationError("Shield reduction percent is invalid")
+        if not 0 <= flat_absorption <= self.shield_rules.max_flat_absorption:
+            raise GameConfigurationError("Shield absorption is invalid")
+        blocked = min(
+            incoming_damage,
+            round(incoming_damage * reduction_percent / 100) + flat_absorption,
+        )
+        return ShieldMitigation(
+            incoming_damage=incoming_damage,
+            blocked_damage=blocked,
+            remaining_damage=incoming_damage - blocked,
+        )
+
     @classmethod
     def from_toml(cls, path: str | Path) -> GameConfig:
         config_path = Path(path)
@@ -228,6 +287,7 @@ class GameConfig:
             )
             for item in data.get("buffet", {}).get("conversions", [])
         )
+        shield_data = data.get("shield_rules", {})
         return cls(
             max_teacher_slots=int(data.get("max_teacher_slots", 4)),
             teacher_slots_by_level=slots,
@@ -249,13 +309,20 @@ class GameConfig:
             initial_defense_power=int(data.get("initial_defense_power", 0)),
             referral_reward_resource=ResourceType(
                 str(
-                    referral_reward.get(
-                        "inviter_resource", ResourceType.DIAMOND.value
-                    )
+                    referral_reward.get("inviter_resource", ResourceType.DIAMOND.value)
                 ).upper()
             ),
             referral_reward_amount=referral_reward_amount,
             buffet_conversions=buffet_conversions,
+            shield_rules=ShieldRules(
+                min_reduction_percent=int(shield_data.get("min_reduction_percent", 0)),
+                max_reduction_percent=int(
+                    shield_data.get("max_reduction_percent", 100)
+                ),
+                max_flat_absorption=int(
+                    shield_data.get("max_flat_absorption", 1_000_000)
+                ),
+            ),
         )
 
 
