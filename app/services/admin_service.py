@@ -29,7 +29,11 @@ class AdminService:
             )
         else:
             statement = statement.where(
-                or_(User.username.ilike(f"%{query.lstrip('@')}%"), User.first_name.ilike(f"%{query}%"))
+                or_(
+                    User.username.ilike(f"%{query.lstrip('@')}%"),
+                    User.first_name.ilike(f"%{query}%"),
+                    User.last_name.ilike(f"%{query}%"),
+                )
             )
         result = await session.execute(statement)
         return list(result.scalars().unique().all())
