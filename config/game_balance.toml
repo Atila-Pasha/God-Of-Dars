@@ -3,21 +3,49 @@
 max_teacher_slots = 4
 initial_castle_strength = 100
 initial_defense_power = 25
+
+# Cost to activate a teacher.
+
+# Selling/refunding a teacher should never create a positive-resource loop.
+
 teacher_activation_cost = 120
 teacher_sell_ratio = 0.5
 
 [shield_rules]
+
 # Global limits for shield values. Individual shield prices and strength are
+
 # managed from the admin panel, while this section protects the game balance.
+
 min_reduction_percent = 0
-max_reduction_percent = 100
+max_reduction_percent = 75
 max_flat_absorption = 1000000
 
 [mine]
+
 # Production is calculated when the user opens the mine, so no worker is
-# required. Values are resources per minute. The next level's required player
-# level controls whether the upgrade button is available.
-max_catchup_minutes = 1440
+
+# required. Values are resources per minute.
+
+#
+
+# Catch-up is intentionally capped to 12 hours so inactive players benefit
+
+# from returning without accumulating excessive resources.
+
+max_catchup_minutes = 720
+
+# ---------------------------------------------------------------------------
+
+# Mine progression
+
+#
+
+# The mine should provide a meaningful passive income while upgrades require
+
+# enough investment to prevent players from snowballing too quickly.
+
+# ---------------------------------------------------------------------------
 
 [mine.levels.level_1]
 coin_per_minute = 2
@@ -27,41 +55,64 @@ upgrade_cost = 300
 required_player_level = 1
 
 [mine.levels.level_2]
-coin_per_minute = 5
-diamond_per_minute = 0
+coin_per_minute = 4
+diamond_per_minute = 1
 banana_per_minute = 2
-upgrade_cost = 750
+upgrade_cost = 800
 required_player_level = 1
 
 [mine.levels.level_3]
-coin_per_minute = 10
-diamond_per_minute = 1
+coin_per_minute = 7
+diamond_per_minute = 2
 banana_per_minute = 4
-upgrade_cost = 1500
-required_player_level = 2
+upgrade_cost = 1600
+required_player_level = 3
 
 [mine.levels.level_4]
-coin_per_minute = 18
-diamond_per_minute = 2
+coin_per_minute = 12
+diamond_per_minute = 3
 banana_per_minute = 7
-upgrade_cost = 3000
-required_player_level = 4
+upgrade_cost = 3200
+required_player_level = 5
 
 [mine.levels.level_5]
-coin_per_minute = 30
-diamond_per_minute = 4
-banana_per_minute = 12
-upgrade_cost = 6000
+coin_per_minute = 20
+diamond_per_minute = 5
+banana_per_minute = 11
+upgrade_cost = 6500
 required_player_level = 7
 
 [mine.levels.level_6]
-coin_per_minute = 50
-diamond_per_minute = 7
-banana_per_minute = 20
-upgrade_cost = 12000
+coin_per_minute = 32
+diamond_per_minute = 8
+banana_per_minute = 17
+upgrade_cost = 13000
 required_player_level = 10
 
-# Buffet exchange rates. Change these values and restart the bot.
+# ---------------------------------------------------------------------------
+
+# Buffet exchange rates
+
+#
+
+# Rates intentionally include a spread so converting resources back and forth
+
+# cannot generate resources through arbitrage.
+
+#
+
+# Approximate base value:
+
+# 1 DIAMOND = 100 COIN
+
+# 1 BANANA  = 50 COIN
+
+#
+
+# Selling resources back through the buffet gives a lower return.
+
+# ---------------------------------------------------------------------------
+
 [[buffet.conversions]]
 source = "COIN"
 target = "DIAMOND"
@@ -90,13 +141,23 @@ target_amount = 40
 source = "DIAMOND"
 target = "BANANA"
 source_amount = 2
-target_amount = 1
+target_amount = 3
 
 [[buffet.conversions]]
 source = "BANANA"
 target = "DIAMOND"
-source_amount = 1
+source_amount = 3
 target_amount = 1
+
+# ---------------------------------------------------------------------------
+
+# Teacher slots
+
+#
+
+# Additional teachers unlock gradually with player progression.
+
+# ---------------------------------------------------------------------------
 
 [teacher_slots]
 level_1 = 1
@@ -104,19 +165,44 @@ level_3 = 2
 level_6 = 3
 level_10 = 4
 
+# ---------------------------------------------------------------------------
+
+# Teacher damage multiplier
+
+#
+
+# Damage grows progressively rather than exponentially. Higher levels remain
+
+# valuable but should not make early-game teachers completely irrelevant.
+
+# ---------------------------------------------------------------------------
+
 [teacher_damage]
-level_2 = 1.25
-level_3 = 1.55
-level_4 = 1.9
-level_5 = 2.3
-level_6 = 2.8
-level_7 = 3.4
-level_8 = 4.1
-level_9 = 4.9
-level_10 = 5.8
+level_2 = 1.20
+level_3 = 1.40
+level_4 = 1.65
+level_5 = 1.95
+level_6 = 2.30
+level_7 = 2.70
+level_8 = 3.15
+level_9 = 3.65
+level_10 = 4.20
 
 [teacher_damage.explicit]
+
 # Optional per-teacher overrides: "teacher_id:level" = damage
+
+# ---------------------------------------------------------------------------
+
+# Castle upgrades
+
+#
+
+# Costs and defensive gains scale together. Later upgrades are substantially
+
+# more expensive so castle progression does not outpace the resource economy.
+
+# ---------------------------------------------------------------------------
 
 [castle_upgrades."1"]
 coin_cost = 500
@@ -124,19 +210,33 @@ strength_delta = 25
 defense_delta = 10
 
 [castle_upgrades."2"]
-coin_cost = 800
+coin_cost = 900
 strength_delta = 35
 defense_delta = 15
 
 [castle_upgrades."3"]
-coin_cost = 1200
+coin_cost = 1500
 strength_delta = 50
 defense_delta = 20
 
 [castle_upgrades."4"]
-coin_cost = 1800
+coin_cost = 2400
 strength_delta = 70
 defense_delta = 30
+
+# ---------------------------------------------------------------------------
+
+# Castle recovery
+
+#
+
+# Lower strength means longer recovery. As the castle becomes stronger,
+
+# recovery becomes faster, preventing high-level castles from becoming
+
+# permanently crippled after an attack.
+
+# ---------------------------------------------------------------------------
 
 [recovery_minutes]
 strength_0 = 240
@@ -144,7 +244,21 @@ strength_150 = 180
 strength_250 = 120
 strength_400 = 90
 
+# ---------------------------------------------------------------------------
+
+# Referral reward
+
+#
+
+# Referral rewards should be useful but small enough that creating multiple
+
+# accounts cannot become the dominant source of diamonds.
+
+# ---------------------------------------------------------------------------
+
 [referral_reward]
+
 # Change inviter_amount and restart the bot to change the reward for new referrals.
+
 inviter_resource = "DIAMOND"
-inviter_amount = 10
+inviter_amount = 5
