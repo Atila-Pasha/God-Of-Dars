@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.models.answer import Answer
     from app.models.attack import Attack
     from app.models.castle import Castle
+    from app.models.mine import Mine
     from app.models.resource import Resource
     from app.models.reward import Reward
     from app.models.transaction import Transaction
@@ -91,6 +92,13 @@ class User(Base):
     shields: Mapped[list[UserShield]] = relationship(
         "UserShield",
         back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    mine: Mapped[Mine | None] = relationship(
+        "Mine",
+        back_populates="user",
+        uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
     )

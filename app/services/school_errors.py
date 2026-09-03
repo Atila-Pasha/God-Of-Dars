@@ -68,3 +68,15 @@ class ShieldLocked(SchoolError):
 
 class ShieldNotPurchasable(SchoolError):
     pass
+
+
+class MineNotFound(SchoolError):
+    pass
+
+
+class MineLevelLocked(SchoolError):
+    pass
+
+
+class MineUpgradeUnavailable(SchoolError):
+    pass

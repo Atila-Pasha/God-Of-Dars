@@ -4,6 +4,7 @@ MENU_SECTIONS = (
     ("مدرسه من", "school", "5265002646397285605"),
     ("کتابخانه", "library", "5445275347366989283"),
     ("بوفه", "buffet", "5859297284029681680"),
+    ("معدن منابع", "mine", ""),
     ("حمله", "attack", "5408935401442267103"),
     ("پروفایل", "profile", "5249053508681883137"),
     ("دعوت دوستان", "referral", "5449800250032143374"),
@@ -19,18 +20,14 @@ NON_SCHOOL_MENU_SECTION_LABELS = frozenset(
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    buttons = [
-        KeyboardButton(
-            text=label,
-            icon_custom_emoji_id=custom_emoji_id,
-        )
-        for label, _, custom_emoji_id in MENU_SECTIONS
-    ]
+    buttons = []
+    for label, _, custom_emoji_id in MENU_SECTIONS:
+        button = KeyboardButton(text=label)
+        if custom_emoji_id:
+            button.icon_custom_emoji_id = custom_emoji_id
+        buttons.append(button)
 
-    keyboard = [
-        buttons[i:i + 2]
-        for i in range(0, len(buttons), 2)
-    ]
+    keyboard = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
 
     return ReplyKeyboardMarkup(
         keyboard=keyboard,

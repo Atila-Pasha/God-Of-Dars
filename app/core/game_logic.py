@@ -47,6 +47,17 @@ class ShieldRules:
 
 
 @dataclass(frozen=True)
+class MineLevel:
+    """Production and upgrade balance for one mine level."""
+
+    coin_per_minute: int = 0
+    diamond_per_minute: int = 0
+    banana_per_minute: int = 0
+    upgrade_cost: int | None = None
+    required_player_level: int = 1
+
+
+@dataclass(frozen=True)
 class GameConfig:
     """Central home for game balance and progression rules.
 
@@ -70,6 +81,8 @@ class GameConfig:
     referral_reward_amount: int | None = None
     buffet_conversions: tuple[BuffetConversion, ...] = ()
     shield_rules: ShieldRules = field(default_factory=ShieldRules)
+    mine_levels: dict[int, MineLevel] = field(default_factory=dict)
+    mine_max_catchup_minutes: int = 1_440
 
     def __post_init__(self) -> None:
         if self.max_teacher_slots < 1:
@@ -109,6 +122,22 @@ class GameConfig:
             raise ValueError("shield reduction limits are invalid")
         if self.shield_rules.max_flat_absorption < 0:
             raise ValueError("shield absorption limit cannot be negative")
+        if self.mine_max_catchup_minutes < 1:
+            raise ValueError("mine_max_catchup_minutes must be positive")
+        for level, mine_level in self.mine_levels.items():
+            if level < 1 or mine_level.required_player_level < 1:
+                raise ValueError("mine levels are invalid")
+            if (
+                min(
+                    mine_level.coin_per_minute,
+                    mine_level.diamond_per_minute,
+                    mine_level.banana_per_minute,
+                )
+                < 0
+            ):
+                raise ValueError("mine production cannot be negative")
+            if mine_level.upgrade_cost is not None and mine_level.upgrade_cost < 0:
+                raise ValueError("mine upgrade cost cannot be negative")
         seen: set[tuple[ResourceType, ResourceType]] = set()
         for conversion in self.buffet_conversions:
             key = (conversion.source, conversion.target)
@@ -233,6 +262,20 @@ class GameConfig:
             remaining_damage=incoming_damage - blocked,
         )
 
+    def mine_level(self, level: int) -> MineLevel:
+        try:
+            return self.mine_levels[level]
+        except KeyError as exc:
+            raise GameConfigurationError("Mine level is not configured") from exc
+
+    def mine_upgrade(self, level: int, player_level: int) -> MineLevel:
+        next_level = self.mine_level(level + 1)
+        if player_level < next_level.required_player_level:
+            raise GameConfigurationError("Mine level is locked")
+        if next_level.upgrade_cost is None:
+            raise GameConfigurationError("Mine upgrade is not configured")
+        return next_level
+
     @classmethod
     def from_toml(cls, path: str | Path) -> GameConfig:
         config_path = Path(path)
@@ -288,6 +331,21 @@ class GameConfig:
             for item in data.get("buffet", {}).get("conversions", [])
         )
         shield_data = data.get("shield_rules", {})
+        mine_data = data.get("mine", {})
+        mine_levels = {
+            int(level.removeprefix("level_")): MineLevel(
+                coin_per_minute=int(values.get("coin_per_minute", 0)),
+                diamond_per_minute=int(values.get("diamond_per_minute", 0)),
+                banana_per_minute=int(values.get("banana_per_minute", 0)),
+                upgrade_cost=(
+                    None
+                    if values.get("upgrade_cost") is None
+                    else int(values["upgrade_cost"])
+                ),
+                required_player_level=int(values.get("required_player_level", 1)),
+            )
+            for level, values in mine_data.get("levels", {}).items()
+        }
         return cls(
             max_teacher_slots=int(data.get("max_teacher_slots", 4)),
             teacher_slots_by_level=slots,
@@ -323,6 +381,8 @@ class GameConfig:
                     shield_data.get("max_flat_absorption", 1_000_000)
                 ),
             ),
+            mine_levels=mine_levels,
+            mine_max_catchup_minutes=int(mine_data.get("max_catchup_minutes", 1_440)),
         )
 
 

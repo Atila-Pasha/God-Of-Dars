@@ -13,6 +13,54 @@ min_reduction_percent = 0
 max_reduction_percent = 100
 max_flat_absorption = 1000000
 
+[mine]
+# Production is calculated when the user opens the mine, so no worker is
+# required. Values are resources per minute. The next level's required player
+# level controls whether the upgrade button is available.
+max_catchup_minutes = 1440
+
+[mine.levels.level_1]
+coin_per_minute = 2
+diamond_per_minute = 0
+banana_per_minute = 1
+upgrade_cost = 300
+required_player_level = 1
+
+[mine.levels.level_2]
+coin_per_minute = 5
+diamond_per_minute = 0
+banana_per_minute = 2
+upgrade_cost = 750
+required_player_level = 1
+
+[mine.levels.level_3]
+coin_per_minute = 10
+diamond_per_minute = 1
+banana_per_minute = 4
+upgrade_cost = 1500
+required_player_level = 2
+
+[mine.levels.level_4]
+coin_per_minute = 18
+diamond_per_minute = 2
+banana_per_minute = 7
+upgrade_cost = 3000
+required_player_level = 4
+
+[mine.levels.level_5]
+coin_per_minute = 30
+diamond_per_minute = 4
+banana_per_minute = 12
+upgrade_cost = 6000
+required_player_level = 7
+
+[mine.levels.level_6]
+coin_per_minute = 50
+diamond_per_minute = 7
+banana_per_minute = 20
+upgrade_cost = 12000
+required_player_level = 10
+
 # Buffet exchange rates. Change these values and restart the bot.
 [[buffet.conversions]]
 source = "COIN"

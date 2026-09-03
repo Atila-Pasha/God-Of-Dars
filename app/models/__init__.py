@@ -5,6 +5,7 @@ from app.models.castle import Castle
 from app.models.defense import Defense
 from app.models.group import Group
 from app.models.group_question import GroupQuestion
+from app.models.mine import Mine
 from app.models.question import Question
 from app.models.recovery import Recovery
 from app.models.resource import Resource
@@ -24,6 +25,7 @@ __all__ = [
     "Defense",
     "Group",
     "GroupQuestion",
+    "Mine",
     "Question",
     "Recovery",
     "Resource",

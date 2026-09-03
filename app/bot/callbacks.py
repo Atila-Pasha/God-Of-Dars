@@ -73,3 +73,7 @@ class BuffetMenuCallback(CallbackData, prefix="buffet_menu"):
 class ShieldCallback(CallbackData, prefix="shield"):
     action: Literal["buy", "equip", "back"]
     shield_id: int
+
+
+class MineCallback(CallbackData, prefix="mine"):
+    action: Literal["upgrade", "confirm_upgrade", "cancel_upgrade", "back"]
