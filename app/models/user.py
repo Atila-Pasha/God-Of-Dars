@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.models.mine import Mine
     from app.models.resource import Resource
     from app.models.reward import Reward
+    from app.models.study_session import StudySession
     from app.models.transaction import Transaction
     from app.models.user_shield import UserShield
     from app.models.user_teacher import UserTeacher
@@ -127,3 +128,6 @@ class User(Base):
         "User", remote_side="User.id", back_populates="referred_users"
     )
     referred_users: Mapped[list[User]] = relationship("User", back_populates="referrer")
+    study_sessions: Mapped[list[StudySession]] = relationship(
+        "StudySession", back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )

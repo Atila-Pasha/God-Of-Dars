@@ -1,0 +1,20 @@
+# پک‌های ثبت مطالعه؛ مدت‌زمان و پاداش هر پک از این فایل خوانده می‌شود.
+[study.packs.half_hour]
+duration_minutes = 30
+reward_resource = "COIN"
+reward_amount = 100
+
+[study.packs.one_hour]
+duration_minutes = 60
+reward_resource = "COIN"
+reward_amount = 250
+
+[study.packs.one_half_hour]
+duration_minutes = 90
+reward_resource = "DIAMOND"
+reward_amount = 3
+
+[study.packs.two_hours]
+duration_minutes = 120
+reward_resource = "DIAMOND"
+reward_amount = 5

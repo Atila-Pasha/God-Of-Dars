@@ -64,9 +64,9 @@ def _number(value: int) -> str:
 
 def _progress_bar(value: int, maximum: int, *, width: int = 10) -> str:
     if maximum <= 0:
-        return "▫️" * width
+        return "-" * width
     filled = round(max(0, min(value, maximum)) / maximum * width)
-    return "🟩" * filled + "⬜" * (width - filled)
+    return "█" * filled + "░" * (width - filled)
 
 
 def _progress_percent(value: int, maximum: int) -> str:
@@ -180,7 +180,7 @@ async def _teachers_view(
             f"({_progress_percent(capacity.owned, capacity.available)})"
         ),
         f"🪑 جای خالی: {_number(free_slots)}",
-        f"🏆 سقف نهایی بازی: {_number(capacity.maximum)} دبیر",
+        "📌 ظرفیت نهایی از مجموع ظرفیت دبیرهای خریداری‌شده محاسبه می‌شود.",
         "",
     ]
     if capacity.available < capacity.maximum:

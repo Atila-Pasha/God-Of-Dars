@@ -108,4 +108,4 @@ class GroupAccessMiddleware(BaseMiddleware):
         data = callback.data or ""
         if data in ALLOWED_GROUP_CALLBACKS:
             return True
-        return data.startswith(("profile:", "attack:"))
+        return data.startswith(("profile:", "attack:", "chance_box:"))

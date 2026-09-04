@@ -6,7 +6,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, main_menu_keyboard
+from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.bot.keyboards.referral import referral_keyboard
 from app.services.referral_service import ReferralService
 from app.services.user_service import UserInactiveError, UserService
@@ -14,13 +14,6 @@ from app.services.user_service import UserInactiveError, UserService
 router = Router(name="referral")
 referral_service = ReferralService()
 user_service = UserService()
-
-REFERRAL_LABEL = next(
-    label
-    for label, section in MENU_SECTION_BY_LABEL.items()
-    if section == "referral"
-)
-
 
 async def _invite_link(message: Message, user_id: int) -> str | None:
     if message.bot is None:
@@ -38,7 +31,6 @@ async def _invite_link(message: Message, user_id: int) -> str | None:
 
 
 @router.message(Command("referral"))
-@router.message(F.text == REFERRAL_LABEL)
 async def referral_handler(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return

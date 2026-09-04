@@ -42,3 +42,17 @@ class ShieldStates(StatesGroup):
     purchase_price = State()
     unlock_level = State()
     description = State()
+
+
+class ChannelStates(StatesGroup):
+    value = State()
+
+
+class ChanceBoxStates(StatesGroup):
+    section = State()
+    value = State()
+
+
+class ChanceCardStates(StatesGroup):
+    target = State()
+    value = State()

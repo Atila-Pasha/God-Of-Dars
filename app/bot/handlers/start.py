@@ -36,17 +36,15 @@ router = Router(name="start")
 user_service = UserService()
 referral_service = ReferralService()
 
-JOIN_MESSAGE = (
-    f"برای استفاده از ربات، ابتدا باید عضو کانال "
-    f"{subscription_service.channels_label} شوید.\n"
-    "پس از عضویت، روی «بررسی عضویت» بزنید."
-)
+def join_message() -> str:
+    channels = subscription_service.channels_label or "کانال اعلام‌شده در ربات"
+    return f"برای استفاده از ربات، ابتدا باید عضو کانال {channels} شوید.\nپس از عضویت، روی «بررسی عضویت» بزنید."
 MEMBERSHIP_ERROR_MESSAGE = (
     "در حال حاضر بررسی عضویت امکان‌پذیر نیست. لطفاً کمی بعد دوباره تلاش کنید."
 )
 USER_ERROR_MESSAGE = "در آماده‌سازی حساب شما مشکلی پیش آمد. لطفاً دوباره تلاش کنید."
 BANNED_USER_MESSAGE = "حساب شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید."
-MAIN_MENU_MESSAGE = "به بازی خوش آمدید! یکی از بخش‌های زیر را انتخاب کنید:"
+MAIN_MENU_MESSAGE = "🏫 به بازی خوش آمدید! یکی از بخش‌های زیر را انتخاب کنید:"
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
 
 
@@ -142,7 +140,7 @@ async def start_handler(
         return
     if not is_member:
         await message.answer(
-            JOIN_MESSAGE,
+            join_message(),
             reply_markup=join_channel_keyboard(subscription_service),
         )
         return
@@ -180,7 +178,7 @@ async def check_membership_handler(
         try:
             await safe_edit_text(
                 callback.message,
-                JOIN_MESSAGE,
+                join_message(),
                 reply_markup=join_channel_keyboard(subscription_service),
             )
         except TelegramAPIError:
@@ -220,7 +218,7 @@ async def main_menu_handler(
         return
     if not is_member:
         await message.answer(
-            JOIN_MESSAGE,
+            join_message(),
             reply_markup=join_channel_keyboard(subscription_service),
         )
         return

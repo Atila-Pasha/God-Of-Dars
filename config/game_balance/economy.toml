@@ -1,0 +1,22 @@
+# اقتصاد معدن، ارزش منابع، دعوت و جعبه/کارت شانس.
+[economy.mines.gold]
+weekly_amount = 500
+build_coin_cost = 0
+[economy.mines.diamond]
+weekly_amount = 10
+build_coin_cost = 100
+[economy.exchange]
+diamond_to_coin = 100
+coin_to_banana_amount = 10
+diamond_to_banana_amount = 10
+banana_exchangeable = false
+[economy.referral]
+inviter_resource = "DIAMOND"
+inviter_amount = 5
+[economy.daily_box]
+group_amount = 3
+private_amount = 2
+coin_min = 50
+coin_max = 150
+diamond_min = 2
+diamond_max = 5

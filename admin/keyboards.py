@@ -14,11 +14,24 @@ def main() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="👨‍🏫 مدیریت دبیرها"),
             ],
             [KeyboardButton(text="🛡 مدیریت سپرها")],
+            [KeyboardButton(text="📢 مدیریت قفل کانال")],
+            [KeyboardButton(text="🎁 ارسال جعبه شانس"), KeyboardButton(text="🃏 ارسال کارت شانس")],
             [
                 KeyboardButton(text="❓ ساخت سؤال روزانه"),
                 KeyboardButton(text="👥 ساخت سؤال گروهی"),
             ],
             [KeyboardButton(text="📣 پیام همگانی")],
+            [KeyboardButton(text="❌ لغو")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def chance_box_sections() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📦 ارسال به بخش ۱"), KeyboardButton(text="📦 ارسال به بخش ۲")],
+            [KeyboardButton(text="📦 ارسال به بخش ۳"), KeyboardButton(text="📦 ارسال به بخش ۴")],
             [KeyboardButton(text="❌ لغو")],
         ],
         resize_keyboard=True,

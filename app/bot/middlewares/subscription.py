@@ -6,10 +6,11 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from app.bot.keyboards.start import join_channel_keyboard
-from app.core.config import settings
 from app.services.subscription_service import SubscriptionService
+from app.repositories.bot_settings import BotSettingsRepository
 
-subscription_service = SubscriptionService(settings.required_channel_list)
+subscription_service = SubscriptionService()
+settings_repository = BotSettingsRepository()
 
 JOIN_MESSAGE = (
     "برای استفاده از ربات، ابتدا باید عضو کانال‌های زیر شوید:\n\n"
@@ -38,6 +39,16 @@ class SubscriptionMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         try:
+            session = data.get("session")
+            if session is not None:
+                channels = await settings_repository.list_channels(session)
+                # Keep old singleton data working while installations migrate;
+                # new channels are additive, so no configured lock disappears.
+                stored = await settings_repository.get(session)
+                values = [str(item.telegram_id or item.username) for item in channels]
+                if stored.is_active and (stored.required_channel_telegram_id or stored.required_channel_username):
+                    values.insert(0, str(stored.required_channel_telegram_id or stored.required_channel_username))
+                subscription_service.set_channels(tuple(dict.fromkeys(values)))
             is_member = await subscription_service.is_member(bot, telegram_user.id)
         except Exception:  # noqa: BLE001 - membership failures are user-safe
             return await self._show_error(event)

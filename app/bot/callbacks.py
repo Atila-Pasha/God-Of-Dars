@@ -49,7 +49,11 @@ class ConfirmationCallback(CallbackData, prefix="confirm"):
 
 
 class LibraryCallback(CallbackData, prefix="library"):
-    action: Literal["daily", "group", "back", "cancel"]
+    action: Literal["daily", "group", "study", "back", "cancel"]
+
+
+class StudyCallback(CallbackData, prefix="study"):
+    pack_key: str
 
 
 class ReferralCallback(CallbackData, prefix="referral"):

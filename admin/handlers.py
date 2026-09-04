@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -10,14 +11,18 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from admin import keyboards
 from admin.states import (
     BroadcastStates,
     QuestionStates,
     ShieldStates,
+    ChannelStates,
+    ChanceBoxStates,
+    ChanceCardStates,
     TeacherStates,
     UserStates,
 )
@@ -28,11 +33,25 @@ from app.services.admin_service import AdminService
 from app.services.library_errors import GroupNotFound
 from app.services.question_service import QuestionService
 from app.services.shield_service import ShieldAdminService
+from app.repositories.bot_settings import BotSettingsRepository
+from app.repositories.group import GroupRepository
+from app.repositories.user import UserRepository
+from app.core.enums import ResourceType
+from app.models.user import User
+from app.models.chance_box import ChanceBox
+from app.db.session import AsyncSessionLocal
+from app.bot.callbacks_chance import ChanceCardCallback, ChanceBoxCallback
+from app.services.chance_service import ChanceService
 
 router = Router(name="admin")
 service = AdminService()
 question_service = QuestionService()
 shield_service = ShieldAdminService()
+bot_settings_repository = BotSettingsRepository()
+group_repository = GroupRepository()
+user_repository = UserRepository()
+chance_service = ChanceService()
+logger = logging.getLogger(__name__)
 group_question_publisher = GroupQuestionPublisher()
 
 
@@ -58,6 +77,223 @@ def number(value: str, label: str, *, minimum: int = 0) -> int:
     if result < minimum:
         raise ValueError(f"{label} نمی‌تواند کمتر از {minimum} باشد.")
     return result
+
+
+def _chance_values(value: str) -> tuple[ResourceType, int]:
+    parts = value.replace("،", " ").split()
+    if len(parts) != 2:
+        raise ValueError("فرمت صحیح: طلا 100 یا الماس 5")
+    resource = {"طلا": ResourceType.COIN, "سکه": ResourceType.COIN, "الماس": ResourceType.DIAMOND}.get(parts[0].casefold())
+    if resource is None:
+        raise ValueError("نوع جایزه فقط طلا یا الماس است.")
+    return resource, number(parts[1], "مقدار", minimum=0)
+
+
+async def _main_bot() -> Bot:
+    return Bot(token=settings.BOT_TOKEN, session=AiohttpSession(proxy=settings.TELEGRAM_PROXY) if settings.TELEGRAM_PROXY else None)
+
+
+async def _expire_box_later(chat_id: int, message_id: int, box_id: int, expires_at: datetime) -> None:
+    delay = max(0, (expires_at - datetime.now(UTC)).total_seconds())
+    await asyncio.sleep(delay)
+    async with AsyncSessionLocal() as cleanup_session:
+        box = await cleanup_session.get(ChanceBox, box_id)
+        if box is None or box.claimed_by_user_id is not None:
+            return
+        async with await _main_bot() as bot:
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            except TelegramAPIError:
+                logger.info("Could not delete expired chance box message %s", message_id)
+        await cleanup_session.delete(box)
+        await cleanup_session.commit()
+
+
+@router.message(F.text == "🎁 ارسال جعبه شانس")
+async def chance_box_start(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.set_state(ChanceBoxStates.section)
+        await message.answer("جعبه برای کدام بخش ارسال شود؟", reply_markup=keyboards.chance_box_sections())
+
+
+@router.message(ChanceBoxStates.section, F.text.startswith("📦 ارسال به بخش "))
+async def chance_box_section(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    section = {"۱": 1, "۲": 2, "۳": 3, "۴": 4}.get(message.text[-1])
+    if section is None:
+        await message.answer("بخش نامعتبر است.")
+        return
+    await state.update_data(section=section)
+    await state.set_state(ChanceBoxStates.value)
+    await message.answer("پاداش جعبه را وارد کنید؛ نمونه: طلا 100 یا الماس 5")
+
+
+@router.message(ChanceBoxStates.value)
+async def chance_box_send(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        resource, amount = _chance_values(message.text)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    groups = await group_repository.list_active(session)
+    section = int((await state.get_data()).get("section", 1))
+    # Telegram chat IDs provide a stable partition: removing/registering a
+    # different group does not move existing groups between sections.
+    groups = [
+        group for group in groups
+        if abs(group.telegram_chat_id) % 4 == section - 1
+    ]
+    sent = 0
+    async with await _main_bot() as bot:
+        for group in groups:
+            # Persist first so the callback ID can be embedded in the message
+            # itself; sending without a keyboard and editing afterwards is
+            # racy and can leave a visible box with no button.
+            box = await chance_service.create_box(group_id=group.id, session=session, message_id=0, resource=resource, amount=amount)
+            sent_message = await bot.send_message(
+                group.telegram_chat_id,
+                f"🎁 جعبه شانس\n\nاولین نفری که جعبه را باز کند، {amount} {('طلا' if resource is ResourceType.COIN else 'الماس')} دریافت می‌کند!",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="🎁 باز کردن جعبه", callback_data=ChanceBoxCallback(box_id=box.id).pack())
+                ]]),
+            )
+            box.telegram_message_id = sent_message.message_id
+            await session.flush()
+            asyncio.create_task(
+                _expire_box_later(
+                    group.telegram_chat_id,
+                    sent_message.message_id,
+                    box.id,
+                    box.expires_at,
+                )
+            )
+            sent += 1
+    await state.clear()
+    await message.answer(f"✅ جعبه به {sent} گروه فعال ارسال شد.", reply_markup=keyboards.main())
+
+
+@router.message(F.text == "🃏 ارسال کارت شانس")
+async def chance_card_start(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.set_state(ChanceCardStates.value)
+        await message.answer("پاداش کارت همگانی را وارد کنید؛ نمونه: طلا 100 یا الماس 5")
+
+
+@router.message(ChanceCardStates.target)
+async def chance_card_target(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        target = number(message.text, "شناسه کاربر", minimum=1)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(target=target)
+    await state.set_state(ChanceCardStates.value)
+    await message.answer("پاداش کارت را وارد کنید؛ نمونه: طلا 100 یا الماس 5")
+
+
+@router.message(ChanceCardStates.value)
+async def chance_card_send(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        resource, amount = _chance_values(message.text)
+        result = await session.execute(select(User).where(User.is_active.is_(True)).order_by(User.id))
+        users = list(result.scalars().all())
+        sent = 0
+        failed = 0
+        async with await _main_bot() as bot:
+            for user in users:
+                answer, image, _ = chance_service.captcha()
+                card = await chance_service.create_card(session, user.id, resource, amount, answer)
+                try:
+                    await bot.send_photo(
+                        user.telegram_user_id,
+                        BufferedInputFile(image, filename="chance-captcha.png"),
+                        caption=f"🃏 کارت شانس\n\nکپچا را حل کن تا {amount} {('طلا' if resource is ResourceType.COIN else 'الماس')} بگیری.",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(text="✅ وارد کردن کپچا", callback_data=ChanceCardCallback(card_id=card.id).pack())
+                        ]]),
+                    )
+                    sent += 1
+                except TelegramAPIError as exc:
+                    await session.delete(card)
+                    await session.flush()
+                    logger.warning(
+                        "Could not send chance card %s to Telegram user %s: %s",
+                        card.id,
+                        user.telegram_user_id,
+                        exc,
+                    )
+                    failed += 1
+                await asyncio.sleep(0.04)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.clear()
+    await message.answer(f"✅ کارت شانس همگانی ارسال شد.\nموفق: {sent}\nناموفق: {failed}", reply_markup=keyboards.main())
+
+
+@router.message(F.text == "📢 مدیریت قفل کانال")
+async def channel_settings(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    channels = await bot_settings_repository.list_channels(session)
+    channel = "\n".join(
+        f"{item.id}) {item.username or item.telegram_id}" for item in channels
+    ) or "خاموش"
+    await message.answer(
+        f"📢 قفل کانال\n\nکانال فعلی: {channel}\n"
+        "برای افزودن کانال، یوزرنیم (مثلاً @mychannel) یا شناسه عددی را بفرستید.\n"
+        "برای حذف، «حذف شماره» مثل «حذف 2» را بفرستید.",
+        reply_markup=keyboards.main(),
+    )
+    await state.set_state(ChannelStates.value)
+
+
+@router.message(Command("channel_add"))
+async def channel_add_command(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.set_state(ChannelStates.value)
+        await message.answer("یوزرنیم یا شناسه عددی کانال را بفرستید:")
+
+
+@router.message(Command("channel_remove"))
+async def channel_remove_command(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if allowed(message):
+        await bot_settings_repository.clear_channel(session)
+        await state.clear()
+        await message.answer("✅ قفل کانال حذف شد.", reply_markup=keyboards.main())
+
+
+@router.message(ChannelStates.value)
+async def channel_value(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    value = message.text.strip()
+    if value.casefold() in {"حذف", "delete", "off", "خاموش"}:
+        # Old singleton values are also cleared for a complete off switch.
+        await bot_settings_repository.clear_channel(session)
+        result = "قفل کانال حذف شد."
+    elif value.casefold().startswith(("حذف ", "delete ")):
+        try:
+            channel_id = int(value.split(maxsplit=1)[1])
+        except (IndexError, ValueError):
+            await message.answer("فرمت حذف صحیح نیست؛ نمونه: حذف 2")
+            return
+        result = "کانال حذف شد." if await bot_settings_repository.remove_channel(session, channel_id) else "کانال پیدا نشد."
+    else:
+        telegram_id = int(value) if value.lstrip("-").isdigit() else None
+        username = None if telegram_id is not None else value.lstrip("@")
+        await bot_settings_repository.add_channel(session, value)
+        result = f"کانال {value} به قفل‌ها اضافه شد."
+    await state.clear()
+    await message.answer("✅ " + result, reply_markup=keyboards.main())
 
 
 def user_text(user) -> str:

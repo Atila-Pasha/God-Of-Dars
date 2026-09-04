@@ -12,10 +12,11 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import LibraryCallback
+from app.bot.callbacks import LibraryCallback, StudyCallback
 from app.bot.keyboards.library import (
     answer_keyboard,
     library_keyboard,
+    study_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
 from app.bot.utils.telegram import safe_edit_text
@@ -29,10 +30,12 @@ from app.services.library_errors import (
 )
 from app.services.question_service import AnswerResult, QuestionService
 from app.services.user_service import UserInactiveError, UserService
+from app.services.study_service import StudyAlreadyActive, StudyError, StudyPackNotFound, StudyService
 
 router = Router(name="library")
 question_service = QuestionService()
 user_service = UserService()
+study_service = StudyService()
 logger = logging.getLogger(__name__)
 
 RESOURCE_LABELS = {
@@ -64,6 +67,20 @@ def _question_text(
             expires = expires.replace(tzinfo=UTC)
         expiration_text = expires.astimezone().strftime("%Y-%m-%d %H:%M")
     return f"{title}\n\n❓ {question.question_text}\n\n⏳ مهلت: {expiration_text}"
+
+
+def _study_time(ends_at: datetime) -> str:
+    end = ends_at if ends_at.tzinfo else ends_at.replace(tzinfo=UTC)
+    seconds = max(0, int((end - _now()).total_seconds()))
+    return f"{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}:{seconds % 60:02d}"
+
+
+def _study_reward_text(reward: tuple | None) -> str:
+    if reward is None:
+        return ""
+    resource, amount = reward
+    label = "طلا" if resource.value == "COIN" else "الماس"
+    return f"\n\n🎁 پاداش مطالعه آماده شد: {amount} {label}"
 
 
 def _result_text(result: AnswerResult) -> str:
@@ -132,9 +149,14 @@ async def _notify_callback(callback: CallbackQuery, text: str) -> None:
 
 @router.message(Command("library"))
 @router.message(F.text == LIBRARY_LABEL)
-async def library_handler(message: Message, state: FSMContext) -> None:
+async def library_handler(message: Message, state: FSMContext, session: AsyncSession | None = None) -> None:
     await state.clear()
     await _show_library(message)
+    if session is not None and message.from_user is not None:
+        user_id = await _user_id(session, message)
+        _, reward = await study_service.settle(session, user_id)
+        if reward is not None:
+            await message.answer(_study_reward_text(reward).strip(), reply_markup=library_keyboard())
 
 
 @router.callback_query(LibraryCallback.filter())
@@ -172,6 +194,20 @@ async def library_callback_handler(
                 callback,
                 "برای پاسخ به سؤال گروهی، روی خود پیام سؤال Reply بزن.",
             )
+        elif callback_data.action == "study":
+            user_id = await _user_id(session, callback)
+            active, reward = await study_service.settle(session, user_id)
+            if active is not None and reward is None:
+                await _notify_callback(callback, f"📖 مطالعه فعال است. زمان باقی‌مانده: {_study_time(active.ends_at)}")
+                return
+            if callback.message is not None:
+                await safe_edit_text(
+                    cast(Message, callback.message),
+                    "📖 ثبت مطالعه\n\nیک پک مطالعه انتخاب کنید. تا پایان پک امکان انتخاب پک دیگر وجود ندارد:",
+                    reply_markup=study_keyboard(study_service.packs()),
+                )
+            if reward is not None:
+                await _notify_callback(callback, _study_reward_text(reward).strip())
         elif callback_data.action == "cancel":
             await state.clear()
             if callback.message is not None:
@@ -188,6 +224,40 @@ async def library_callback_handler(
         await _notify_callback(
             callback, "امکان استفاده از کتابخانه در حال حاضر وجود ندارد."
         )
+
+
+@router.callback_query(StudyCallback.filter())
+async def study_callback_handler(
+    callback: CallbackQuery,
+    callback_data: StudyCallback,
+    session: AsyncSession,
+) -> None:
+    await _safe_callback_answer(callback)
+    if callback.from_user is None:
+        return
+    try:
+        user_id = await _user_id(session, callback)
+        try:
+            result = await study_service.start(session, user_id, callback_data.pack_key)
+        except StudyAlreadyActive as exc:
+            await _notify_callback(callback, f"⏳ یک پک فعال دارید. زمان باقی‌مانده: {_study_time(exc.study.ends_at)}")
+            return
+        except (StudyPackNotFound, StudyError):
+            await _notify_callback(callback, "این پک مطالعه در دسترس نیست.")
+            return
+        pack = study_service.packs()[callback_data.pack_key]
+        label = "طلا" if pack.reward_resource.value == "COIN" else "الماس"
+        text = (
+            f"✅ مطالعه شروع شد.\n\n⏳ مدت مطالعه: {pack.duration_minutes} دقیقه\n"
+            f"🎁 پاداش پایان: {pack.reward_amount} {label}\n\n"
+            "تا پایان این زمان امکان انتخاب پک دیگر ندارید."
+        )
+        if result.completed_reward:
+            text = _study_reward_text(result.completed_reward).strip() + "\n\n" + text
+        if callback.message is not None:
+            await safe_edit_text(cast(Message, callback.message), text, reply_markup=library_keyboard())
+    except (UserInactiveError, StudyError):
+        await _notify_callback(callback, "امکان ثبت مطالعه در حال حاضر وجود ندارد.")
 
 
 @router.message(LibraryState.waiting_daily_answer, F.text)

@@ -8,6 +8,9 @@ from app.models.group import Group
 
 
 class GroupRepository:
+    async def list_active(self, session: AsyncSession) -> list[Group]:
+        result = await session.execute(select(Group).where(Group.is_active.is_(True)).order_by(Group.id))
+        return list(result.scalars().all())
     async def get_by_telegram_chat_id(
         self, session: AsyncSession, telegram_chat_id: int
     ) -> Group | None:

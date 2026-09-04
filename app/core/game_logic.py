@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tomllib
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,6 +59,39 @@ class MineLevel:
 
 
 @dataclass(frozen=True)
+class LevelProgression:
+    """XP required to move from each level; values are balance-editable."""
+
+    xp_by_level: tuple[tuple[int, int], ...] = ()
+    reset_xp_on_level_up: bool = True
+
+    def required_xp(self, level: int) -> int | None:
+        return dict(self.xp_by_level).get(level)
+
+
+@dataclass(frozen=True)
+class StudyPack:
+    """One configurable study timer and its completion reward."""
+
+    duration_minutes: int
+    reward_resource: ResourceType
+    reward_amount: int
+
+    def __post_init__(self) -> None:
+        if self.duration_minutes <= 0 or self.reward_amount < 0:
+            raise ValueError("study pack values are invalid")
+
+
+@dataclass(frozen=True)
+class ChanceBoxRules:
+    expiry_minutes: int = 2
+
+    def __post_init__(self) -> None:
+        if self.expiry_minutes <= 0:
+            raise ValueError("chance box expiry must be positive")
+
+
+@dataclass(frozen=True)
 class GameConfig:
     """Central home for game balance and progression rules.
 
@@ -83,6 +117,10 @@ class GameConfig:
     shield_rules: ShieldRules = field(default_factory=ShieldRules)
     mine_levels: dict[int, MineLevel] = field(default_factory=dict)
     mine_max_catchup_minutes: int = 1_440
+    level_progression: LevelProgression = field(default_factory=LevelProgression)
+    buildings: dict[str, dict[int, dict[str, int]]] = field(default_factory=dict)
+    study_packs: dict[str, StudyPack] = field(default_factory=dict)
+    chance_box_rules: ChanceBoxRules = field(default_factory=ChanceBoxRules)
 
     def __post_init__(self) -> None:
         if self.max_teacher_slots < 1:
@@ -276,14 +314,40 @@ class GameConfig:
             raise GameConfigurationError("Mine upgrade is not configured")
         return next_level
 
+    def level_xp(self, level: int) -> int | None:
+        return self.level_progression.required_xp(level)
+
+    def study_pack(self, key: str) -> StudyPack:
+        try:
+            return self.study_packs[key]
+        except KeyError as exc:
+            raise GameConfigurationError("Study pack is not configured") from exc
+
     @classmethod
     def from_toml(cls, path: str | Path) -> GameConfig:
         config_path = Path(path)
         if not config_path.exists():
             return cls()
 
-        with config_path.open("rb") as config_file:
-            data = tomllib.load(config_file)
+        # Balance is split into small files under config/game_balance/.  The
+        # legacy game_balance.toml remains supported for deployments that have
+        # not migrated yet; fragment values override legacy values.
+        if config_path.is_dir():
+            legacy = config_path.with_name("game_balance.toml")
+            paths = ([legacy] if legacy.exists() else []) + sorted(config_path.glob("*.toml"))
+        else:
+            paths = [config_path]
+        data: dict = {}
+        for fragment in paths:
+            with fragment.open("rb") as config_file:
+                fragment_data = tomllib.load(config_file)
+            for key, value in fragment_data.items():
+                if isinstance(value, dict) and isinstance(data.get(key), dict):
+                    merged = deepcopy(data[key])
+                    merged.update(value)
+                    data[key] = merged
+                else:
+                    data[key] = value
 
         castle_upgrades = {
             int(level): CastleUpgrade(**values)
@@ -332,6 +396,20 @@ class GameConfig:
         )
         shield_data = data.get("shield_rules", {})
         mine_data = data.get("mine", {})
+        progression = data.get("progression", {})
+        study_packs = {
+            str(key): StudyPack(
+                duration_minutes=int(values["duration_minutes"]),
+                reward_resource=ResourceType(str(values["reward_resource"]).upper()),
+                reward_amount=int(values["reward_amount"]),
+            )
+            for key, values in data.get("study", {}).get("packs", {}).items()
+        }
+        chance_box_data = data.get("chance_box", {})
+        xp_by_level = tuple(sorted(
+            (int(key.removeprefix("level_")), int(value))
+            for key, value in progression.get("xp_to_next_level", {}).items()
+        ))
         mine_levels = {
             int(level.removeprefix("level_")): MineLevel(
                 coin_per_minute=int(values.get("coin_per_minute", 0)),
@@ -383,10 +461,25 @@ class GameConfig:
             ),
             mine_levels=mine_levels,
             mine_max_catchup_minutes=int(mine_data.get("max_catchup_minutes", 1_440)),
+            level_progression=LevelProgression(
+                xp_by_level=xp_by_level,
+                reset_xp_on_level_up=bool(progression.get("reset_xp_on_level_up", True)),
+            ),
+            buildings={
+                str(name): {
+                    int(level.removeprefix("level_")): {str(k): int(v) for k, v in values.items()}
+                    for level, values in levels.items()
+                }
+                for name, levels in data.get("buildings", {}).items()
+            },
+            study_packs=study_packs,
+            chance_box_rules=ChanceBoxRules(
+                expiry_minutes=int(chance_box_data.get("expiry_minutes", 2))
+            ),
         )
 
 
 DEFAULT_GAME_CONFIG_PATH = (
-    Path(__file__).resolve().parents[2] / "config" / "game_balance.toml"
+    Path(__file__).resolve().parents[2] / "config" / "game_balance"
 )
 game_config = GameConfig.from_toml(DEFAULT_GAME_CONFIG_PATH)
