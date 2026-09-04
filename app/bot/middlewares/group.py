@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from time import monotonic
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -10,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.main_menu import MENU_SECTION_LABELS
+from app.core.config import settings
 from app.services.group_service import GroupService
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ class GroupAccessMiddleware(BaseMiddleware):
 
     def __init__(self, group_service: GroupService | None = None) -> None:
         self.group_service = group_service or GroupService()
+        self._registered_groups: dict[int, float] = {}
 
     async def __call__(
         self,
@@ -47,6 +50,9 @@ class GroupAccessMiddleware(BaseMiddleware):
     ) -> None:
         if session is None or message.chat is None:
             return
+        now = monotonic()
+        if self._registered_groups.get(message.chat.id, 0) > now:
+            return
         title = message.chat.title or message.chat.username or "گروه بدون نام"
         try:
             await self.group_service.register_chat(
@@ -55,6 +61,7 @@ class GroupAccessMiddleware(BaseMiddleware):
                 title=title,
                 username=message.chat.username,
             )
+            self._registered_groups[message.chat.id] = now + settings.GROUP_REGISTER_CACHE_TTL
         except SQLAlchemyError:
             logger.exception("Could not register Telegram group %s", message.chat.id)
 

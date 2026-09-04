@@ -8,40 +8,47 @@ from io import BytesIO
 
 from aiogram import Bot, F, Router
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from admin import keyboards
 from admin.states import (
     BroadcastStates,
-    QuestionStates,
-    ShieldStates,
-    ChannelStates,
     ChanceBoxStates,
     ChanceCardStates,
+    ChannelStates,
+    QuestionStates,
+    ShieldStates,
     TeacherStates,
     UserStates,
 )
+from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
 from app.bot.group_question_publisher import GroupQuestionPublisher
+from app.bot.middlewares.subscription import invalidate_channels_cache
 from app.bot.utils.telegram import safe_edit_reply_markup, safe_edit_text
 from app.core.config import settings
-from app.services.admin_service import AdminService
-from app.services.library_errors import GroupNotFound
-from app.services.question_service import QuestionService
-from app.services.shield_service import ShieldAdminService
+from app.core.enums import ResourceType
+from app.db.session import AsyncSessionLocal
+from app.models.chance_box import ChanceBox
+from app.models.user import User
 from app.repositories.bot_settings import BotSettingsRepository
 from app.repositories.group import GroupRepository
 from app.repositories.user import UserRepository
-from app.core.enums import ResourceType
-from app.models.user import User
-from app.models.chance_box import ChanceBox
-from app.db.session import AsyncSessionLocal
-from app.bot.callbacks_chance import ChanceCardCallback, ChanceBoxCallback
+from app.services.admin_service import AdminService
 from app.services.chance_service import ChanceService
+from app.services.library_errors import GroupNotFound
+from app.services.question_service import QuestionService
+from app.services.shield_service import ShieldAdminService
 
 router = Router(name="admin")
 service = AdminService()
@@ -90,7 +97,13 @@ def _chance_values(value: str) -> tuple[ResourceType, int]:
 
 
 async def _main_bot() -> Bot:
-    return Bot(token=settings.BOT_TOKEN, session=AiohttpSession(proxy=settings.TELEGRAM_PROXY) if settings.TELEGRAM_PROXY else None)
+    return Bot(
+        token=settings.BOT_TOKEN,
+        session=AiohttpSession(
+            proxy=settings.TELEGRAM_PROXY,
+            limit=settings.TELEGRAM_HTTP_LIMIT,
+        ),
+    )
 
 
 async def _expire_box_later(chat_id: int, message_id: int, box_id: int, expires_at: datetime) -> None:
@@ -202,38 +215,62 @@ async def chance_card_send(message: Message, state: FSMContext, session: AsyncSe
         return
     try:
         resource, amount = _chance_values(message.text)
-        result = await session.execute(select(User).where(User.is_active.is_(True)).order_by(User.id))
-        users = list(result.scalars().all())
         sent = 0
         failed = 0
+        last_user_id = 0
+        batch_size = max(1, settings.BROADCAST_BATCH_SIZE)
         async with await _main_bot() as bot:
-            for user in users:
-                answer, image, _ = chance_service.captcha()
-                card = await chance_service.create_card(session, user.id, resource, amount, answer)
-                try:
-                    await bot.send_photo(
-                        user.telegram_user_id,
-                        BufferedInputFile(image, filename="chance-captcha.png"),
-                        caption=f"🃏 کارت شانس\n\nکپچا را حل کن تا {amount} {('طلا' if resource is ResourceType.COIN else 'الماس')} بگیری.",
-                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                            InlineKeyboardButton(text="✅ وارد کردن کپچا", callback_data=ChanceCardCallback(card_id=card.id).pack())
-                        ]]),
+            while True:
+                result = await session.execute(
+                    select(User.id, User.telegram_user_id)
+                    .where(User.is_active.is_(True), User.id > last_user_id)
+                    .order_by(User.id)
+                    .limit(batch_size)
+                )
+                users = result.all()
+                if not users:
+                    break
+                for user_id, telegram_user_id in users:
+                    answer, image, _ = chance_service.captcha()
+                    card = await chance_service.create_card(
+                        session, user_id, resource, amount, answer
                     )
-                    sent += 1
-                except TelegramAPIError as exc:
-                    await session.delete(card)
-                    await session.flush()
-                    logger.warning(
-                        "Could not send chance card %s to Telegram user %s: %s",
-                        card.id,
-                        user.telegram_user_id,
-                        exc,
-                    )
-                    failed += 1
-                await asyncio.sleep(0.04)
+                    try:
+                        for attempt in range(2):
+                            try:
+                                await bot.send_photo(
+                                    telegram_user_id,
+                                    BufferedInputFile(image, filename="chance-captcha.png"),
+                                    caption=f"🃏 کارت شانس\n\nکپچا را حل کن تا {amount} {('طلا' if resource is ResourceType.COIN else 'الماس')} بگیری.",
+                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                        InlineKeyboardButton(text="✅ وارد کردن کپچا", callback_data=ChanceCardCallback(card_id=card.id).pack())
+                                    ]]),
+                                )
+                                break
+                            except TelegramRetryAfter as exc:
+                                if attempt == 1:
+                                    raise
+                                await asyncio.sleep(exc.retry_after)
+                        sent += 1
+                    except TelegramAPIError as exc:
+                        await session.delete(card)
+                        await session.flush()
+                        logger.warning(
+                            "Could not send chance card %s to Telegram user %s: %s",
+                            card.id,
+                            telegram_user_id,
+                            exc,
+                        )
+                        failed += 1
+                    await asyncio.sleep(max(0, settings.TELEGRAM_SEND_DELAY))
+                last_user_id = users[-1][0]
+                # Do not keep every generated card in one transaction when the
+                # audience is large. The next page starts after this key.
+                await session.commit()
     except ValueError as exc:
         await message.answer(str(exc))
         return
+    await session.commit()
     await state.clear()
     await message.answer(f"✅ کارت شانس همگانی ارسال شد.\nموفق: {sent}\nناموفق: {failed}", reply_markup=keyboards.main())
 
@@ -267,6 +304,8 @@ async def channel_add_command(message: Message, state: FSMContext) -> None:
 async def channel_remove_command(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if allowed(message):
         await bot_settings_repository.clear_channel(session)
+        await session.commit()
+        invalidate_channels_cache()
         await state.clear()
         await message.answer("✅ قفل کانال حذف شد.", reply_markup=keyboards.main())
 
@@ -279,6 +318,8 @@ async def channel_value(message: Message, state: FSMContext, session: AsyncSessi
     if value.casefold() in {"حذف", "delete", "off", "خاموش"}:
         # Old singleton values are also cleared for a complete off switch.
         await bot_settings_repository.clear_channel(session)
+        await session.commit()
+        invalidate_channels_cache()
         result = "قفل کانال حذف شد."
     elif value.casefold().startswith(("حذف ", "delete ")):
         try:
@@ -286,11 +327,15 @@ async def channel_value(message: Message, state: FSMContext, session: AsyncSessi
         except (IndexError, ValueError):
             await message.answer("فرمت حذف صحیح نیست؛ نمونه: حذف 2")
             return
-        result = "کانال حذف شد." if await bot_settings_repository.remove_channel(session, channel_id) else "کانال پیدا نشد."
+        removed = await bot_settings_repository.remove_channel(session, channel_id)
+        if removed:
+            await session.commit()
+            invalidate_channels_cache()
+        result = "کانال حذف شد." if removed else "کانال پیدا نشد."
     else:
-        telegram_id = int(value) if value.lstrip("-").isdigit() else None
-        username = None if telegram_id is not None else value.lstrip("@")
         await bot_settings_repository.add_channel(session, value)
+        await session.commit()
+        invalidate_channels_cache()
         result = f"کانال {value} به قفل‌ها اضافه شد."
     await state.clear()
     await message.answer("✅ " + result, reply_markup=keyboards.main())
@@ -343,8 +388,8 @@ async def broadcast_send(
         await message.answer("فقط پیام متنی یا عکس همراه کپشن قابل ارسال است.")
         return
 
-    recipients = await service.list_broadcast_recipients(session)
-    if not recipients:
+    total_recipients = await session.scalar(select(func.count(User.id)))
+    if not total_recipients:
         await state.clear()
         await message.answer(
             "هیچ کاربری برای ارسال پیام وجود ندارد.", reply_markup=keyboards.main()
@@ -352,15 +397,17 @@ async def broadcast_send(
         return
 
     await state.clear()
+    # Release the database connection before the potentially long Telegram
+    # broadcast. Recipient IDs are fetched page-by-page below.
+    await session.commit()
     await message.answer(
-        f"📣 ارسال پیام برای {len(recipients)} کاربر شروع شد؛ لطفاً صبر کنید...",
+        f"📣 ارسال پیام برای {total_recipients} کاربر شروع شد؛ لطفاً صبر کنید...",
         reply_markup=keyboards.main(),
     )
 
-    main_session = (
-        AiohttpSession(proxy=settings.TELEGRAM_PROXY)
-        if settings.TELEGRAM_PROXY
-        else None
+    main_session = AiohttpSession(
+        proxy=settings.TELEGRAM_PROXY,
+        limit=settings.TELEGRAM_HTTP_LIMIT,
     )
     sent = 0
     failed = 0
@@ -371,27 +418,50 @@ async def broadcast_send(
             await message.bot.download(message.photo[-1].file_id, destination=buffer)
             photo_file = BufferedInputFile(buffer.getvalue(), filename="broadcast.jpg")
 
-        for telegram_user_id in recipients:
-            try:
-                if photo_file is not None:
-                    # A new BufferedInputFile is needed because the Telegram
-                    # client consumes the file stream during each upload.
-                    await main_bot.send_photo(
-                        chat_id=telegram_user_id,
-                        photo=BufferedInputFile(
-                            photo_file.data, filename="broadcast.jpg"
-                        ),
-                        caption=message.caption,
-                    )
-                else:
-                    await main_bot.send_message(
-                        chat_id=telegram_user_id,
-                        text=message.text,
-                    )
-                sent += 1
-            except TelegramAPIError:
-                failed += 1
-            await asyncio.sleep(0.04)
+        last_user_id = 0
+        batch_size = max(1, settings.BROADCAST_BATCH_SIZE)
+        while True:
+            result = await session.execute(
+                select(User.id, User.telegram_user_id)
+                .where(User.id > last_user_id)
+                .order_by(User.id)
+                .limit(batch_size)
+            )
+            recipients = result.all()
+            if not recipients:
+                break
+            await session.commit()
+            for user_id, telegram_user_id in recipients:
+                try:
+                    for attempt in range(2):
+                        try:
+                            if photo_file is not None:
+                                # A new BufferedInputFile is needed because the
+                                # Telegram client consumes the file stream during
+                                # each upload.
+                                await main_bot.send_photo(
+                                    chat_id=telegram_user_id,
+                                    photo=BufferedInputFile(
+                                        photo_file.data, filename="broadcast.jpg"
+                                    ),
+                                    caption=message.caption,
+                                )
+                            else:
+                                await main_bot.send_message(
+                                    chat_id=telegram_user_id,
+                                    text=message.text,
+                                )
+                            break
+                        except TelegramRetryAfter as exc:
+                            if attempt == 1:
+                                raise
+                            await asyncio.sleep(exc.retry_after)
+                    sent += 1
+                except TelegramAPIError:
+                    failed += 1
+                await asyncio.sleep(max(0, settings.TELEGRAM_SEND_DELAY))
+            last_user_id = recipients[-1][0]
+        await session.commit()
 
     await message.answer(
         f"✅ پیام همگانی تمام شد.\nموفق: {sent}\nناموفق: {failed}",
@@ -510,9 +580,10 @@ async def save_resources(
     )
     try:
         main_session = (
-            AiohttpSession(proxy=settings.TELEGRAM_PROXY)
-            if settings.TELEGRAM_PROXY
-            else None
+            AiohttpSession(
+                proxy=settings.TELEGRAM_PROXY,
+                limit=settings.TELEGRAM_HTTP_LIMIT,
+            )
         )
         async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
             await main_bot.send_message(
@@ -638,9 +709,10 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
     expires_at = datetime.now(UTC) + timedelta(hours=data["hours"])
     if data.get("scope") == "group":
         main_session = (
-            AiohttpSession(proxy=settings.TELEGRAM_PROXY)
-            if settings.TELEGRAM_PROXY
-            else None
+            AiohttpSession(
+                proxy=settings.TELEGRAM_PROXY,
+                limit=settings.TELEGRAM_HTTP_LIMIT,
+            )
         )
         try:
             async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:

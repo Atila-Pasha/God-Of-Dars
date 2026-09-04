@@ -1,8 +1,11 @@
 import logging
 from collections.abc import Iterable
+from time import monotonic
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +23,19 @@ class SubscriptionService:
         self.channels = tuple(
             channel.strip() for channel in (channels or ()) if channel.strip()
         )
+        self._membership_cache: dict[tuple[str, int], tuple[float, bool]] = {}
+        self.membership_cache_ttl = settings.MEMBERSHIP_CACHE_TTL
+        self.membership_cache_max_entries = settings.MEMBERSHIP_CACHE_MAX_ENTRIES
 
     @property
     def channels_label(self) -> str:
         return ", ".join(self.channels)
 
     def set_channels(self, channels: Iterable[str] | None) -> None:
-        self.channels = tuple(channel.strip() for channel in (channels or ()) if channel.strip())
+        normalized = tuple(channel.strip() for channel in (channels or ()) if channel.strip())
+        if normalized != self.channels:
+            self.channels = normalized
+            self._membership_cache.clear()
 
     @staticmethod
     def channel_url(channel: str) -> str:
@@ -48,7 +57,13 @@ class SubscriptionService:
             return value
         return value if value.startswith("@") else f"@{value}"
 
-    async def is_member(self, bot: Bot, telegram_user_id: int) -> bool:
+    async def is_member(
+        self, bot: Bot, telegram_user_id: int, *, force_refresh: bool = False
+    ) -> bool:
+        cache_key = (str(getattr(bot, "token", "")), telegram_user_id)
+        cached = self._membership_cache.get(cache_key)
+        if not force_refresh and cached and cached[0] > monotonic():
+            return cached[1]
         for channel in self.channels:
             chat_id = self.telegram_chat_id(channel)
             try:
@@ -73,6 +88,18 @@ class SubscriptionService:
                 raise MembershipCheckError from exc
 
             if member.status not in VALID_MEMBER_STATUSES:
+                self._remember(cache_key, False)
                 return False
 
+        self._remember(cache_key, True)
         return True
+
+    def _remember(self, key: tuple[str, int], value: bool) -> None:
+        if len(self._membership_cache) >= self.membership_cache_max_entries:
+            now = monotonic()
+            self._membership_cache = {
+                item: entry for item, entry in self._membership_cache.items() if entry[0] > now
+            }
+            if len(self._membership_cache) >= self.membership_cache_max_entries:
+                self._membership_cache.clear()
+        self._membership_cache[key] = (monotonic() + self.membership_cache_ttl, value)

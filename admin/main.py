@@ -20,9 +20,15 @@ async def run_admin_bot() -> None:
         raise RuntimeError("ADMIN_BOT_TOKEN is not configured")
     if not settings.admin_id_set:
         raise RuntimeError("ADMIN_IDS is empty; refusing to start an unprotected admin bot")
-    session = AiohttpSession(proxy=settings.TELEGRAM_PROXY) if settings.TELEGRAM_PROXY else None
+    session = AiohttpSession(
+        proxy=settings.TELEGRAM_PROXY,
+        limit=settings.TELEGRAM_HTTP_LIMIT,
+    )
     async with Bot(token=settings.ADMIN_BOT_TOKEN, session=session) as bot:
-        await create_dispatcher().start_polling(bot)
+        await create_dispatcher().start_polling(
+            bot,
+            tasks_concurrency_limit=settings.ADMIN_CONCURRENCY_LIMIT,
+        )
 
 
 async def main() -> None:

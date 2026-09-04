@@ -1,4 +1,6 @@
+import asyncio
 from collections.abc import Awaitable, Callable
+from time import monotonic
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -6,11 +8,39 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from app.bot.keyboards.start import join_channel_keyboard
-from app.services.subscription_service import SubscriptionService
+from app.core.config import settings
 from app.repositories.bot_settings import BotSettingsRepository
+from app.services.subscription_service import SubscriptionService
 
 subscription_service = SubscriptionService()
 settings_repository = BotSettingsRepository()
+_channels_cache: tuple[float, tuple[str, ...]] = (0.0, ())
+_channels_cache_lock = asyncio.Lock()
+
+
+def invalidate_channels_cache() -> None:
+    """Make an admin channel change visible on the next update."""
+    global _channels_cache
+    _channels_cache = (0.0, ())
+
+
+async def refresh_channels(session, *, force: bool = False) -> tuple[str, ...]:
+    global _channels_cache
+    now = monotonic()
+    if not force and _channels_cache[0] > now:
+        return _channels_cache[1]
+    async with _channels_cache_lock:
+        if not force and _channels_cache[0] > monotonic():
+            return _channels_cache[1]
+        channels = await settings_repository.list_channels(session)
+        stored = await settings_repository.get(session)
+        values = [str(item.telegram_id or item.username) for item in channels]
+        if stored.is_active and (stored.required_channel_telegram_id or stored.required_channel_username):
+            values.insert(0, str(stored.required_channel_telegram_id or stored.required_channel_username))
+        values = tuple(dict.fromkeys(values))
+        subscription_service.set_channels(values)
+        _channels_cache = (monotonic() + settings.CHANNELS_CACHE_TTL, values)
+        return values
 
 JOIN_MESSAGE = (
     "برای استفاده از ربات، ابتدا باید عضو کانال‌های زیر شوید:\n\n"
@@ -41,14 +71,7 @@ class SubscriptionMiddleware(BaseMiddleware):
         try:
             session = data.get("session")
             if session is not None:
-                channels = await settings_repository.list_channels(session)
-                # Keep old singleton data working while installations migrate;
-                # new channels are additive, so no configured lock disappears.
-                stored = await settings_repository.get(session)
-                values = [str(item.telegram_id or item.username) for item in channels]
-                if stored.is_active and (stored.required_channel_telegram_id or stored.required_channel_username):
-                    values.insert(0, str(stored.required_channel_telegram_id or stored.required_channel_username))
-                subscription_service.set_channels(tuple(dict.fromkeys(values)))
+                await refresh_channels(session)
             is_member = await subscription_service.is_member(bot, telegram_user.id)
         except Exception:  # noqa: BLE001 - membership failures are user-safe
             return await self._show_error(event)

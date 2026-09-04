@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.group_question import GroupQuestion
 from app.models.question import Question
 from app.services.question_service import QuestionService
@@ -62,7 +64,14 @@ class GroupQuestionPublisher:
         for publication in publications:
             chat_id = publication.group.telegram_chat_id
             try:
-                sent_message = await bot.send_message(chat_id=chat_id, text=text)
+                for attempt in range(2):
+                    try:
+                        sent_message = await bot.send_message(chat_id=chat_id, text=text)
+                        break
+                    except TelegramRetryAfter as exc:
+                        if attempt == 1:
+                            raise
+                        await asyncio.sleep(exc.retry_after)
                 publication.telegram_message_id = sent_message.message_id
                 await session.flush()
             except TelegramAPIError:
@@ -74,6 +83,7 @@ class GroupQuestionPublisher:
                 failed_chat_ids.append(chat_id)
             else:
                 sent_chat_ids.append(chat_id)
+            await asyncio.sleep(max(0, settings.TELEGRAM_SEND_DELAY))
 
         return GroupQuestionBroadcast(
             question=question,
@@ -93,6 +103,7 @@ class GroupQuestionPublisher:
             "👥 سؤال گروهی جدید\n\n"
             f"❓ {question.question_text}\n\n"
             f"🎁 پاداش: {GroupQuestionPublisher._reward_text(question)}\n"
+            f"⏳ مهلت: {expiration}"
         )
 
     @staticmethod

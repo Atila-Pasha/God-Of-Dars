@@ -13,12 +13,15 @@ logger = logging.getLogger(__name__)
 async def run_main_bot() -> None:
     dispatcher = create_dispatcher()
     bot_session = (
-        AiohttpSession(proxy=settings.TELEGRAM_PROXY)
+        AiohttpSession(proxy=settings.TELEGRAM_PROXY, limit=settings.TELEGRAM_HTTP_LIMIT)
         if settings.TELEGRAM_PROXY
-        else None
+        else AiohttpSession(limit=settings.TELEGRAM_HTTP_LIMIT)
     )
     async with Bot(token=settings.BOT_TOKEN, session=bot_session) as bot:
-        await dispatcher.start_polling(bot)
+        await dispatcher.start_polling(
+            bot,
+            tasks_concurrency_limit=settings.BOT_CONCURRENCY_LIMIT,
+        )
 
 
 async def main() -> None:

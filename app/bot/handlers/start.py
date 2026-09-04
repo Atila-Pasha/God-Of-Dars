@@ -15,7 +15,7 @@ from app.bot.keyboards.main_menu import (
     main_menu_keyboard,
 )
 from app.bot.keyboards.start import join_channel_keyboard
-from app.bot.middlewares.subscription import subscription_service
+from app.bot.middlewares.subscription import refresh_channels, subscription_service
 from app.bot.utils.telegram import safe_edit_text
 from app.services.referral_service import (
     ReferralCycle,
@@ -48,9 +48,14 @@ MAIN_MENU_MESSAGE = "🏫 به بازی خوش آمدید! یکی از بخش‌
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
 
 
-async def _membership_status(user_id: int, bot: Bot) -> bool | None:
+async def _membership_status(user_id: int, bot: Bot, session: AsyncSession | None = None, *, force_refresh: bool = False) -> bool | None:
     try:
-        return await subscription_service.is_member(bot, user_id)
+        # /start bypasses the subscription middleware by design, so refresh the
+        # channel list only for real database sessions. This keeps the hot path
+        # cached while preserving lightweight unit-test doubles.
+        if isinstance(session, AsyncSession):
+            await refresh_channels(session, force=force_refresh)
+        return await subscription_service.is_member(bot, user_id, force_refresh=force_refresh)
     except MembershipCheckError:
         return None
 
@@ -131,7 +136,7 @@ async def start_handler(
     if message.from_user is None:
         return
 
-    is_member = await _membership_status(message.from_user.id, message.bot)
+    is_member = await _membership_status(message.from_user.id, message.bot, session, force_refresh=True)
     if is_member is None:
         await message.answer(
             MEMBERSHIP_ERROR_MESSAGE,
@@ -169,7 +174,7 @@ async def check_membership_handler(
         await callback.answer()
         return
 
-    is_member = await _membership_status(callback.from_user.id, callback.bot)
+    is_member = await _membership_status(callback.from_user.id, callback.bot, session, force_refresh=True)
     if is_member is None:
         await callback.answer(MEMBERSHIP_ERROR_MESSAGE, show_alert=True)
         return
