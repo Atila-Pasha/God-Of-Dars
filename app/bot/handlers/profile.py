@@ -84,7 +84,7 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
         f"🪙 سکه: {_number(coin)}\n"
         f"💎 الماس: {_number(diamond)}\n"
         f"🍌 موز: {_number(banana)}\n"
-        f"🌟 سطح فرمانده: {_number(user.level)}\n\n"
+        "\n"
         ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
         "🏰 قلمرو و مدرسه\n\n"
         f"🏯 سطح دژ: {_number(castle_level)}\n"
@@ -115,6 +115,13 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
     )
 
 
+def _profile_menu_text() -> str:
+    return (
+        "🧙 پروفایل فرمانده\n\n"
+        "یکی از موارد زیر را انتخاب کن:"
+    )
+
+
 async def _user_id(session: AsyncSession, target: Message | CallbackQuery) -> int:
     if target.from_user is None:
         raise ProfileNotFound
@@ -132,6 +139,22 @@ async def _show_profile(target: Message | CallbackQuery, session: AsyncSession) 
             return
         try:
             await safe_edit_text(target.message, text, reply_markup=profile_keyboard())
+        except TelegramAPIError:
+            await target.message.answer(text, reply_markup=profile_keyboard())
+    else:
+        await target.answer(text, reply_markup=profile_keyboard())
+
+
+async def _show_profile_menu(target: Message | CallbackQuery) -> None:
+    """Show profile actions without loading and dumping the full statistics."""
+    text = _profile_menu_text()
+    if isinstance(target, CallbackQuery):
+        if target.message is None:
+            return
+        try:
+            await safe_edit_text(
+                target.message, text, reply_markup=profile_keyboard()
+            )
         except TelegramAPIError:
             await target.message.answer(text, reply_markup=profile_keyboard())
     else:
@@ -173,7 +196,13 @@ async def _show_level_upgrade(target: CallbackQuery, session: AsyncSession) -> N
 @router.message(F.text == PROFILE_LABEL)
 async def profile_handler(message: Message, session: AsyncSession) -> None:
     try:
-        await _show_profile(message, session)
+        # The profile menu is an action hub. Keep /stat as the explicit
+        # shortcut for the detailed report for backwards compatibility.
+        message_text = (getattr(message, "text", None) or "").strip()
+        if not message_text or message_text.split(maxsplit=1)[0].split("@", 1)[0] == "/stat":
+            await _show_profile(message, session)
+        else:
+            await _show_profile_menu(message)
     except (ProfileNotFound, SchoolUserNotFound, UserInactiveError):
         await _show_error(message)
 
@@ -202,11 +231,14 @@ async def profile_callback_handler(
             await _show_level_upgrade(callback, session)
             await callback.answer()
             return
-        await _show_profile(callback, session)
+        if callback_data.action == "info":
+            await _show_profile(callback, session)
+        else:
+            await _show_profile_menu(callback)
     except (ProfileNotFound, SchoolUserNotFound, UserInactiveError):
         await _show_error(callback)
         return
-    await callback.answer("اطلاعات کاربری به‌روز شد ✨")
+    await callback.answer()
 
 
 @router.callback_query(LevelConfirmationCallback.filter())

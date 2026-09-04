@@ -87,6 +87,11 @@ def _status_icon(teacher: UserTeacher) -> str:
     return STATUS_ICONS.get(teacher.status, "⚪")
 
 
+def _teacher_icon(teacher: UserTeacher) -> str:
+    """Use status text as fallback; the stored value is an icon id, not text."""
+    return _status_icon(teacher)
+
+
 def _recovery_text(teacher: UserTeacher) -> str:
     recovery = next(
         (item for item in teacher.recoveries if item.completed_at is None), None
@@ -194,7 +199,7 @@ async def _teachers_view(
                 [
                     "",
                     (
-                        f"{teacher.teacher.emoji or _status_icon(teacher)} {teacher.teacher.name}  •  "
+                        f"{_teacher_icon(teacher)} {teacher.teacher.name}  •  "
                         f"Level {_number(teacher.level)}"
                     ),
                     (
@@ -237,7 +242,7 @@ async def _teacher_view(
         pass
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
     text = (
-        f"{teacher.teacher.emoji or _status_icon(teacher)} {teacher.teacher.name}\n\n"
+        f"{_teacher_icon(teacher)} {teacher.teacher.name}\n\n"
         f"🎖 Level: {_number(teacher.level)}\n"
         f"⚔️ Damage: {damage_text}\n"
         f"❤️ HP: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
@@ -487,6 +492,12 @@ async def teacher_callback_handler(
                 ),
             )
             await callback.answer()
+        elif callback_data.action == "send_to_hospital":
+            await hospital_service.send_to_hospital(
+                session, user.id, callback_data.teacher_id
+            )
+            await _teacher_view(callback, session, callback_data.teacher_id)
+            await callback.answer("دبیر به بیمارستان فرستاده شد.")
     except SchoolError:
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 

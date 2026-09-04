@@ -83,7 +83,7 @@ async def _buffet_menu_view(
         await target.answer(text, reply_markup=buffet_menu_keyboard())
 
 
-@router.message(F.text == "🔄 تبدیل منابع")
+@router.message(F.text.in_({"تبدیل منابع", "🔄 تبدیل منابع"}))
 async def buffet_conversion_message(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
@@ -107,7 +107,7 @@ async def buffet_conversion_message(
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
-@router.message(F.text == "🛡 خرید سپر")
+@router.message(F.text.in_({"خرید سپر", "🛡 خرید سپر"}))
 async def buffet_shields_message(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
@@ -120,7 +120,7 @@ async def buffet_shields_message(
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
-@router.message(F.text == "👨‍🏫 خرید دبیر")
+@router.message(F.text.in_({"خرید دبیر", "👨‍🏫 خرید دبیر"}))
 async def buffet_teachers_message(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
@@ -149,7 +149,7 @@ async def _teacher_shop_view(target: Message | CallbackQuery, session: AsyncSess
         await target.answer(text, reply_markup=markup)
 
 
-@router.message(F.text.in_({"🔙 منوی اصلی", "❌ لغو"}))
+@router.message(F.text.in_({"منوی اصلی", "لغو", "🔙 منوی اصلی", "❌ لغو"}))
 async def buffet_back_to_main(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard())

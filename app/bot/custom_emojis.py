@@ -6,7 +6,6 @@ from typing import Any
 from aiogram import Bot
 from aiogram.types import MessageEntity
 
-
 # The visible character is retained as a fallback. Telegram replaces it with
 # the custom emoji when the entity is present, while old clients still see a
 # normal emoji.
@@ -21,6 +20,7 @@ CUSTOM_EMOJI_IDS: dict[str, str] = {
     "🪙": "5825656871079387950",
     "🏥": "5825570280243732195",
     "📚": "5825629907274703191",
+    "📌": "5825898080737697438",
     "🍽": "5823511728188563725",
     "⭐": "5825647731388981287",
     "🌟": "5825647731388981287",
@@ -92,6 +92,22 @@ CUSTOM_EMOJI_IDS: dict[str, str] = {
 }
 
 
+def premium_emoji_id(value: str | None, *, fallback: str | None = None) -> str | None:
+    """Return a Telegram custom-emoji id from an admin-stored value or alias."""
+    if value and value.isdigit():
+        return value
+    if value:
+        return CUSTOM_EMOJI_IDS.get(value)
+    return CUSTOM_EMOJI_IDS.get(fallback) if fallback else None
+
+
+def strip_custom_emoji_fallbacks(text: str) -> str:
+    """Remove textual fallback emojis when a button has a premium icon slot."""
+    for source in sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True):
+        text = text.replace(source, "")
+    return " ".join(text.split())
+
+
 def custom_emoji_entities(text: str) -> list[MessageEntity]:
     """Build Telegram custom-emoji entities using UTF-16 offsets."""
     entities: list[MessageEntity] = []
@@ -156,6 +172,10 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
             source = next((item for item in sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True) if item in text), None)
             if source is not None and hasattr(button, "icon_custom_emoji_id"):
                 button.icon_custom_emoji_id = CUSTOM_EMOJI_IDS[source]
+                # Both inline and reply buttons have a dedicated icon slot.
+                # Remove textual fallbacks so exactly one premium emoji is
+                # rendered. Incoming handlers accept the plain labels below.
+                button.text = strip_custom_emoji_fallbacks(text)
 
 
 def install() -> None:

@@ -46,6 +46,10 @@ class InvalidTeacherState(SchoolError):
     pass
 
 
+class TeacherInHospital(SchoolError):
+    """The selected teacher is recovering and cannot join a battle."""
+
+
 class CastleNotFound(SchoolError):
     pass
 

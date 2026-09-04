@@ -70,6 +70,12 @@ class HospitalService:
         now = datetime.now(UTC)
         changed = False
         for teacher in teachers:
+            # Repair legacy rows created before zero HP was automatically
+            # marked as disabled, so they appear in the hospital immediately.
+            if teacher.current_hp <= 0 and teacher.status is TeacherStatus.ACTIVE:
+                teacher.current_hp = 0
+                teacher.status = TeacherStatus.DISABLED
+                changed = True
             active_recovery = next(
                 (
                     recovery
@@ -108,7 +114,12 @@ class HospitalService:
         )
         if teacher is None:
             raise TeacherNotOwned
-        if teacher.status is not TeacherStatus.INJURED:
+        if teacher.status not in {TeacherStatus.INJURED, TeacherStatus.ACTIVE}:
+            raise InvalidTeacherState
+        if (
+            teacher.status is TeacherStatus.ACTIVE
+            and teacher.current_hp >= teacher.teacher.max_hp
+        ):
             raise InvalidTeacherState
         if any(recovery.completed_at is None for recovery in teacher.recoveries):
             raise InvalidTeacherState
@@ -129,3 +140,9 @@ class HospitalService:
         teacher.status = TeacherStatus.RECOVERING
         await session.flush()
         return teacher
+
+    async def send_to_hospital(
+        self, session: AsyncSession, user_id: int, user_teacher_id: int
+    ) -> UserTeacher:
+        """Manually send a damaged, still-usable teacher to recovery."""
+        return await self.begin_recovery(session, user_id, user_teacher_id)

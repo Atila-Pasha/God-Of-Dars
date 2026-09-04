@@ -122,14 +122,14 @@ async def _expire_box_later(chat_id: int, message_id: int, box_id: int, expires_
         await cleanup_session.commit()
 
 
-@router.message(F.text == "🎁 ارسال جعبه شانس")
+@router.message(F.text.in_({"ارسال جعبه شانس", "🎁 ارسال جعبه شانس"}))
 async def chance_box_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceBoxStates.section)
         await message.answer("جعبه برای کدام بخش ارسال شود؟", reply_markup=keyboards.chance_box_sections())
 
 
-@router.message(ChanceBoxStates.section, F.text.startswith("📦 ارسال به بخش "))
+@router.message(ChanceBoxStates.section, F.text.regexp(r"^(?:📦\s*)?ارسال به بخش "))
 async def chance_box_section(message: Message, state: FSMContext) -> None:
     if not allowed(message) or not message.text:
         return
@@ -188,7 +188,7 @@ async def chance_box_send(message: Message, state: FSMContext, session: AsyncSes
     await message.answer(f"✅ جعبه به {sent} گروه فعال ارسال شد.", reply_markup=keyboards.main())
 
 
-@router.message(F.text == "🃏 ارسال کارت شانس")
+@router.message(F.text.in_({"ارسال کارت شانس", "🃏 ارسال کارت شانس"}))
 async def chance_card_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceCardStates.value)
@@ -275,7 +275,7 @@ async def chance_card_send(message: Message, state: FSMContext, session: AsyncSe
     await message.answer(f"✅ کارت شانس همگانی ارسال شد.\nموفق: {sent}\nناموفق: {failed}", reply_markup=keyboards.main())
 
 
-@router.message(F.text == "📢 مدیریت قفل کانال")
+@router.message(F.text.in_({"مدیریت قفل کانال", "📢 مدیریت قفل کانال"}))
 async def channel_settings(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message):
         return
@@ -361,14 +361,14 @@ async def start(message: Message, state: FSMContext) -> None:
     await message.answer("پنل مدیریت آماده است.", reply_markup=keyboards.main())
 
 
-@router.message(F.text == "❌ لغو")
+@router.message(F.text.in_({"لغو", "❌ لغو"}))
 async def cancel(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=keyboards.main())
 
 
-@router.message(F.text == "📣 پیام همگانی")
+@router.message(F.text.in_({"پیام همگانی", "📣 پیام همگانی"}))
 async def broadcast_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -469,7 +469,7 @@ async def broadcast_send(
     )
 
 
-@router.message(F.text == "👤 مدیریت کاربران")
+@router.message(F.text.in_({"مدیریت کاربران", "👤 مدیریت کاربران"}))
 async def users(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(UserStates.search)
@@ -596,7 +596,7 @@ async def save_resources(
         await message.answer("منابع اضافه شد، اما ارسال اعلان برای کاربر ممکن نبود.")
 
 
-@router.message(F.text == "❓ ساخت سؤال روزانه")
+@router.message(F.text.in_({"ساخت سؤال روزانه", "❓ ساخت سؤال روزانه"}))
 async def question_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -605,7 +605,7 @@ async def question_start(message: Message, state: FSMContext) -> None:
         await message.answer("متن سؤال روزانه را بفرستید:")
 
 
-@router.message(F.text == "👥 ساخت سؤال گروهی")
+@router.message(F.text.in_({"ساخت سؤال گروهی", "👥 ساخت سؤال گروهی"}))
 async def group_question_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -756,7 +756,7 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
     )
 
 
-@router.message(F.text == "👨‍🏫 مدیریت دبیرها")
+@router.message(F.text.in_({"مدیریت دبیرها", "👨‍🏫 مدیریت دبیرها"}))
 async def teachers(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message):
         return
@@ -923,7 +923,7 @@ async def teacher_callback(
     await callback.answer()
 
 
-@router.message(F.text == "🛡 مدیریت سپرها")
+@router.message(F.text.in_({"مدیریت سپرها", "🛡 مدیریت سپرها"}))
 async def shields(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message):
         return

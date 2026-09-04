@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
+from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from app.services.school_errors import (
     InvalidTeacherState,
     SchoolError,
     SchoolUserNotFound,
+    TeacherInHospital,
     TeacherNotOwned,
 )
 
@@ -23,7 +25,8 @@ def _attack_text(result: AttackResult) -> str:
         else "🛡 دژ نتوانست به دبیر آسیب بزند."
     )
     return (
-        f"⚔️ {result.attacker_name} با {result.teacher_name} به دژ {result.target_name} حمله کرد!\n\n"
+        f"⚔️ بازیکن «{result.attacker_name}» با استاد «{result.teacher_name}» "
+        f"به دژ «{result.target_name}» حمله کرد!\n\n"
         f"✨ توانایی دبیر: {result.ability_text or 'بدون توانایی ثبت‌شده'}\n"
         f"💥 تخریب دژ: {result.castle_damage}\n"
         f"🏰 قدرت باقی‌مانده دژ: {result.castle_strength_after}\n"
@@ -86,32 +89,44 @@ async def _report_error(message: Message, error: Exception) -> None:
     if isinstance(error, SchoolUserNotFound):
         await message.answer("بازیکن هدف پیدا نشد یا هنوز در ربات ثبت‌نام نکرده است.")
     elif isinstance(error, TeacherNotOwned):
-        await message.answer("این دبیر در مدرسه شما وجود ندارد.")
+        await message.answer("استادی با این نام پیدا نشد.")
+    elif isinstance(error, TeacherInHospital):
+        await message.answer("این استاد در حال بهبود است و فعلاً نمی‌تواند حمله کند.")
     elif isinstance(error, InvalidTeacherState):
-        await message.answer("این دبیر فعال نیست و فعلاً نمی‌تواند حمله کند.")
+        await message.answer("این استاد در بیمارستان است و فعلاً نمی‌تواند حمله کند.")
     else:
         await message.answer("اجرای حمله ممکن نبود؛ لطفاً مشخصات حمله را بررسی کنید.")
 
 
-@router.message(F.text.regexp(r"^\s*حمله\s+\S.*$"))
+@router.message(Command("attack"))
+@router.message(F.text.regexp(r"^\s*حمله(?:\s+\S.*)?$"))
 async def attack_message(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return
     text = (message.text or "").strip()
+    _, _, arguments = text.partition(" ")
+    arguments = arguments.strip()
     try:
         if message.chat.type in {"group", "supergroup"}:
             replied = message.reply_to_message
             if replied is None or replied.from_user is None:
                 await message.answer("برای حمله باید روی پیام بازیکن هدف ریپلای کنید.")
                 return
+            if not arguments:
+                await message.answer(
+                    "نام استاد را هم بنویسید؛ مثال: حمله قاضی\n"
+                    "(باید روی پیام بازیکن هدف ریپلای کرده باشید.)",
+                    reply_to_message_id=message.message_id,
+                )
+                return
             preview = await attack_service.preview_by_telegram_id(
                 session,
                 attacker_telegram_id=message.from_user.id,
                 target_telegram_id=replied.from_user.id,
-                teacher_name=text.removeprefix("حمله").strip(),
+                teacher_name=arguments,
             )
         else:
-            parts = text.removeprefix("حمله").strip().split(maxsplit=1)
+            parts = arguments.split(maxsplit=1)
             if len(parts) != 2:
                 await message.answer("فرمت صحیح: حمله {نام کاربری} {نام دبیر}")
                 return

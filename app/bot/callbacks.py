@@ -22,6 +22,7 @@ class TeacherCallback(CallbackData, prefix="teacher"):
         "upgrade",
         "sell",
         "activate",
+        "send_to_hospital",
         "back_school",
         "back_teachers",
         "back_buffet",

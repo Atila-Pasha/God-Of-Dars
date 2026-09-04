@@ -7,6 +7,7 @@ from app.bot.callbacks import (
     SchoolCallback,
     TeacherCallback,
 )
+from app.bot.custom_emojis import premium_emoji_id
 from app.core.enums import TeacherStatus
 from app.models.teacher import Teacher
 from app.models.user_teacher import UserTeacher
@@ -97,7 +98,9 @@ def teachers_keyboard(
         [
             InlineKeyboardButton(
                 text=owned.teacher.name,
-                icon_custom_emoji_id=owned.teacher.emoji,
+                icon_custom_emoji_id=premium_emoji_id(
+                    owned.teacher.emoji, fallback="👨‍🏫"
+                ),
                 callback_data=TeacherCallback(
                     action="view", teacher_id=owned.id
                 ).pack(),
@@ -195,6 +198,20 @@ def teacher_detail_keyboard(
                 )
             )
         rows.append(action_buttons)
+    if (
+        teacher.status is TeacherStatus.ACTIVE
+        and teacher.current_hp < teacher.teacher.max_hp
+    ):
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🏥 فرستادن به بیمارستان",
+                    callback_data=TeacherCallback(
+                        action="send_to_hospital", teacher_id=teacher.id
+                    ).pack(),
+                )
+            ]
+        )
     elif teacher.status is TeacherStatus.DISABLED and can_activate:
         rows.append(
             [

@@ -18,6 +18,7 @@ from app.services.castle_service import CastleService
 from app.services.school_errors import (
     InvalidTeacherState,
     SchoolUserNotFound,
+    TeacherInHospital,
     TeacherNotOwned,
 )
 from app.services.teacher_service import TeacherService
@@ -150,7 +151,13 @@ class AttackService:
         )
         if teacher is None:
             raise TeacherNotOwned
+        if teacher.status is TeacherStatus.RECOVERING:
+            raise TeacherInHospital
         if teacher.status is not TeacherStatus.ACTIVE:
+            raise InvalidTeacherState
+        if teacher.current_hp <= 0:
+            teacher.current_hp = 0
+            teacher.status = TeacherStatus.DISABLED
             raise InvalidTeacherState
         castle = await self.castle_service.battle_snapshot(session, target.id)
         damage, injury = self.config.attack_rules.resolve(
@@ -158,7 +165,11 @@ class AttackService:
         )
         loot = self._loot(target, damage, castle.strength)
         return AttackPreview(
-            attacker_id=attacker.id, target_id=target.id, teacher_id=teacher.id,
+            # The confirmation callback is clicked by Telegram and therefore
+            # must carry the Telegram id, not the database user id.
+            attacker_id=attacker.telegram_user_id,
+            target_id=target.id,
+            teacher_id=teacher.id,
             attacker_name=attacker.first_name, target_name=target.first_name,
             teacher_name=teacher.teacher.name,
             ability_text=teacher.teacher.ability_text,
@@ -175,13 +186,21 @@ class AttackService:
         )
         if teacher is None:
             raise TeacherNotOwned
+        if teacher.status is TeacherStatus.RECOVERING:
+            raise TeacherInHospital
         if teacher.status is not TeacherStatus.ACTIVE:
             raise InvalidTeacherState
 
         return await self._attack_with_teacher(session, attacker, target, teacher)
 
     async def _attack_with_teacher(self, session, attacker, target, teacher) -> AttackResult:
+        if teacher.status is TeacherStatus.RECOVERING:
+            raise TeacherInHospital
         if teacher.status is not TeacherStatus.ACTIVE:
+            raise InvalidTeacherState
+        if teacher.current_hp <= 0:
+            teacher.current_hp = 0
+            teacher.status = TeacherStatus.DISABLED
             raise InvalidTeacherState
         await session.execute(
             select(Resource)
@@ -197,12 +216,12 @@ class AttackService:
             session, target.id, pre_shield_damage
         )
         if teacher_injury:
-            teacher.current_hp -= teacher_injury
-            teacher.status = (
-                TeacherStatus.DISABLED
-                if teacher.current_hp == 0
-                else TeacherStatus.INJURED
-            )
+            teacher.current_hp = max(0, teacher.current_hp - teacher_injury)
+            # Taking damage does not send an otherwise usable teacher to the
+            # hospital.  The owner can do that explicitly from the teachers
+            # screen; reaching zero is the only automatic hospitalization.
+            if teacher.current_hp == 0:
+                teacher.status = TeacherStatus.DISABLED
 
         loot = self._loot(
             target, castle_damage_result.applied_damage, target_castle.strength
