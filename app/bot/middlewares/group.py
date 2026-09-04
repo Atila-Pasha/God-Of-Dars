@@ -81,6 +81,10 @@ class GroupAccessMiddleware(BaseMiddleware):
         text = (message.text or "").strip()
         if not text:
             return True
+        # Attack is intentionally a plain-text group action. Keep it explicit
+        # here so future group restrictions cannot silently swallow it.
+        if text.startswith("حمله"):
+            return True
         if text.startswith("/"):
             command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
             return command.removeprefix("/").casefold() in ALLOWED_GROUP_COMMANDS

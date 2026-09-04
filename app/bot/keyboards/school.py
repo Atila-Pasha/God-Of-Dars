@@ -96,7 +96,8 @@ def teachers_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=f"👨‍🏫 {owned.teacher.name}",
+                text=owned.teacher.name,
+                icon_custom_emoji_id=owned.teacher.emoji,
                 callback_data=TeacherCallback(
                     action="view", teacher_id=owned.id
                 ).pack(),
@@ -219,7 +220,8 @@ def teacher_detail_keyboard(
 
 
 def hospital_keyboard(
-    teachers: list[UserTeacher], *, can_activate: bool, can_recover: bool
+    teachers: list[UserTeacher], *, can_activate: bool, can_recover: bool,
+    instant_recovery_cost: int | None = None
 ) -> InlineKeyboardMarkup:
     rows = []
     for teacher in teachers:
@@ -241,6 +243,23 @@ def hospital_keyboard(
                         text=f"🩹 شروع بهبودی {teacher.teacher.name}",
                         callback_data=HospitalCallback(
                             action="recover", teacher_id=teacher.id
+                        ).pack(),
+                    )
+                ]
+            )
+        if (
+            teacher.status in {TeacherStatus.INJURED, TeacherStatus.RECOVERING}
+            and instant_recovery_cost is not None
+        ):
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=(
+                            f"⚡ بهبود فوری {teacher.teacher.name} "
+                            f"({instant_recovery_cost} 💎)"
+                        ),
+                        callback_data=HospitalCallback(
+                            action="instant", teacher_id=teacher.id
                         ).pack(),
                     )
                 ]

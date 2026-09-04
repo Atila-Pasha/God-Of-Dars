@@ -2,12 +2,13 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import TeacherStatus
+from app.core.enums import ResourceType, TeacherStatus
 from app.core.game_logic import GameConfig, GameConfigurationError, game_config
 from app.models.recovery import Recovery
 from app.models.user_teacher import UserTeacher
 from app.repositories.teacher import TeacherRepository
 from app.services.castle_service import CastleService
+from app.services.resource_service import ResourceService
 from app.services.school_errors import (
     InvalidTeacherState,
     OperationNotConfigured,
@@ -32,6 +33,37 @@ class HospitalService:
 
     def can_begin_recovery(self) -> bool:
         return self.config.recovery_is_configured
+
+    def instant_recovery_cost(self) -> int | None:
+        return self.config.instant_recovery_diamond_cost
+
+    async def instant_recover(
+        self, session: AsyncSession, user_id: int, user_teacher_id: int
+    ) -> UserTeacher:
+        teacher = await self.repository.get_owned_for_update(
+            session, user_id, user_teacher_id
+        )
+        if teacher is None:
+            raise TeacherNotOwned
+        if teacher.status not in {TeacherStatus.INJURED, TeacherStatus.RECOVERING}:
+            raise InvalidTeacherState
+        cost = self.config.instant_recovery_diamond_cost
+        if cost is None:
+            raise OperationNotConfigured
+        resources = await self.repository.get_resources_for_update(session, user_id)
+        ResourceService.debit(
+            session, resources, user_id=user_id, resource_type=ResourceType.DIAMOND,
+            amount=cost, reason="TEACHER_INSTANT_RECOVERY",
+            reference_type="USER_TEACHER", reference_id=teacher.id,
+        )
+        now = datetime.now(UTC)
+        for recovery in teacher.recoveries:
+            if recovery.completed_at is None:
+                recovery.completed_at = now
+        teacher.current_hp = teacher.teacher.max_hp
+        teacher.status = TeacherStatus.ACTIVE
+        await session.flush()
+        return teacher
 
     async def patients(self, session: AsyncSession, user_id: int) -> list[UserTeacher]:
         teachers = await self.repository.list_owned(session, user_id)

@@ -48,6 +48,34 @@ class ShieldRules:
 
 
 @dataclass(frozen=True)
+class AttackRules:
+    """Configurable combat rules shared by every attacker type."""
+
+    defense_absorption_ratio: float = 1.0
+    counter_damage_ratio: float = 0.25
+    loot_percent: int = 10
+
+    def __post_init__(self) -> None:
+        if self.defense_absorption_ratio < 0 or self.counter_damage_ratio < 0:
+            raise ValueError("attack ratios cannot be negative")
+        if not 0 <= self.loot_percent <= 100:
+            raise ValueError("loot_percent must be between 0 and 100")
+
+    def resolve(
+        self, attack_power: int, defense_power: int, defender_hp: int
+    ) -> tuple[int, int]:
+        """Return (castle damage before shields, counter damage to attacker)."""
+        if min(attack_power, defense_power, defender_hp) < 0:
+            raise ValueError("combat values cannot be negative")
+        absorbed = round(defense_power * self.defense_absorption_ratio)
+        castle_damage = max(0, attack_power - absorbed)
+        counter_damage = min(
+            defender_hp, round(defense_power * self.counter_damage_ratio)
+        )
+        return castle_damage, counter_damage
+
+
+@dataclass(frozen=True)
 class MineLevel:
     """Production and upgrade balance for one mine level."""
 
@@ -63,10 +91,17 @@ class LevelProgression:
     """XP required to move from each level; values are balance-editable."""
 
     xp_by_level: tuple[tuple[int, int], ...] = ()
+    upgrade_cost_by_level: tuple[tuple[int, int], ...] = ()
     reset_xp_on_level_up: bool = True
 
     def required_xp(self, level: int) -> int | None:
         return dict(self.xp_by_level).get(level)
+
+    def upgrade_cost(self, level: int) -> int:
+        try:
+            return dict(self.upgrade_cost_by_level)[level]
+        except KeyError as exc:
+            raise GameConfigurationError("Level upgrade cost is not configured") from exc
 
 
 @dataclass(frozen=True)
@@ -121,6 +156,8 @@ class GameConfig:
     buildings: dict[str, dict[int, dict[str, int]]] = field(default_factory=dict)
     study_packs: dict[str, StudyPack] = field(default_factory=dict)
     chance_box_rules: ChanceBoxRules = field(default_factory=ChanceBoxRules)
+    attack_rules: AttackRules = field(default_factory=AttackRules)
+    instant_recovery_diamond_cost: int | None = None
 
     def __post_init__(self) -> None:
         if self.max_teacher_slots < 1:
@@ -395,6 +432,8 @@ class GameConfig:
             for item in data.get("buffet", {}).get("conversions", [])
         )
         shield_data = data.get("shield_rules", {})
+        attack_data = data.get("attack", {})
+        hospital_data = data.get("hospital", {})
         mine_data = data.get("mine", {})
         progression = data.get("progression", {})
         study_packs = {
@@ -409,6 +448,10 @@ class GameConfig:
         xp_by_level = tuple(sorted(
             (int(key.removeprefix("level_")), int(value))
             for key, value in progression.get("xp_to_next_level", {}).items()
+        ))
+        upgrade_cost_by_level = tuple(sorted(
+            (int(key.removeprefix("level_")), int(value))
+            for key, value in progression.get("level_upgrade_cost", {}).items()
         ))
         mine_levels = {
             int(level.removeprefix("level_")): MineLevel(
@@ -463,6 +506,7 @@ class GameConfig:
             mine_max_catchup_minutes=int(mine_data.get("max_catchup_minutes", 1_440)),
             level_progression=LevelProgression(
                 xp_by_level=xp_by_level,
+                upgrade_cost_by_level=upgrade_cost_by_level,
                 reset_xp_on_level_up=bool(progression.get("reset_xp_on_level_up", True)),
             ),
             buildings={
@@ -475,6 +519,20 @@ class GameConfig:
             study_packs=study_packs,
             chance_box_rules=ChanceBoxRules(
                 expiry_minutes=int(chance_box_data.get("expiry_minutes", 2))
+            ),
+            attack_rules=AttackRules(
+                defense_absorption_ratio=float(
+                    attack_data.get("defense_absorption_ratio", 1.0)
+                ),
+                counter_damage_ratio=float(
+                    attack_data.get("counter_damage_ratio", 0.25)
+                ),
+                loot_percent=int(attack_data.get("loot_percent", 10)),
+            ),
+            instant_recovery_diamond_cost=(
+                None
+                if hospital_data.get("instant_recovery_diamond_cost") is None
+                else int(hospital_data["instant_recovery_diamond_cost"])
             ),
         )
 

@@ -8,18 +8,24 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import ProfileCallback
+from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, main_menu_keyboard
-from app.bot.keyboards.profile import profile_keyboard
+from app.bot.keyboards.profile import level_confirmation_keyboard, profile_keyboard
 from app.bot.utils.telegram import safe_edit_text
 from app.repositories.profile import ProfileSnapshot
+from app.services.level_service import LevelService
 from app.services.profile_service import ProfileNotFound, ProfileService
-from app.services.school_errors import SchoolUserNotFound
+from app.services.school_errors import (
+    InsufficientCoins,
+    OperationNotConfigured,
+    SchoolUserNotFound,
+)
 from app.services.user_service import UserInactiveError, UserService
 
 router = Router(name="profile")
 profile_service = ProfileService()
 user_service = UserService()
+level_service = LevelService()
 
 PROFILE_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "profile"
@@ -145,6 +151,23 @@ async def _show_error(target: Message | CallbackQuery) -> None:
         await target.answer(text, reply_markup=reply_markup)
 
 
+async def _show_level_upgrade(target: CallbackQuery, session: AsyncSession) -> None:
+    user_id = await _user_id(session, target)
+    snapshot = await profile_service.snapshot(session, user_id)
+    cost = level_service.upgrade_cost(snapshot.user.level)
+    resources = snapshot.user.resources
+    diamond = resources.diamond if resources else 0
+    text = (
+        f"⬆️ ارتقای سطح فرمانده\n\n"
+        f"سطح فعلی: {_number(snapshot.user.level)}\n"
+        f"سطح بعدی: {_number(snapshot.user.level + 1)}\n"
+        f"هزینه: {_number(cost)} 💎\n"
+        f"الماس شما: {_number(diamond)}\n\n"
+        "آیا ارتقای سطح را تأیید می‌کنی؟"
+    )
+    await safe_edit_text(target.message, text, reply_markup=level_confirmation_keyboard())
+
+
 @router.message(Command("profile"))
 @router.message(Command("stat"))
 @router.message(F.text == PROFILE_LABEL)
@@ -175,8 +198,36 @@ async def profile_callback_handler(
         return
 
     try:
+        if callback_data.action == "upgrade":
+            await _show_level_upgrade(callback, session)
+            await callback.answer()
+            return
         await _show_profile(callback, session)
     except (ProfileNotFound, SchoolUserNotFound, UserInactiveError):
         await _show_error(callback)
         return
-    await callback.answer("آمار پروفایل به‌روز شد ✨")
+    await callback.answer("اطلاعات کاربری به‌روز شد ✨")
+
+
+@router.callback_query(LevelConfirmationCallback.filter())
+async def level_confirmation_handler(
+    callback: CallbackQuery,
+    callback_data: LevelConfirmationCallback,
+    session: AsyncSession,
+) -> None:
+    if callback.from_user is None or callback.message is None:
+        await callback.answer()
+        return
+    if callback_data.decision == "cancel":
+        await _show_profile(callback, session)
+        await callback.answer("ارتقا لغو شد.")
+        return
+    try:
+        user_id = await _user_id(session, callback)
+        user = await level_service.upgrade(session, user_id)
+        await _show_profile(callback, session)
+        await callback.answer(f"سطح شما به {user.level} رسید.")
+    except InsufficientCoins:
+        await callback.answer("الماس کافی ندارید.", show_alert=True)
+    except (OperationNotConfigured, SchoolUserNotFound, UserInactiveError):
+        await callback.answer("ارتقای سطح فعلاً در دسترس نیست.", show_alert=True)

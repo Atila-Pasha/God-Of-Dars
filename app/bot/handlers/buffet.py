@@ -14,6 +14,7 @@ from app.bot.keyboards.buffet import (
     shield_inventory_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, main_menu_keyboard
+from app.bot.keyboards.school import teacher_catalog_keyboard
 from app.bot.states import BuffetStates
 from app.bot.utils.telegram import safe_edit_text
 from app.core.enums import ResourceType
@@ -30,12 +31,14 @@ from app.services.school_errors import (
     ShieldNotPurchasable,
 )
 from app.services.shield_service import ShieldService
+from app.services.teacher_service import TeacherService
 from app.services.user_service import UserInactiveError, UserService
 
 router = Router(name="buffet")
 buffet_service = BuffetService()
 user_service = UserService()
 shield_service = ShieldService()
+teacher_service = TeacherService()
 BUFFET_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "buffet"
 )
@@ -126,11 +129,24 @@ async def buffet_teachers_message(
     try:
         await state.clear()
         await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
-        from app.bot.handlers.school import _teachers_view
-
-        await _teachers_view(message, session, from_buffet=True)
+        await _teacher_shop_view(message, session)
     except UserInactiveError:
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
+
+
+async def _teacher_shop_view(target: Message | CallbackQuery, session: AsyncSession) -> None:
+    user = await user_service.get_active_by_telegram_user_id(
+        session, target.from_user.id
+    )
+    catalog = await teacher_service.catalog(session, user.id)
+    text = "👨‍🏫 خرید دبیر\n\nدبیر موردنظر را انتخاب کنید:"
+    markup = teacher_catalog_keyboard(
+        catalog, player_level=user.level, back_action="back_buffet", origin="buffet"
+    )
+    if isinstance(target, CallbackQuery) and target.message is not None:
+        await safe_edit_text(target.message, text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
 
 
 @router.message(F.text.in_({"🔙 منوی اصلی", "❌ لغو"}))
@@ -240,9 +256,7 @@ async def buffet_menu_callback(
         if callback_data.action == "convert":
             await _conversion_view(callback, session)
         elif callback_data.action == "teachers":
-            from app.bot.handlers.school import _teachers_view
-
-            await _teachers_view(callback, session, from_buffet=True)
+            await _teacher_shop_view(callback, session)
         elif callback_data.action == "shields":
             await _shields_view(callback, session)
         else:

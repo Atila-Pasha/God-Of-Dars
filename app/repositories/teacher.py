@@ -105,3 +105,21 @@ class TeacherRepository:
             .with_for_update()
         )
         return result.scalars().unique().one_or_none()
+
+    async def get_owned_by_name_for_update(
+        self, session: AsyncSession, user_id: int, name: str
+    ) -> UserTeacher | None:
+        result = await session.execute(
+            select(UserTeacher)
+            .join(UserTeacher.teacher)
+            .where(
+                UserTeacher.user_id == user_id,
+                func.lower(Teacher.name) == name.strip().casefold(),
+            )
+            .options(
+                selectinload(UserTeacher.teacher),
+                selectinload(UserTeacher.recoveries),
+            )
+            .with_for_update()
+        )
+        return result.scalars().unique().one_or_none()

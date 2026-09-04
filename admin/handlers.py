@@ -768,7 +768,10 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
         await message.answer(
             f"👨‍🏫 {teacher.name}\nشناسه: {teacher.id}\nآسیب: {teacher.damage} | جان: {teacher.max_hp}\n"
             f"خرید: {teacher.purchase_price} | ارتقا: {teacher.upgrade_price}\n"
-            f"بازشدن در سطح: {teacher.unlock_level}\nوضعیت: {'فعال' if teacher.is_active else 'غیرفعال'}",
+            f"بازشدن در سطح: {teacher.unlock_level}\n"
+            f"توانایی: {teacher.ability_text or '—'}\n"
+            f"استیکر: {teacher.sticker or '—'} | اموجی: {teacher.emoji or '—'}\n"
+            f"وضعیت: {'فعال' if teacher.is_active else 'غیرفعال'}",
             reply_markup=keyboards.teacher_actions(teacher.id),
         )
     await message.answer(
@@ -858,6 +861,26 @@ async def t_ability(message: Message, state: FSMContext, session: AsyncSession) 
         return
     data = await state.get_data()
     data["ability_text"] = None if message.text.strip() == "-" else message.text.strip()
+    await state.set_state(TeacherStates.sticker)
+    await message.answer("آیدی استیکر دبیر را وارد کنید (برای خالی بودن - بفرستید):")
+
+
+@router.message(TeacherStates.sticker)
+async def t_sticker(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    value = message.text.strip()
+    await state.update_data(sticker=None if value == "-" else value)
+    await state.set_state(TeacherStates.emoji)
+    await message.answer("آیدی اموجی دبیر را وارد کنید (برای خالی بودن - بفرستید):")
+
+
+@router.message(TeacherStates.emoji)
+async def t_emoji(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    data = await state.get_data()
+    data["emoji"] = None if message.text.strip() == "-" else message.text.strip()
     mode = data.pop("mode", "create")
     teacher_id = data.pop("teacher_id", None)
     teacher = (

@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.callbacks import ProfileCallback
+from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
 
 
 def profile_keyboard() -> InlineKeyboardMarkup:
@@ -8,8 +8,12 @@ def profile_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🔄 بروزرسانی آمار",
-                    callback_data=ProfileCallback(action="refresh").pack(),
+                    text="👤 اطلاعات کاربری",
+                    callback_data=ProfileCallback(action="info").pack(),
+                ),
+                InlineKeyboardButton(
+                    text="⬆️ ارتقای سطح",
+                    callback_data=ProfileCallback(action="upgrade").pack(),
                 )
             ],
             [
@@ -20,3 +24,16 @@ def profile_keyboard() -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def level_confirmation_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="✅ تأیید ارتقا",
+            callback_data=LevelConfirmationCallback(decision="confirm").pack(),
+        ),
+        InlineKeyboardButton(
+            text="❌ لغو",
+            callback_data=LevelConfirmationCallback(decision="cancel").pack(),
+        ),
+    ]])

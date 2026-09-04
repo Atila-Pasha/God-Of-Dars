@@ -4,8 +4,11 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 
 from admin.handlers import router
+from app.bot.custom_emojis import install as install_custom_emojis
 from app.bot.middlewares.database import DatabaseSessionMiddleware
 from app.core.config import settings
+
+install_custom_emojis()
 
 
 def create_dispatcher() -> Dispatcher:

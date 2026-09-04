@@ -32,3 +32,15 @@ level_26 = 25300
 level_27 = 28300
 level_28 = 31300
 level_29 = 34300
+
+[progression.level_upgrade_cost]
+level_1 = 10
+level_2 = 20
+level_3 = 35
+level_4 = 55
+level_5 = 80
+level_6 = 110
+level_7 = 145
+level_8 = 185
+level_9 = 230
+level_10 = 280

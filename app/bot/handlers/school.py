@@ -194,7 +194,7 @@ async def _teachers_view(
                 [
                     "",
                     (
-                        f"{_status_icon(teacher)} {teacher.teacher.name}  •  "
+                        f"{teacher.teacher.emoji or _status_icon(teacher)} {teacher.teacher.name}  •  "
                         f"Level {_number(teacher.level)}"
                     ),
                     (
@@ -237,7 +237,7 @@ async def _teacher_view(
         pass
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
     text = (
-        f"{_status_icon(teacher)} {teacher.teacher.name}\n\n"
+        f"{teacher.teacher.emoji or _status_icon(teacher)} {teacher.teacher.name}\n\n"
         f"🎖 Level: {_number(teacher.level)}\n"
         f"⚔️ Damage: {damage_text}\n"
         f"❤️ HP: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
@@ -294,6 +294,7 @@ async def _hospital_view(
             patients,
             can_activate=hospital_service.can_activate(),
             can_recover=hospital_service.can_begin_recovery(),
+            instant_recovery_cost=hospital_service.instant_recovery_cost(),
         ),
     )
 
@@ -416,6 +417,18 @@ async def teacher_callback_handler(
             teacher = await teacher_service.catalog_teacher(
                 session, callback_data.teacher_id
             )
+            if callback_data.origin == "buffet":
+                await _send_or_edit(
+                    callback,
+                    f"🛒 خرید دبیر «{teacher.name}»\n\n"
+                    f"قیمت: {_number(teacher.purchase_price)} سکه\n"
+                    "آیا خرید را تأیید می‌کنی؟",
+                    reply_markup=confirmation_keyboard(
+                        action="teacher_buy", target_id=teacher.id, origin="buffet"
+                    ),
+                )
+                await callback.answer()
+                return
             await _send_or_edit(
                 callback,
                 f"🛒 خرید دبیر {teacher.name}\n\n"
@@ -492,12 +505,15 @@ async def confirmation_callback_handler(
         if callback_data.decision == "cancel":
             if callback_data.action == "castle_upgrade":
                 await _castle_view(callback, session)
+            elif callback_data.action == "hospital_instant_recover":
+                await _hospital_view(callback, session)
             else:
-                await _teachers_view(
-                    callback,
-                    session,
-                    from_buffet=callback_data.origin == "buffet",
-                )
+                if callback_data.origin == "buffet":
+                    from app.bot.handlers.buffet import _teacher_shop_view
+
+                    await _teacher_shop_view(callback, session)
+                else:
+                    await _teachers_view(callback, session)
             await callback.answer("عملیات لغو شد.")
             return
 
@@ -505,13 +521,20 @@ async def confirmation_callback_handler(
             await castle_service.upgrade(session, user.id)
             await _castle_view(callback, session)
             notice = "دژ با موفقیت ارتقا پیدا کرد."
+        elif callback_data.action == "hospital_instant_recover":
+            await hospital_service.instant_recover(
+                session, user.id, callback_data.target_id
+            )
+            await _hospital_view(callback, session)
+            notice = "دبیر با پرداخت الماس فوراً بهبود پیدا کرد."
         elif callback_data.action == "teacher_buy":
             await teacher_service.buy(session, user.id, callback_data.target_id)
-            await _teachers_view(
-                callback,
-                session,
-                from_buffet=callback_data.origin == "buffet",
-            )
+            if callback_data.origin == "buffet":
+                from app.bot.handlers.buffet import _teacher_shop_view
+
+                await _teacher_shop_view(callback, session)
+            else:
+                await _teachers_view(callback, session)
             notice = "دبیر با موفقیت خریداری شد."
         elif callback_data.action == "teacher_upgrade":
             await teacher_service.upgrade(session, user.id, callback_data.target_id)
@@ -551,6 +574,25 @@ async def hospital_callback_handler(
                 session, user.id, callback_data.teacher_id
             )
             notice = "فرآیند بهبودی دبیر آغاز شد."
+        elif callback_data.action == "instant":
+            cost = hospital_service.instant_recovery_cost()
+            if cost is None:
+                raise SchoolError
+            owned = await teacher_service.get_owned(
+                session, user.id, callback_data.teacher_id
+            )
+            await _send_or_edit(
+                callback,
+                f"⚡ بهبود فوری دبیر «{owned.teacher.name}»\n\n"
+                f"هزینه: {_number(cost)} 💎\n"
+                "با پرداخت الماس، دبیر فوراً کاملاً بهبود پیدا می‌کند.\n"
+                "آیا ادامه می‌دهی؟",
+                reply_markup=confirmation_keyboard(
+                    action="hospital_instant_recover", target_id=owned.id
+                ),
+            )
+            await callback.answer()
+            return
         elif callback_data.action == "back":
             await _school_view(callback, session)
             await callback.answer()

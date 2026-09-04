@@ -31,7 +31,7 @@ class TeacherCallback(CallbackData, prefix="teacher"):
 
 
 class HospitalCallback(CallbackData, prefix="hospital"):
-    action: Literal["activate", "recover", "back"]
+    action: Literal["activate", "recover", "instant", "back"]
     teacher_id: int
 
 
@@ -42,10 +42,18 @@ class ConfirmationCallback(CallbackData, prefix="confirm"):
         "teacher_upgrade",
         "teacher_sell",
         "teacher_activate",
+        "hospital_instant_recover",
     ]
     target_id: int
     decision: Literal["confirm", "cancel"]
     origin: Literal["school", "buffet"] = "school"
+
+
+class AttackConfirmationCallback(CallbackData, prefix="attack"):
+    attacker_id: int
+    target_id: int
+    teacher_id: int
+    decision: Literal["confirm", "cancel"]
 
 
 class LibraryCallback(CallbackData, prefix="library"):
@@ -61,7 +69,11 @@ class ReferralCallback(CallbackData, prefix="referral"):
 
 
 class ProfileCallback(CallbackData, prefix="profile"):
-    action: Literal["refresh", "back"]
+    action: Literal["info", "upgrade", "back", "refresh"]
+
+
+class LevelConfirmationCallback(CallbackData, prefix="level"):
+    decision: Literal["confirm", "cancel"]
 
 
 class BuffetCallback(CallbackData, prefix="buffet"):

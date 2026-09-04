@@ -1,5 +1,6 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.castle import Castle
 from app.models.defense import Defense
@@ -8,6 +9,38 @@ from app.models.user import User
 
 
 class UserRepository:
+    async def get_resources_for_update(
+        self, session: AsyncSession, user_id: int
+    ) -> Resource | None:
+        result = await session.execute(
+            select(Resource).where(Resource.user_id == user_id).with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_id_for_update(
+        self, session: AsyncSession, user_id: int
+    ) -> User | None:
+        result = await session.execute(
+            select(User)
+            .where(User.id == user_id)
+            .options(selectinload(User.resources))
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    async def get_active_by_id(
+        self, session: AsyncSession, user_id: int, *, for_update: bool = False
+    ) -> User | None:
+        statement = (
+            select(User)
+            .where(User.id == user_id, User.is_active.is_(True))
+            .options(selectinload(User.resources))
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
+
     async def get_by_telegram_user_id(
         self,
         session: AsyncSession,
@@ -15,7 +48,25 @@ class UserRepository:
         *,
         for_update: bool = False,
     ) -> User | None:
-        statement = select(User).where(User.telegram_user_id == telegram_user_id)
+        statement = (
+            select(User)
+            .where(User.telegram_user_id == telegram_user_id)
+            .options(selectinload(User.resources))
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
+
+    async def get_active_by_username(
+        self, session: AsyncSession, username: str, *, for_update: bool = False
+    ) -> User | None:
+        normalized = username.strip().removeprefix("@").casefold()
+        statement = (
+            select(User)
+            .where(User.is_active.is_(True), func.lower(User.username) == normalized)
+            .options(selectinload(User.resources))
+        )
         if for_update:
             statement = statement.with_for_update()
         result = await session.execute(statement)
