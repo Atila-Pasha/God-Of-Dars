@@ -6,6 +6,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 
 from app.bot import create_dispatcher
 from app.core.config import settings
+from app.workers.runtime import run_workers
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +19,12 @@ async def run_main_bot() -> None:
         else AiohttpSession(limit=settings.TELEGRAM_HTTP_LIMIT)
     )
     async with Bot(token=settings.BOT_TOKEN, session=bot_session) as bot:
-        await dispatcher.start_polling(
-            bot,
-            tasks_concurrency_limit=settings.BOT_CONCURRENCY_LIMIT,
+        await asyncio.gather(
+            dispatcher.start_polling(
+                bot,
+                tasks_concurrency_limit=settings.BOT_CONCURRENCY_LIMIT,
+            ),
+            run_workers(bot),
         )
 
 

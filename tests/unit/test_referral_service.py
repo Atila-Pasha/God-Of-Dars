@@ -83,7 +83,7 @@ async def test_referral_is_applied_once_and_locks_users_deterministically():
     assert reward_service.grant.await_count == 2
     inviter_reward_call = reward_service.grant.await_args_list[0]
     assert inviter_reward_call.kwargs["spec"].resource_type is ResourceType.DIAMOND
-    assert inviter_reward_call.kwargs["spec"].amount == 10
+    assert inviter_reward_call.kwargs["spec"].amount == 5
 
     repeated = await service.apply(
         session(), referred_user_id=referred.id, referrer_id=referrer.id

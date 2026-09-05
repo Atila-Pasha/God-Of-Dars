@@ -38,8 +38,8 @@ class Recovery(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_teacher_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("user_teachers.id", ondelete="CASCADE"), nullable=False
+    user_teacher_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("user_teachers.id", ondelete="SET NULL"), nullable=True
     )
     recovery_started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -60,6 +60,6 @@ class Recovery(Base):
         onupdate=func.now(),
     )
 
-    user_teacher: Mapped[UserTeacher] = relationship(
+    user_teacher: Mapped[UserTeacher | None] = relationship(
         "UserTeacher", back_populates="recoveries", passive_deletes=True
     )

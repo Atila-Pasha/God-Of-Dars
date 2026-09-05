@@ -12,7 +12,7 @@ class SchoolCallback(CallbackData, prefix="school"):
 
 
 class CastleCallback(CallbackData, prefix="castle"):
-    action: Literal["view", "upgrade", "back"]
+    action: Literal["view", "upgrade", "repair", "back"]
 
 
 class TeacherCallback(CallbackData, prefix="teacher"):
@@ -39,6 +39,7 @@ class HospitalCallback(CallbackData, prefix="hospital"):
 class ConfirmationCallback(CallbackData, prefix="confirm"):
     action: Literal[
         "castle_upgrade",
+        "castle_repair",
         "teacher_buy",
         "teacher_upgrade",
         "teacher_sell",
@@ -55,6 +56,9 @@ class AttackConfirmationCallback(CallbackData, prefix="attack"):
     target_id: int
     teacher_id: int
     decision: Literal["confirm", "cancel"]
+    # Comma-separated owned-teacher ids for multi-teacher attacks. An empty
+    # value keeps callbacks created by older messages fully compatible.
+    teacher_ids: str = ""
 
 
 class LibraryCallback(CallbackData, prefix="library"):
@@ -70,7 +74,18 @@ class ReferralCallback(CallbackData, prefix="referral"):
 
 
 class ProfileCallback(CallbackData, prefix="profile"):
-    action: Literal["info", "upgrade", "back", "refresh"]
+    action: Literal[
+        "info",
+        "profile",
+        "war",
+        "assets",
+        "knowledge",
+        "upgrade",
+        "back",
+        "refresh",
+        "delete",
+    ]
+    owner_id: int = 0
 
 
 class LevelConfirmationCallback(CallbackData, prefix="level"):

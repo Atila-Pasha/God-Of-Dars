@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove, TelegramO
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.custom_emojis import reset_group_reply_context, set_group_reply_context
 from app.bot.keyboards.main_menu import MENU_SECTION_LABELS
 from app.core.config import settings
 from app.services.group_service import GroupService
@@ -17,7 +18,9 @@ from app.services.group_service import GroupService
 logger = logging.getLogger(__name__)
 
 GROUP_CHAT_TYPES = frozenset({"group", "supergroup"})
-ALLOWED_GROUP_COMMANDS = frozenset({"stat", "attack"})
+ALLOWED_GROUP_COMMANDS = frozenset(
+    {"stat", "attack", "buy", "profile_info", "war", "assets", "knowledge"}
+)
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
 
 
@@ -40,9 +43,21 @@ class GroupAccessMiddleware(BaseMiddleware):
                 if self._is_menu_input(event):
                     await self._remove_menu_keyboard(event)
                 return None
+            token = set_group_reply_context(event.chat.id, event.message_id)
+            try:
+                return await handler(event, data)
+            finally:
+                reset_group_reply_context(token)
         elif isinstance(event, CallbackQuery) and self._is_group_callback(event):
             if not self._callback_is_allowed(event):
                 return None
+            token = set_group_reply_context(
+                event.message.chat.id, event.message.message_id
+            )
+            try:
+                return await handler(event, data)
+            finally:
+                reset_group_reply_context(token)
         return await handler(event, data)
 
     async def _register_group(
@@ -83,7 +98,7 @@ class GroupAccessMiddleware(BaseMiddleware):
             return True
         # Attack is intentionally a plain-text group action. Keep it explicit
         # here so future group restrictions cannot silently swallow it.
-        if text.startswith("حمله"):
+        if text.startswith(("حمله", "خرید", "اطلاعات")):
             return True
         if text.startswith("/"):
             command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]

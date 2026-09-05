@@ -5,11 +5,13 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    String,
     func,
     text,
 )
@@ -34,6 +36,7 @@ class Attack(Base):
         Index("ix_attacks_teacher_id", "teacher_id"),
         Index("ix_attacks_status", "status"),
         Index("ix_attacks_resolve_at", "resolve_at"),
+            Index("ix_attacks_attack_command_id", "attack_command_id"),
         Index(
             "uq_pending_attack_per_teacher",
             "attacker_id",
@@ -72,8 +75,8 @@ class Attack(Base):
     target_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
-    teacher_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("user_teachers.id", ondelete="RESTRICT"), nullable=False
+    teacher_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("user_teachers.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[AttackStatus] = mapped_column(
         SAEnum(AttackStatus, name="attack_status"),
@@ -86,6 +89,10 @@ class Attack(Base):
     )
     resolve_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+    attack_command_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    attack_xp_awarded: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -115,6 +122,6 @@ class Attack(Base):
         back_populates="attacks_as_target",
         passive_deletes=True,
     )
-    teacher: Mapped[UserTeacher] = relationship(
+    teacher: Mapped[UserTeacher | None] = relationship(
         "UserTeacher", back_populates="attacks", passive_deletes=True
     )

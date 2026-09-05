@@ -14,6 +14,10 @@ class InsufficientCoins(SchoolError):
     pass
 
 
+class InsufficientDiamonds(InsufficientCoins):
+    pass
+
+
 class TeacherNotFound(SchoolError):
     pass
 
@@ -50,6 +54,10 @@ class TeacherInHospital(SchoolError):
     """The selected teacher is recovering and cannot join a battle."""
 
 
+class AttackInProgress(SchoolError):
+    """The player must wait for the currently active attack to finish."""
+
+
 class CastleNotFound(SchoolError):
     pass
 
@@ -59,6 +67,10 @@ class CastleUpgradeUnavailable(SchoolError):
 
 
 class OperationNotConfigured(SchoolError):
+    pass
+
+
+class MaxLevelReached(SchoolError):
     pass
 
 

@@ -1,10 +1,12 @@
-aiogram>=3.0
-aiohttp-socks>=0.8
-sqlalchemy>=2.0
-asyncpg>=0.29
-alembic>=1.13
-pydantic-settings>=2.0
+aiogram<4,>=3.31
+aiohttp-socks<1,>=0.12
+alembic<2,>=1.19
+asyncpg<1,>=0.31
+pydantic-settings<3,>=2.15
+sqlalchemy[asyncio]<3,>=2.0.52
 
 [dev]
-pytest>=8.0
-pytest-asyncio>=0.23
+mypy<3,>=2.3
+pytest<10,>=9.1
+pytest-asyncio<2,>=1.4
+ruff<1,>=0.16

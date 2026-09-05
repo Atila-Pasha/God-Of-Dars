@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from functools import wraps
 from typing import Any
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import MessageEntity
 
 # The visible character is retained as a fallback. Telegram replaces it with
@@ -91,6 +93,30 @@ CUSTOM_EMOJI_IDS: dict[str, str] = {
     "😁": "5825647731388981287",
 }
 
+# Set by the group middleware while a group update is being handled. This
+# lets every outgoing response in that handler reply to the triggering message
+# without changing every individual handler call site.
+_group_reply_context: ContextVar[tuple[int, int] | None] = ContextVar(
+    "godofdars_group_reply_context", default=None
+)
+
+
+def set_group_reply_context(chat_id: int, message_id: int):
+    return _group_reply_context.set((chat_id, message_id))
+
+
+def reset_group_reply_context(token) -> None:
+    _group_reply_context.reset(token)
+
+
+def _add_group_reply(kwargs: dict[str, Any]) -> None:
+    context = _group_reply_context.get()
+    if context is None or kwargs.get("reply_to_message_id") is not None:
+        return
+    chat_id = kwargs.get("chat_id")
+    if chat_id == context[0]:
+        kwargs["reply_to_message_id"] = context[1]
+
 
 def premium_emoji_id(value: str | None, *, fallback: str | None = None) -> str | None:
     """Return a Telegram custom-emoji id from an admin-stored value or alias."""
@@ -146,6 +172,14 @@ def _decorate(kwargs: dict[str, Any], text_key: str, entities_key: str) -> None:
 
 def _decorate_method(method: Any) -> None:
     """Decorate aiogram method objects used by Message.answer/edit shortcuts."""
+    context = _group_reply_context.get()
+    if (
+        context is not None
+        and getattr(method, "chat_id", None) == context[0]
+        and getattr(method, "reply_to_message_id", None) is None
+        and hasattr(method, "reply_to_message_id")
+    ):
+        method.reply_to_message_id = context[1]
     if hasattr(method, "text") and isinstance(method.text, str):
         generated = custom_emoji_entities(method.text)
         if generated and not getattr(method, "entities", None):
@@ -191,6 +225,7 @@ def install() -> None:
 
     @wraps(original_send_message)
     async def send_message(self: Bot, *args: Any, **kwargs: Any) -> Any:
+        _add_group_reply(kwargs)
         _decorate(kwargs, "text", "entities")
         _decorate_markup(kwargs)
         return await original_send_message(self, *args, **kwargs)
@@ -203,6 +238,7 @@ def install() -> None:
 
     @wraps(original_send_photo)
     async def send_photo(self: Bot, *args: Any, **kwargs: Any) -> Any:
+        _add_group_reply(kwargs)
         _decorate(kwargs, "caption", "caption_entities")
         _decorate_markup(kwargs)
         return await original_send_photo(self, *args, **kwargs)
@@ -216,7 +252,18 @@ def install() -> None:
     @wraps(original_call)
     async def call(self: Bot, method: Any, *args: Any, **kwargs: Any) -> Any:
         _decorate_method(method)
-        return await original_call(self, method, *args, **kwargs)
+        try:
+            return await original_call(self, method, *args, **kwargs)
+        except TelegramBadRequest as exc:
+            # Callback queries expire quickly. A late acknowledgement must not
+            # crash polling after the requested database operation completed.
+            description = str(exc).lower()
+            if (
+                method.__class__.__name__ == "AnswerCallbackQuery"
+                and ("query is too old" in description or "query id is invalid" in description)
+            ):
+                return None
+            raise
 
     Bot.send_message = send_message  # type: ignore[method-assign]
     Bot.edit_message_text = edit_message_text  # type: ignore[method-assign]

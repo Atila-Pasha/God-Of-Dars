@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 RESOURCE_LABELS = {
     "COIN": "طلا",
     "DIAMOND": "الماس",
-    "BANANA": "موز",
+    "BANANA": "XP",
 }
 
 LIBRARY_LABEL = next(

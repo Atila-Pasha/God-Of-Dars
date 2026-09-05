@@ -61,6 +61,26 @@ chance_service = ChanceService()
 logger = logging.getLogger(__name__)
 group_question_publisher = GroupQuestionPublisher()
 
+TEACHER_EDIT_PROMPTS = {
+    "name": "نام جدید دبیر را بفرستید:",
+    "damage": "میزان آسیب جدید را بفرستید:",
+    "max_hp": "حداکثر جان جدید را بفرستید:",
+    "purchase_price": "قیمت خرید جدید را بفرستید:",
+    "upgrade_price": "قیمت ارتقای جدید را بفرستید:",
+    "unlock_level": "سطح بازشدن جدید را بفرستید:",
+    "ability_text": "متن توانایی جدید را بفرستید؛ برای حذف، - بفرستید:",
+    "sticker": "آیدی استیکر جدید را بفرستید؛ برای حذف، - بفرستید:",
+    "emoji": "آیدی اموجی پرمیوم جدید را بفرستید؛ برای حذف، - بفرستید:",
+}
+SHIELD_EDIT_PROMPTS = {
+    "name": "نام جدید سپر را بفرستید:",
+    "reduction_percent": "درصد کاهش جدید را بفرستید (۰ تا ۱۰۰):",
+    "flat_absorption": "مقدار جذب ثابت جدید را بفرستید:",
+    "purchase_price": "قیمت خرید جدید را بفرستید:",
+    "unlock_level": "سطح بازشدن جدید را بفرستید:",
+    "description": "توضیح جدید را بفرستید؛ برای حذف، - بفرستید:",
+}
+
 
 def allowed(message: Message | CallbackQuery) -> bool:
     return (
@@ -348,8 +368,22 @@ def user_text(user) -> str:
         f"👤 {name or 'بدون نام'}\n🆔 شناسه داخلی: {user.id}\n"
         f"📱 تلگرام: {user.telegram_user_id}\n🔗 نام کاربری: @{user.username or 'ندارد'}\n"
         f"وضعیت: {'فعال' if user.is_active else 'مسدود'}\n"
-        f"منابع: 🪙 {r.coin if r else 0} | 💎 {r.diamond if r else 0} | 🍌 {r.banana if r else 0}"
+        f"منابع: 🪙 {r.coin if r else 0} | 💎 {r.diamond if r else 0} | ✨ XP {r.banana if r else 0}"
     )
+
+
+def user_teachers_text(user, teachers) -> str:
+    if not teachers:
+        return f"👨‍🏫 دبیرهای کاربر «{user.first_name}»\n\nاین کاربر دبیری ندارد."
+    lines = [f"👨‍🏫 دبیرهای کاربر «{user.first_name}»\n"]
+    for item in teachers:
+        teacher = item.teacher
+        lines.append(
+            f"#{item.id} — {teacher.name}\n"
+            f"سطح: {item.level} | جان: {item.current_hp}/{teacher.max_hp}\n"
+            f"وضعیت: {item.status.value}"
+        )
+    return "\n\n".join(lines)
 
 
 @router.message(CommandStart())
@@ -517,10 +551,56 @@ async def user_callback(
         )
         await callback.answer("وضعیت تغییر کرد.")
         return
+    if action == "teachers":
+        teachers = await service.list_user_teachers(session, user_id)
+        await callback.message.answer(
+            user_teachers_text(user, teachers),
+            reply_markup=keyboards.user_teacher_list(user_id, teachers),
+        )
+        await callback.answer()
+        return
     await state.update_data(user_id=user_id)
     await state.set_state(UserStates.resource_coin)
     await callback.message.answer("چقدر سکه اضافه کنم؟\nبرای صفر، 0 بفرستید.")
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("user_teacher:"))
+async def user_teacher_callback(
+    callback: CallbackQuery, session: AsyncSession
+) -> None:
+    if not allowed(callback) or not callback.data:
+        return
+    parts = callback.data.split(":")
+    if (
+        parts[1] == "close"
+        and len(parts) == 3
+    ):
+        await callback.message.delete()
+        await callback.answer()
+        return
+    if len(parts) != 4 or parts[1] != "delete":
+        await callback.answer("عملیات نامعتبر است.", show_alert=True)
+        return
+    user_id = int(parts[2])
+    user_teacher_id = int(parts[3])
+    user_teacher = await service.delete_user_teacher(
+        session, user_teacher_id, user_id
+    )
+    if user_teacher is None:
+        await callback.answer("این دبیر برای کاربر پیدا نشد.", show_alert=True)
+        return
+    user = await service.get_user(session, user_id)
+    if user is None:
+        await callback.answer("کاربر پیدا نشد.", show_alert=True)
+        return
+    teachers = await service.list_user_teachers(session, user_id)
+    await safe_edit_text(
+        callback.message,
+        user_teachers_text(user, teachers),
+        reply_markup=keyboards.user_teacher_list(user_id, teachers),
+    )
+    await callback.answer(f"دبیر «{user_teacher.teacher.name}» حذف شد.")
 
 
 @router.message(UserStates.resource_coin)
@@ -538,7 +618,9 @@ async def resource_coin(message: Message, state: FSMContext) -> None:
 
 
 @router.message(UserStates.resource_diamond)
-async def resource_diamond(message: Message, state: FSMContext) -> None:
+async def resource_diamond(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     try:
@@ -547,8 +629,7 @@ async def resource_diamond(message: Message, state: FSMContext) -> None:
         await message.answer(str(exc))
         return
     await state.update_data(diamond=value)
-    await state.set_state(UserStates.resource_banana)
-    await message.answer("چقدر موز اضافه کنم؟\nبرای صفر، 0 بفرستید.")
+    await save_resources(message, state, session)
 
 
 @router.message(UserStates.resource_banana)
@@ -557,24 +638,19 @@ async def save_resources(
 ) -> None:
     if not allowed(message) or not message.text:
         return
-    try:
-        banana = number(message.text, "مقدار موز")
-    except ValueError as exc:
-        await message.answer(str(exc))
-        return
     data = await state.get_data()
     user = await service.add_resources(
         session,
         data["user_id"],
         coin=data["coin"],
         diamond=data["diamond"],
-        banana=banana,
+        banana=0,
     )
     await state.clear()
     if user is None:
         await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.main())
         return
-    amounts = f"🪙 {data['coin']} سکه، 💎 {data['diamond']} الماس و 🍌 {banana} موز"
+    amounts = f"🪙 {data['coin']} سکه و 💎 {data['diamond']} الماس"
     await message.answer(
         "منابع با موفقیت اضافه شد.\n" + user_text(user), reply_markup=keyboards.main()
     )
@@ -686,25 +762,23 @@ async def q_coin(message, state):
 
 
 @router.message(QuestionStates.diamond)
-async def q_diamond(message, state):
-    await q_number(
-        message,
-        state,
-        QuestionStates.banana,
-        "diamond",
-        "پاداش موز را فقط به‌صورت عدد بفرستید (برای صفر: 0):",
-    )
+async def q_diamond(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        value = 0 if message.text.strip() == "-" else number(message.text, "مقدار")
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(diamond=value, banana=0)
+    await q_banana(message, state, session)
 
 
 @router.message(QuestionStates.banana)
 async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message) or not message.text:
         return
-    try:
-        banana = 0 if message.text.strip() == "-" else number(message.text, "پاداش موز")
-    except ValueError as exc:
-        await message.answer(str(exc))
-        return
+    banana = 0
     data = await state.get_data()
     expires_at = datetime.now(UTC) + timedelta(hours=data["hours"])
     if data.get("scope") == "group":
@@ -767,7 +841,7 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
     for teacher in items:
         await message.answer(
             f"👨‍🏫 {teacher.name}\nشناسه: {teacher.id}\nآسیب: {teacher.damage} | جان: {teacher.max_hp}\n"
-            f"خرید: {teacher.purchase_price} | ارتقا: {teacher.upgrade_price}\n"
+            f"خرید: {teacher.purchase_price} سکه | ارتقا: {teacher.upgrade_price} الماس\n"
             f"بازشدن در سطح: {teacher.unlock_level}\n"
             f"توانایی: {teacher.ability_text or '—'}\n"
             f"استیکر: {teacher.sticker or '—'} | اموجی: {teacher.emoji or '—'}\n"
@@ -859,8 +933,9 @@ async def t_unlock(message, state):
 async def t_ability(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message) or not message.text:
         return
-    data = await state.get_data()
-    data["ability_text"] = None if message.text.strip() == "-" else message.text.strip()
+    await state.update_data(
+        ability_text=None if message.text.strip() == "-" else message.text.strip()
+    )
     await state.set_state(TeacherStates.sticker)
     await message.answer("آیدی استیکر دبیر را وارد کنید (برای خالی بودن - بفرستید):")
 
@@ -901,8 +976,17 @@ async def teacher_callback(
 ) -> None:
     if not allowed(callback) or not callback.data:
         return
-    _, action, raw_id = callback.data.split(":")
-    teacher_id = int(raw_id)
+    parts = callback.data.split(":")
+    if len(parts) < 3 or parts[0] != "teacher":
+        await callback.answer("دکمه منقضی یا نامعتبر است.", show_alert=True)
+        return
+    action = parts[1]
+    raw_id = parts[2]
+    try:
+        teacher_id = int(raw_id)
+    except ValueError:
+        await callback.answer("شناسه دبیر نامعتبر است.", show_alert=True)
+        return
     teacher = await service.get_teacher(session, teacher_id)
     if teacher is None:
         await callback.answer("دبیر پیدا نشد.", show_alert=True)
@@ -915,12 +999,70 @@ async def teacher_callback(
         )
         await safe_edit_reply_markup(callback.message, reply_markup=None)
         return
-    # Editing is a complete replacement form, which avoids partial invalid data.
-    await state.clear()
-    await state.update_data(mode="edit", teacher_id=teacher_id)
-    await state.set_state(TeacherStates.name)
-    await callback.message.answer(f"ویرایش دبیر {teacher.name}. نام جدید:")
+    if action == "edit":
+        await state.clear()
+        await callback.message.answer(
+            f"ویرایش دبیر «{teacher.name}»\nیک مورد را برای تغییر انتخاب کنید:",
+            reply_markup=keyboards.teacher_edit_fields(teacher_id),
+        )
+    elif action == "field" and len(parts) == 4:
+        field = parts[3]
+        if field not in TEACHER_EDIT_PROMPTS:
+            await callback.answer("این گزینه معتبر نیست.", show_alert=True)
+            return
+        await state.clear()
+        await state.update_data(edit_id=teacher_id, edit_field=field)
+        await state.set_state(TeacherStates.edit_value)
+        await callback.message.answer(
+            TEACHER_EDIT_PROMPTS[field], reply_markup=keyboards.cancel_keyboard()
+        )
+    elif action == "done":
+        await state.clear()
+        await callback.message.answer(
+            f"ویرایش دبیر «{teacher.name}» تمام شد.", reply_markup=keyboards.main()
+        )
+    else:
+        await callback.answer("عملیات ویرایش معتبر نیست.", show_alert=True)
+        return
     await callback.answer()
+
+
+@router.message(TeacherStates.edit_value)
+async def teacher_edit_value(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    data = await state.get_data()
+    field = data.get("edit_field")
+    teacher_id = data.get("edit_id")
+    if field not in TEACHER_EDIT_PROMPTS or teacher_id is None:
+        await state.clear()
+        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        return
+    value = message.text.strip()
+    try:
+        if field in {"name"}:
+            if not value:
+                raise ValueError("نام دبیر نمی‌تواند خالی باشد.")
+        elif field in {"ability_text", "sticker", "emoji"}:
+            value = None if value == "-" else value
+        else:
+            value = number(value, field, minimum=1 if field == "unlock_level" else 0)
+            if field == "reduction_percent" and value > 100:
+                raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
+        teacher = await service.update_teacher(session, int(teacher_id), **{field: value})
+        if teacher is None:
+            raise ValueError("دبیر پیدا نشد.")
+    except ValueError as exc:
+        await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
+        return
+    await state.clear()
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer(
+        f"ویرایش دبیر «{teacher.name}»\nیک مورد دیگر را برای تغییر انتخاب کنید:",
+        reply_markup=keyboards.teacher_edit_fields(teacher.id),
+    )
 
 
 @router.message(F.text.in_({"مدیریت سپرها", "🛡 مدیریت سپرها"}))
@@ -1060,8 +1202,17 @@ async def shield_callback(
 ) -> None:
     if not allowed(callback) or not callback.data:
         return
-    _, action, raw_id = callback.data.split(":")
-    shield_id = int(raw_id)
+    parts = callback.data.split(":")
+    if len(parts) < 3 or parts[0] != "shield":
+        await callback.answer("دکمه منقضی یا نامعتبر است.", show_alert=True)
+        return
+    action = parts[1]
+    raw_id = parts[2]
+    try:
+        shield_id = int(raw_id)
+    except ValueError:
+        await callback.answer("شناسه سپر نامعتبر است.", show_alert=True)
+        return
     shield = await shield_service.get_shield(session, shield_id)
     if shield is None:
         await callback.answer("سپر پیدا نشد.", show_alert=True)
@@ -1074,8 +1225,69 @@ async def shield_callback(
         )
         await safe_edit_reply_markup(callback.message, reply_markup=None)
         return
-    await state.clear()
-    await state.update_data(mode="edit", shield_id=shield_id)
-    await state.set_state(ShieldStates.name)
-    await callback.message.answer(f"ویرایش سپر {shield.name}. نام جدید:")
+    if action == "edit":
+        await state.clear()
+        await callback.message.answer(
+            f"ویرایش سپر «{shield.name}»\nیک مورد را برای تغییر انتخاب کنید:",
+            reply_markup=keyboards.shield_edit_fields(shield_id),
+        )
+    elif action == "field" and len(parts) == 4:
+        field = parts[3]
+        if field not in SHIELD_EDIT_PROMPTS:
+            await callback.answer("این گزینه معتبر نیست.", show_alert=True)
+            return
+        await state.clear()
+        await state.update_data(edit_id=shield_id, edit_field=field)
+        await state.set_state(ShieldStates.edit_value)
+        await callback.message.answer(
+            SHIELD_EDIT_PROMPTS[field], reply_markup=keyboards.cancel_keyboard()
+        )
+    elif action == "done":
+        await state.clear()
+        await callback.message.answer(
+            f"ویرایش سپر «{shield.name}» تمام شد.", reply_markup=keyboards.main()
+        )
+    else:
+        await callback.answer("عملیات ویرایش معتبر نیست.", show_alert=True)
+        return
     await callback.answer()
+
+
+@router.message(ShieldStates.edit_value)
+async def shield_edit_value(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    data = await state.get_data()
+    field = data.get("edit_field")
+    shield_id = data.get("edit_id")
+    if field not in SHIELD_EDIT_PROMPTS or shield_id is None:
+        await state.clear()
+        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        return
+    value = message.text.strip()
+    try:
+        if field == "name":
+            if not value:
+                raise ValueError("نام سپر نمی‌تواند خالی باشد.")
+        elif field == "description":
+            value = None if value == "-" else value
+        else:
+            value = number(value, field, minimum=1 if field == "unlock_level" else 0)
+            if field == "reduction_percent" and value > 100:
+                raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
+        shield = await shield_service.update_shield(
+            session, int(shield_id), **{field: value}
+        )
+        if shield is None:
+            raise ValueError("سپر پیدا نشد.")
+    except ValueError as exc:
+        await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
+        return
+    await state.clear()
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer(
+        f"ویرایش سپر «{shield.name}»\nیک مورد دیگر را برای تغییر انتخاب کنید:",
+        reply_markup=keyboards.shield_edit_fields(shield.id),
+    )

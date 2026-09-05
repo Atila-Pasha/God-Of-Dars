@@ -29,7 +29,7 @@ class HospitalService:
         self.config = config or game_config
 
     def can_activate(self) -> bool:
-        return self.config.teacher_activation_cost is not None
+        return self.config.instant_recovery_diamond_cost is not None
 
     def can_begin_recovery(self) -> bool:
         return self.config.recovery_is_configured

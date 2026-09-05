@@ -162,12 +162,21 @@ class MineService:
             if "locked" in message.lower():
                 raise MineLevelLocked from exc
             raise MineUpgradeUnavailable from exc
-        ResourceService.debit_coin(
+        ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
-            amount=next_level.upgrade_cost or 0,
+            amount=next_level.diamond_cost or 0,
             reason="MINE_UPGRADE",
+            reference_type="MINE",
+            reference_id=mine.id,
+        )
+        ResourceService.credit_banana(
+            session,
+            resources,
+            user_id=user_id,
+            amount=self.config.upgrade_banana_reward(next_level.diamond_cost or 0),
+            reason="MINE_UPGRADE_XP",
             reference_type="MINE",
             reference_id=mine.id,
         )

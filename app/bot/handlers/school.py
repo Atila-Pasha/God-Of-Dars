@@ -30,7 +30,7 @@ from app.core.enums import TeacherStatus
 from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
-from app.services.school_errors import SchoolError
+from app.services.school_errors import InsufficientDiamonds, SchoolError
 from app.services.teacher_service import TeacherService
 from app.services.user_service import UserInactiveError, UserService
 
@@ -150,15 +150,26 @@ async def _castle_view(
     text = (
         " 🏰 دژ مدرسه \n\n"
         f"✨ سطح دژ: {_number(castle.level)}\n"
-        f"⚔️ قدرت دژ: {_number(castle.strength)}\n"
+        f"⚔️ سلامت دژ: {_number(castle.strength)} / "
+        f"{_number(castle_service.config.castle_max_strength(castle.level))}\n"
         f"🛡 قدرت سیستم دفاعی: {_number(castle.defense_power)}\n\n"
         "🏗️ وضعیت دفاعی\n"
         f"قدرت کلی: {_number(castle.strength + castle.defense_power)} واحد"
     )
+    castle_model = await castle_service.repository.get_by_user(
+        session, user.id, for_update=False
+    )
+    can_repair = (
+        castle_model is not None
+        and castle_service.repair_quote(castle_model).missing_strength > 0
+    )
     await _send_or_edit(
         target,
         text,
-        reply_markup=castle_keyboard(castle_service.can_upgrade_level(castle.level)),
+        reply_markup=castle_keyboard(
+            castle_service.can_upgrade_level(castle.level),
+            can_repair=can_repair,
+        ),
     )
 
 
@@ -175,7 +186,6 @@ async def _teachers_view(
     free_slots = max(capacity.available - capacity.owned, 0)
     text_lines = [
         "👨‍🏫 دبیرهای من \n\n",
-        "",
         f"🎖 سطح شما: {_number(user.level)}",
         "",
         "📊 ظرفیت استفاده‌شده",
@@ -184,31 +194,10 @@ async def _teachers_view(
             f"{_number(capacity.owned)} / {_number(capacity.available)} "
             f"({_progress_percent(capacity.owned, capacity.available)})"
         ),
-        f"🪑 جای خالی: {_number(free_slots)}",
-        "📌 ظرفیت نهایی از مجموع ظرفیت دبیرهای خریداری‌شده محاسبه می‌شود.",
         "",
     ]
-    if capacity.available < capacity.maximum:
-        text_lines.append(
-            f"🔒 {_number(capacity.maximum - capacity.available)} جایگاه با Level بالاتر باز می‌شود."
-        )
     if teachers:
         text_lines.append("👥 فهرست دبیرها")
-        for teacher in teachers:
-            text_lines.extend(
-                [
-                    "",
-                    (
-                        f"{_teacher_icon(teacher)} {teacher.teacher.name}  •  "
-                        f"Level {_number(teacher.level)}"
-                    ),
-                    (
-                        f"HP  {_progress_bar(teacher.current_hp, teacher.teacher.max_hp, width=8)} "
-                        f"{_number(teacher.current_hp)} / {_number(teacher.teacher.max_hp)}"
-                    ),
-                    f"وضعیت: {_status(teacher)}",
-                ]
-            )
     else:
         text_lines.append("🌱 هنوز دبیری به مدرسه‌تان اضافه نشده است.")
     await _send_or_edit(
@@ -365,7 +354,7 @@ async def castle_callback_handler(
             await _send_or_edit(
                 callback,
                 f"⬆️ ارتقای دژ\n\n"
-                f"هزینه: {_number(upgrade.coin_cost)} سکه\n"
+                f"هزینه: {_number(upgrade.diamond_cost)} الماس\n"
                 "آیا می‌خواهی ارتقای دژ را انجام بدهم؟",
                 reply_markup=confirmation_keyboard(
                     action="castle_upgrade", target_id=0
@@ -373,9 +362,34 @@ async def castle_callback_handler(
             )
             await callback.answer()
             return
+        elif callback_data.action == "repair":
+            user = await _user(session, callback.from_user.id)
+            castle_model = await castle_service.repository.get_by_user(
+                session, user.id, for_update=False
+            )
+            if castle_model is None:
+                raise SchoolError
+            quote = castle_service.repair_quote(castle_model)
+            if quote.missing_strength == 0:
+                await callback.answer("دژ نیازی به تعمیر ندارد.", show_alert=True)
+                return
+            await _send_or_edit(
+                callback,
+                f"🔧 تعمیر دژ\n\n"
+                f"مقدار آسیب: {_number(quote.missing_strength)} واحد\n"
+                f"هزینه تعمیر: {_number(quote.diamond_cost)} الماس\n"
+                "آیا می‌خواهی دژ را تعمیر کنم؟",
+                reply_markup=confirmation_keyboard(
+                    action="castle_repair", target_id=0
+                ),
+            )
+            await callback.answer()
+            return
         else:
             await _castle_view(callback, session)
         await callback.answer(notice)
+    except InsufficientDiamonds:
+        await callback.answer("الماس کافی برای ارتقا ندارید.", show_alert=True)
     except SchoolError:
         await callback.answer("ارتقای دژ در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 
@@ -453,7 +467,7 @@ async def teacher_callback_handler(
             await _send_or_edit(
                 callback,
                 f"⬆️ ارتقای دبیر {owned.teacher.name}\n\n"
-                f"هزینه: {_number(owned.teacher.upgrade_price)} سکه\n"
+                f"هزینه: {_number(owned.teacher.upgrade_price)} الماس\n"
                 "آیا می‌خواهی دبیر را ارتقا بدهم؟",
                 reply_markup=confirmation_keyboard(
                     action="teacher_upgrade", target_id=owned.id
@@ -476,7 +490,7 @@ async def teacher_callback_handler(
             )
             await callback.answer()
         elif callback_data.action == "activate":
-            cost = hospital_service.config.teacher_activation_cost
+            cost = hospital_service.instant_recovery_cost()
             if cost is None:
                 raise SchoolError
             owned = await teacher_service.get_owned(
@@ -485,7 +499,7 @@ async def teacher_callback_handler(
             await _send_or_edit(
                 callback,
                 f"⚡ فعال‌سازی دبیر {owned.teacher.name}\n\n"
-                f"هزینه: {_number(cost)} سکه\n"
+                f"هزینه: {_number(cost)} الماس\n"
                 "آیا می‌خواهی دبیر را فعال کنم؟",
                 reply_markup=confirmation_keyboard(
                     action="teacher_activate", target_id=owned.id
@@ -498,6 +512,8 @@ async def teacher_callback_handler(
             )
             await _teacher_view(callback, session, callback_data.teacher_id)
             await callback.answer("دبیر به بیمارستان فرستاده شد.")
+    except InsufficientDiamonds:
+        await callback.answer("الماس کافی برای ارتقا ندارید.", show_alert=True)
     except SchoolError:
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 
@@ -532,6 +548,10 @@ async def confirmation_callback_handler(
             await castle_service.upgrade(session, user.id)
             await _castle_view(callback, session)
             notice = "دژ با موفقیت ارتقا پیدا کرد."
+        elif callback_data.action == "castle_repair":
+            await castle_service.repair(session, user.id)
+            await _castle_view(callback, session)
+            notice = "دژ با موفقیت تعمیر شد."
         elif callback_data.action == "hospital_instant_recover":
             await hospital_service.instant_recover(
                 session, user.id, callback_data.target_id
@@ -562,6 +582,8 @@ async def confirmation_callback_handler(
             await _teacher_view(callback, session, callback_data.target_id)
             notice = "دبیر فعال شد."
         await callback.answer(notice)
+    except InsufficientDiamonds:
+        await callback.answer("الماس کافی برای تعمیر یا ارتقا ندارید.", show_alert=True)
     except SchoolError:
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 

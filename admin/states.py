@@ -35,6 +35,7 @@ class TeacherStates(StatesGroup):
     ability_text = State()
     sticker = State()
     emoji = State()
+    edit_value = State()
 
 
 class ShieldStates(StatesGroup):
@@ -44,6 +45,7 @@ class ShieldStates(StatesGroup):
     purchase_price = State()
     unlock_level = State()
     description = State()
+    edit_value = State()
 
 
 class ChannelStates(StatesGroup):

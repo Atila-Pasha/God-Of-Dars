@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.enums import TeacherStatus
-from app.core.game_logic import CastleUpgrade, GameConfig
+from app.core.game_logic import CastleRepairRules, CastleUpgrade, GameConfig
 from app.models.castle import Castle
 from app.models.defense import Defense
 from app.models.recovery import Recovery
@@ -126,7 +126,7 @@ async def test_buy_teacher_enforces_level_slot_capacity_and_charges_atomically()
     model = teacher()
     repository = FakeTeacherRepository(
         user=user(level=1),
-        resources=SimpleNamespace(coin=100),
+        resources=SimpleNamespace(coin=100, diamond=0),
         teacher=model,
         owned_count=0,
     )
@@ -148,7 +148,7 @@ async def test_buy_teacher_rejects_locked_slot_before_purchase() -> None:
     model = teacher()
     repository = FakeTeacherRepository(
         user=user(level=1),
-        resources=SimpleNamespace(coin=100),
+        resources=SimpleNamespace(coin=100, diamond=0),
         teacher=model,
         owned_count=1,
     )
@@ -166,7 +166,7 @@ async def test_teacher_unlock_level_is_independent_from_slot_capacity() -> None:
     model = teacher(unlock_level=10)
     repository = FakeTeacherRepository(
         user=user(level=5),
-        resources=SimpleNamespace(coin=100),
+        resources=SimpleNamespace(coin=0, diamond=100),
         teacher=model,
         owned_count=0,
     )
@@ -185,7 +185,7 @@ async def test_upgrade_changes_damage_and_preserves_hp() -> None:
     owned = owned_teacher(model)
     repository = FakeTeacherRepository(
         user=user(),
-        resources=SimpleNamespace(coin=100),
+        resources=SimpleNamespace(coin=0, diamond=100),
         teacher=model,
         owned=owned,
     )
@@ -203,16 +203,16 @@ async def test_upgrade_changes_damage_and_preserves_hp() -> None:
     assert owned.level == 2
     assert owned.current_hp == 73
     assert service.damage(owned) == 25
-    assert repository.resources.coin == 70
+    assert repository.resources.diamond == 70
 
 
 @pytest.mark.asyncio
-async def test_upgrade_rejects_insufficient_coins_without_changing_teacher() -> None:
+async def test_upgrade_rejects_insufficient_diamonds_without_changing_teacher() -> None:
     model = teacher()
     owned = owned_teacher(model)
     repository = FakeTeacherRepository(
         user=user(),
-        resources=SimpleNamespace(coin=29),
+        resources=SimpleNamespace(coin=100, diamond=29),
         teacher=model,
         owned=owned,
     )
@@ -229,7 +229,7 @@ async def test_upgrade_rejects_insufficient_coins_without_changing_teacher() -> 
 
 
 @pytest.mark.asyncio
-async def test_castle_upgrade_changes_defense_and_deducts_coins() -> None:
+async def test_castle_upgrade_changes_defense_and_deducts_diamonds() -> None:
     castle = Castle(
         id=3,
         user_id=10,
@@ -239,7 +239,7 @@ async def test_castle_upgrade_changes_defense_and_deducts_coins() -> None:
     )
     repository = FakeCastleRepository(
         user=user(),
-        resources=SimpleNamespace(coin=100),
+        resources=SimpleNamespace(coin=0, diamond=100),
         castle=castle,
     )
     service = CastleService(
@@ -247,7 +247,7 @@ async def test_castle_upgrade_changes_defense_and_deducts_coins() -> None:
         config=GameConfig(
             castle_upgrade_by_level={
                 1: CastleUpgrade(
-                    coin_cost=30,
+                    diamond_cost=30,
                     strength_delta=5,
                     defense_delta=2,
                 )
@@ -261,7 +261,39 @@ async def test_castle_upgrade_changes_defense_and_deducts_coins() -> None:
     assert castle.level == 2
     assert castle.strength == 15
     assert castle.defense.defense_power == 6
-    assert repository.resources.coin == 70
+    assert repository.resources.diamond == 70
+
+
+@pytest.mark.asyncio
+async def test_castle_repair_scales_with_missing_strength_and_restores_health() -> None:
+    castle = Castle(
+        id=3,
+        user_id=10,
+        level=1,
+        strength=40,
+        defense=Defense(defense_power=4),
+    )
+    repository = FakeCastleRepository(
+        user=user(),
+        resources=SimpleNamespace(coin=0, diamond=10),
+        castle=castle,
+    )
+    service = CastleService(
+        repository,
+        config=GameConfig(
+            initial_castle_strength=100,
+            castle_repair=CastleRepairRules(
+                diamond_cost_per_100_strength=5,
+                minimum_diamond_cost=1,
+            ),
+        ),
+    )
+    session = SimpleNamespace(add=lambda item: None, flush=AsyncMock())
+
+    await service.repair(session, 10)
+
+    assert castle.strength == 100
+    assert repository.resources.diamond == 7
 
 
 @pytest.mark.asyncio

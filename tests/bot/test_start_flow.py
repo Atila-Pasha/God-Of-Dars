@@ -46,6 +46,9 @@ async def test_start_non_member_shows_join_keyboard(monkeypatch) -> None:
     monkeypatch.setattr(
         start.subscription_service, "is_member", AsyncMock(return_value=False)
     )
+    monkeypatch.setattr(
+        start.subscription_service, "channels", ("example_channel",)
+    )
 
     await start.start_handler(message, AsyncMock())
 

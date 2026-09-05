@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,12 @@ class CastleDamageResult:
     applied_damage: int
     castle_strength_before: int
     castle_strength_after: int
+
+
+@dataclass(frozen=True)
+class CastleRepairQuote:
+    missing_strength: int
+    diamond_cost: int
 
 
 class CastleService:
@@ -78,6 +85,44 @@ class CastleService:
             return False
         return True
 
+    def repair_quote(self, castle: Castle) -> CastleRepairQuote:
+        maximum = self.config.castle_max_strength(castle.level)
+        missing = max(0, maximum - castle.strength)
+        if missing == 0:
+            return CastleRepairQuote(0, 0)
+        rules = self.config.castle_repair
+        cost = max(
+            rules.minimum_diamond_cost,
+            math.ceil(missing * rules.diamond_cost_per_100_strength / 100),
+        )
+        return CastleRepairQuote(missing, cost)
+
+    async def repair(self, session: AsyncSession, user_id: int) -> Castle:
+        user = await self.repository.get_user_for_update(session, user_id)
+        if user is None:
+            raise CastleNotFound
+        resources = await self.repository.get_resources_for_update(session, user_id)
+        if resources is None:
+            raise ResourceNotFound
+        castle = await self.repository.get_by_user(session, user_id, for_update=True)
+        if castle is None or castle.defense is None:
+            raise CastleNotFound
+        quote = self.repair_quote(castle)
+        if quote.missing_strength == 0:
+            return castle
+        ResourceService.debit_diamond(
+            session,
+            resources,
+            user_id=user_id,
+            amount=quote.diamond_cost,
+            reason="CASTLE_REPAIR",
+            reference_type="CASTLE",
+            reference_id=castle.id,
+        )
+        castle.strength += quote.missing_strength
+        await session.flush()
+        return castle
+
     async def upgrade(self, session: AsyncSession, user_id: int) -> Castle:
         user = await self.repository.get_user_for_update(session, user_id)
         if user is None:
@@ -103,15 +148,24 @@ class CastleService:
         except GameConfigurationError as exc:
             raise CastleUpgradeUnavailable from exc
 
-        if resources.coin < upgrade.coin_cost:
+        if resources.diamond < upgrade.diamond_cost:
             raise InsufficientCoins
 
-        ResourceService.debit_coin(
+        ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
-            amount=upgrade.coin_cost,
+            amount=upgrade.diamond_cost,
             reason="CASTLE_UPGRADE",
+            reference_type="CASTLE",
+            reference_id=castle.id,
+        )
+        ResourceService.credit_banana(
+            session,
+            resources,
+            user_id=user_id,
+            amount=self.config.upgrade_banana_reward(upgrade.diamond_cost),
+            reason="CASTLE_UPGRADE_XP",
             reference_type="CASTLE",
             reference_id=castle.id,
         )

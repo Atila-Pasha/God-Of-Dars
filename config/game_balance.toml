@@ -1,6 +1,8 @@
 # Central game balance. Change this file instead of editing handlers/services.
 
-max_teacher_slots = 4
+# Ownership capacity is separate from the attack limit below.
+max_owned_teacher_slots = 30
+max_attack_teachers = 4
 initial_castle_strength = 100
 initial_defense_power = 25
 
@@ -11,15 +13,35 @@ initial_defense_power = 25
 teacher_activation_cost = 120
 teacher_sell_ratio = 0.5
 
+[upgrade_rewards]
+banana_per_diamond = 10
+minimum_banana = 1
+maximum_banana = 500
+
+[castle_progression]
+max_level = 500
+cost_growth = 1.012
+strength_growth = 1.02
+defense_growth = 1.02
+
 # Attack balance. Defence first absorbs incoming teacher damage; the remaining
 # amount damages the castle. The castle then counter-attacks the teacher.
 [attack]
 defense_absorption_ratio = 1.0
 counter_damage_ratio = 0.25
 loot_percent = 10
+banana_reward = 20
 
 [hospital]
 instant_recovery_diamond_cost = 15
+
+[castle_repair]
+# Repair cost is proportional to missing castle strength.
+diamond_cost_per_100_strength = 5
+minimum_diamond_cost = 1
+# Weak castles can yield more loot; the result is capped below.
+loot_bonus_percent_at_zero_strength = 100
+maximum_loot_percent = 100
 
 [shield_rules]
 
@@ -44,6 +66,10 @@ max_flat_absorption = 1000000
 # from returning without accumulating excessive resources.
 
 max_catchup_minutes = 720
+max_level = 500
+coin_growth = 1.004
+diamond_growth = 1.008
+cost_growth = 1.008
 
 # ---------------------------------------------------------------------------
 
@@ -60,43 +86,43 @@ max_catchup_minutes = 720
 [mine.levels.level_1]
 coin_per_minute = 2
 diamond_per_minute = 0
-banana_per_minute = 1
-upgrade_cost = 300
+banana_per_minute = 0
+diamond_cost = 300
 required_player_level = 1
 
 [mine.levels.level_2]
 coin_per_minute = 4
 diamond_per_minute = 1
-banana_per_minute = 2
-upgrade_cost = 800
+banana_per_minute = 0
+diamond_cost = 800
 required_player_level = 1
 
 [mine.levels.level_3]
 coin_per_minute = 7
 diamond_per_minute = 2
-banana_per_minute = 4
-upgrade_cost = 1600
+banana_per_minute = 0
+diamond_cost = 1600
 required_player_level = 3
 
 [mine.levels.level_4]
 coin_per_minute = 12
 diamond_per_minute = 3
-banana_per_minute = 7
-upgrade_cost = 3200
+banana_per_minute = 0
+diamond_cost = 3200
 required_player_level = 5
 
 [mine.levels.level_5]
 coin_per_minute = 20
 diamond_per_minute = 5
-banana_per_minute = 11
-upgrade_cost = 6500
+banana_per_minute = 0
+diamond_cost = 6500
 required_player_level = 7
 
 [mine.levels.level_6]
 coin_per_minute = 32
 diamond_per_minute = 8
-banana_per_minute = 17
-upgrade_cost = 13000
+banana_per_minute = 0
+diamond_cost = 13000
 required_player_level = 10
 
 # ---------------------------------------------------------------------------
@@ -133,31 +159,7 @@ target_amount = 1
 source = "DIAMOND"
 target = "COIN"
 source_amount = 1
-target_amount = 80
-
-[[buffet.conversions]]
-source = "COIN"
-target = "BANANA"
-source_amount = 50
-target_amount = 1
-
-[[buffet.conversions]]
-source = "BANANA"
-target = "COIN"
-source_amount = 1
-target_amount = 40
-
-[[buffet.conversions]]
-source = "DIAMOND"
-target = "BANANA"
-source_amount = 2
-target_amount = 3
-
-[[buffet.conversions]]
-source = "BANANA"
-target = "DIAMOND"
-source_amount = 3
-target_amount = 1
+target_amount = 90
 
 # ---------------------------------------------------------------------------
 
@@ -171,9 +173,18 @@ target_amount = 1
 
 [teacher_slots]
 level_1 = 1
-level_3 = 2
-level_6 = 3
+level_5 = 2
 level_10 = 4
+level_20 = 6
+level_50 = 10
+level_100 = 15
+level_200 = 20
+level_500 = 30
+
+[teacher_slots_progression]
+base = 1
+growth = 0
+interval = 1
 
 # ---------------------------------------------------------------------------
 
@@ -202,6 +213,10 @@ level_10 = 4.20
 
 # Optional per-teacher overrides: "teacher_id:level" = damage
 
+[teacher_damage_progression]
+growth = 1.04
+max_multiplier = 8.0
+
 # ---------------------------------------------------------------------------
 
 # Castle upgrades
@@ -215,22 +230,22 @@ level_10 = 4.20
 # ---------------------------------------------------------------------------
 
 [castle_upgrades."1"]
-coin_cost = 500
+diamond_cost = 500
 strength_delta = 25
 defense_delta = 10
 
 [castle_upgrades."2"]
-coin_cost = 900
+diamond_cost = 900
 strength_delta = 35
 defense_delta = 15
 
 [castle_upgrades."3"]
-coin_cost = 1500
+diamond_cost = 1500
 strength_delta = 50
 defense_delta = 20
 
 [castle_upgrades."4"]
-coin_cost = 2400
+diamond_cost = 2400
 strength_delta = 70
 defense_delta = 30
 

@@ -33,12 +33,11 @@ def _mine_text(snapshot) -> str:
         "⛏ معدن منابع\n\n"
         f"🏗 سطح معدن: {snapshot.level}\n"
         f"⚙️ تولید فعلی: هر دقیقه {production.coin_per_minute} طلا، "
-        f"{production.diamond_per_minute} الماس و {production.banana_per_minute} موز\n"
+        f"{production.diamond_per_minute} الماس\n"
         f"⏱️ زمان محاسبه‌شده: {snapshot.collected_minutes} دقیقه\n\n"
         "📦 دریافت امروز:\n"
         f"🪙 طلا: {snapshot.today_coin}\n"
-        f"💎 الماس: {snapshot.today_diamond}\n"
-        f"🍌 موز: {snapshot.today_banana}"
+        f"💎 الماس: {snapshot.today_diamond}"
     )
 
 
@@ -52,10 +51,8 @@ def _upgrade_text(snapshot, next_level) -> str:
         f"🪙 طلا: {next_level.coin_per_minute} "
         f"(تغییر: {next_level.coin_per_minute - current.coin_per_minute:+d})\n"
         f"💎 الماس: {next_level.diamond_per_minute} "
-        f"(تغییر: {next_level.diamond_per_minute - current.diamond_per_minute:+d})\n"
-        f"🍌 موز: {next_level.banana_per_minute} "
-        f"(تغییر: {next_level.banana_per_minute - current.banana_per_minute:+d})\n\n"
-        f"💰 هزینه ارتقا: {next_level.upgrade_cost} سکه\n\n"
+        f"(تغییر: {next_level.diamond_per_minute - current.diamond_per_minute:+d})\n\n"
+        f"💎 هزینه ارتقا: {next_level.diamond_cost} الماس\n\n"
         "آیا ارتقای معدن را تأیید می‌کنی؟"
     )
 
@@ -147,7 +144,7 @@ async def mine_callback(
             return
         await callback.answer()
     except InsufficientCoins:
-        await callback.answer("سکه کافی برای ارتقای معدن ندارید.", show_alert=True)
+        await callback.answer("الماس کافی برای ارتقای معدن ندارید.", show_alert=True)
     except MineLevelLocked:
         await callback.answer(
             "سطح کاربر برای ارتقای بعدی معدن کافی نیست.", show_alert=True

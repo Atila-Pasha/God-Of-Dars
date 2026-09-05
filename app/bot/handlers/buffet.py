@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from aiogram import F, Router
+from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,8 @@ from app.services.buffet_service import (
 )
 from app.services.school_errors import (
     InsufficientCoins,
+    SchoolError,
+    SchoolUserNotFound,
     ShieldLocked,
     ShieldNotFound,
     ShieldNotPurchasable,
@@ -45,15 +48,68 @@ BUFFET_LABEL = next(
 RESOURCE_LABELS = {
     ResourceType.COIN: "طلا",
     ResourceType.DIAMOND: "الماس",
-    ResourceType.BANANA: "موز",
 }
+
+
+@router.message(F.chat.type.in_({"group", "supergroup"}), Command("buy"))
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(r"^\s*خرید(?:\s+\S.*)?$"),
+)
+async def group_purchase_message(
+    message: Message,
+    session: AsyncSession,
+    command: CommandObject | None = None,
+) -> None:
+    if message.from_user is None or not message.text:
+        return
+    if len(message.text.split(maxsplit=1)) != 2:
+        await message.answer("فرمت خرید: خرید نام دبیر یا خرید نام سپر")
+        return
+    name = (command.args if command is not None else None) or message.text.partition(" ")[2]
+    name = name.strip()
+    if not name:
+        await message.answer("فرمت خرید: /buy نام دبیر یا /buy نام سپر")
+        return
+    try:
+        user = await user_service.get_active_by_telegram_user_id(
+            session, message.from_user.id
+        )
+        teacher_catalog = await teacher_service.catalog(session, user.id)
+        teacher = next(
+            (item for item in teacher_catalog if item.name.casefold() == name.casefold()),
+            None,
+        )
+        if teacher is not None:
+            purchased = await teacher_service.buy(session, user.id, teacher.id)
+            await message.answer(
+                f"دبیر «{purchased.teacher.name}» با موفقیت خریداری شد."
+            )
+            return
+
+        shield_catalog = await shield_service.catalog(session, player_level=user.level)
+        shield = next(
+            (item for item in shield_catalog if item.name.casefold() == name.casefold()),
+            None,
+        )
+        if shield is not None:
+            purchased = await shield_service.buy(session, user.id, shield.id)
+            await message.answer(
+                f"سپر «{purchased.shield.name}» خریداری شد؛ "
+                f"{purchased.quantity} عدد در موجودی دارید."
+            )
+            return
+        await message.answer("دبیر یا سپری با این نام برای سطح شما پیدا نشد.")
+    except InsufficientCoins:
+        await message.answer("سکه کافی برای این خرید ندارید.")
+    except SchoolError:
+        await message.answer("این خرید در حال حاضر امکان‌پذیر نیست.")
 
 
 def _resource_text(resources) -> str:
     return (
         f"🪙 طلا: {resources.coin}\n"
-        f"💎 الماس: {resources.diamond}\n"
-        f"🍌 موز: {resources.banana}"
+        f"💎 الماس: {resources.diamond}"
     )
 
 
@@ -67,7 +123,7 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
             "🍽 بوفه\n\nاز بخش‌های زیر یکی را انتخاب کنید:",
             reply_markup=buffet_menu_keyboard(),
         )
-    except UserInactiveError:
+    except (UserInactiveError, SchoolUserNotFound):
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
@@ -103,7 +159,7 @@ async def buffet_conversion_message(
             + "\n\nیک تبدیل را انتخاب کنید:",
             reply_markup=buffet_keyboard(buffet_service.options()),
         )
-    except UserInactiveError:
+    except (UserInactiveError, SchoolUserNotFound):
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
@@ -116,7 +172,7 @@ async def buffet_shields_message(
     try:
         await state.clear()
         await _shields_view(message, session)
-    except UserInactiveError:
+    except (UserInactiveError, SchoolUserNotFound):
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
@@ -130,7 +186,7 @@ async def buffet_teachers_message(
         await state.clear()
         await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
         await _teacher_shop_view(message, session)
-    except UserInactiveError:
+    except (UserInactiveError, SchoolUserNotFound):
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
@@ -238,7 +294,7 @@ async def buffet_callback(
             f"مثال: {option.source_amount}",
             reply_markup=buffet_cancel_keyboard(),
         )
-    except (UserInactiveError, InvalidBuffetConversion):
+    except (UserInactiveError, SchoolUserNotFound, InvalidBuffetConversion):
         await callback.answer("این تبدیل در دسترس نیست.", show_alert=True)
 
 
@@ -265,7 +321,7 @@ async def buffet_menu_callback(
                 "به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard()
             )
         await callback.answer()
-    except (UserInactiveError, ShieldNotFound):
+    except (UserInactiveError, SchoolUserNotFound, ShieldNotFound):
         await callback.answer("اطلاعات بوفه در دسترس نیست.", show_alert=True)
 
 
@@ -305,7 +361,12 @@ async def shield_callback(
         await callback.answer("سکه کافی ندارید.", show_alert=True)
     except ShieldLocked:
         await callback.answer("این سپر برای سطح شما باز نشده است.", show_alert=True)
-    except (ShieldNotFound, ShieldNotPurchasable, UserInactiveError):
+    except (
+        ShieldNotFound,
+        ShieldNotPurchasable,
+        UserInactiveError,
+        SchoolUserNotFound,
+    ):
         await callback.answer("این سپر در دسترس نیست.", show_alert=True)
 
 

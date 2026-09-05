@@ -40,8 +40,10 @@ def school_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def castle_keyboard(can_upgrade: bool) -> InlineKeyboardMarkup:
-    buttons = []
+def castle_keyboard(
+    can_upgrade: bool, can_repair: bool = False
+) -> InlineKeyboardMarkup:
+    buttons: list[InlineKeyboardButton] = []
     if can_upgrade:
         buttons.append(
             InlineKeyboardButton(
@@ -49,9 +51,16 @@ def castle_keyboard(can_upgrade: bool) -> InlineKeyboardMarkup:
                 callback_data=CastleCallback(action="upgrade").pack(),
             )
         )
-    buttons.append(
+    if can_repair:
+        buttons.append(
             InlineKeyboardButton(
-                    text="🔙 مدرسه من",
+                text="🔧 تعمیر دژ",
+                callback_data=CastleCallback(action="repair").pack(),
+            )
+        )
+    buttons.append(
+        InlineKeyboardButton(
+            text="🔙 مدرسه من",
             callback_data=CastleCallback(action="back").pack(),
         )
     )

@@ -17,6 +17,7 @@ from app.services.level_service import LevelService
 from app.services.profile_service import ProfileNotFound, ProfileService
 from app.services.school_errors import (
     InsufficientCoins,
+    MaxLevelReached,
     OperationNotConfigured,
     SchoolUserNotFound,
 )
@@ -69,7 +70,7 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
 
     coin = resources.coin if resources else 0
     diamond = resources.diamond if resources else 0
-    banana = resources.banana if resources else 0
+    xp = resources.banana if resources else 0
     castle_level = castle.level if castle else 0
     castle_strength = castle.strength if castle else 0
 
@@ -83,7 +84,7 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
         "💰 کیف دارایی\n\n"
         f"🪙 سکه: {_number(coin)}\n"
         f"💎 الماس: {_number(diamond)}\n"
-        f"🍌 موز: {_number(banana)}\n"
+        f"🍌 موز: {_number(xp)}\n"
         "\n"
         ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
         "🏰 قلمرو و مدرسه\n\n"
@@ -103,7 +104,7 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
         "غنیمت‌های ثبت‌شده:\n\n"
         f"🪙 {_number(snapshot.loot_coin)}\n"
         f"💎 {_number(snapshot.loot_diamond)}\n"
-        f"🍌 {_number(snapshot.loot_banana)}\n\n"
+        f"🍌 موز دریافتی از حمله: {_number(snapshot.loot_banana)}\n\n"
         ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
         "📚 دانش و ارتباطات\n\n"
         f"✅ پاسخ‌های درست: {_number(snapshot.correct_answers)} از "
@@ -116,9 +117,73 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
 
 
 def _profile_menu_text() -> str:
+    return "🧙 پروفایل فرمانده\n\nیکی از موارد زیر را انتخاب کن:"
+
+
+def _profile_markup(target: Message | CallbackQuery):
+    chat = (
+        target.message.chat
+        if isinstance(target, CallbackQuery) and target.message is not None
+        else getattr(target, "chat", None)
+    )
+    owner_id = target.from_user.id if target.from_user is not None else 0
+    return profile_keyboard(
+        include_delete=getattr(chat, "type", "private") in {"group", "supergroup"},
+        owner_id=owner_id,
+    )
+
+
+def _profile_identity_text(snapshot: ProfileSnapshot) -> str:
+    user = snapshot.user
     return (
-        "🧙 پروفایل فرمانده\n\n"
-        "یکی از موارد زیر را انتخاب کن:"
+        "👤 اطلاعات پروفایل\n\n"
+        f"نام: {_name(snapshot)}\n"
+        f"نام کاربری: {_username(snapshot)}\n"
+        f"عضویت از: {_date(user.created_at)}\n"
+        f"سطح فرمانده: {_number(user.level)}\n"
+        f"تعداد دبیرها: {_number(snapshot.teachers_count)}\n"
+        f"دبیرهای فعال: {_number(snapshot.active_teachers_count)}"
+    )
+
+
+def _profile_war_text(snapshot: ProfileSnapshot) -> str:
+    return (
+        "⚔️ اطلاعات جنگ\n\n"
+        f"حمله‌های انجام‌شده: {_number(snapshot.attacks_sent)}\n"
+        f"حمله‌های موفق: {_number(snapshot.successful_attacks)}\n"
+        f"حمله‌های در انتظار: {_number(snapshot.pending_attacks)}\n"
+        f"حمله‌های دریافتی: {_number(snapshot.attacks_received)}\n"
+        f"آسیب واردشده: {_number(snapshot.damage_dealt)}\n\n"
+        "غنیمت‌های ثبت‌شده:\n"
+        f"سکه: {_number(snapshot.loot_coin)}\n"
+        f"الماس: {_number(snapshot.loot_diamond)}\n"
+        f"موز دریافتی از حمله: {_number(snapshot.loot_banana)}"
+    )
+
+
+def _profile_assets_text(snapshot: ProfileSnapshot) -> str:
+    user = snapshot.user
+    resources = user.resources
+    castle = user.castle
+    defense_power = castle.defense.defense_power if castle and castle.defense else 0
+    return (
+        "🏰 دارایی و قلمرو\n\n"
+        f"سکه: {_number(resources.coin if resources else 0)}\n"
+        f"الماس: {_number(resources.diamond if resources else 0)}\n"
+        f"موز: {_number(resources.banana if resources else 0)}\n\n"
+        f"سطح دژ: {_number(castle.level if castle else 0)}\n"
+        f"استحکام دژ: {_number(castle.strength if castle else 0)}\n"
+        f"قدرت دفاع: {_number(defense_power)}"
+    )
+
+
+def _profile_knowledge_text(snapshot: ProfileSnapshot) -> str:
+    return (
+        "📚 دانش و دعوت‌ها\n\n"
+        f"پاسخ‌های درست: {_number(snapshot.correct_answers)} از "
+        f"{_number(snapshot.answers_count)}\n"
+        f"دقت: {_accuracy(snapshot)}\n"
+        f"دوستان دعوت‌شده: {_number(snapshot.referrals_count)}"
     )
 
 
@@ -138,11 +203,13 @@ async def _show_profile(target: Message | CallbackQuery, session: AsyncSession) 
         if target.message is None:
             return
         try:
-            await safe_edit_text(target.message, text, reply_markup=profile_keyboard())
+            await safe_edit_text(
+                target.message, text, reply_markup=_profile_markup(target)
+            )
         except TelegramAPIError:
-            await target.message.answer(text, reply_markup=profile_keyboard())
+            await target.message.answer(text, reply_markup=_profile_markup(target))
     else:
-        await target.answer(text, reply_markup=profile_keyboard())
+        await target.answer(text, reply_markup=_profile_markup(target))
 
 
 async def _show_profile_menu(target: Message | CallbackQuery) -> None:
@@ -153,12 +220,32 @@ async def _show_profile_menu(target: Message | CallbackQuery) -> None:
             return
         try:
             await safe_edit_text(
-                target.message, text, reply_markup=profile_keyboard()
+                target.message, text, reply_markup=_profile_markup(target)
             )
         except TelegramAPIError:
-            await target.message.answer(text, reply_markup=profile_keyboard())
+            await target.message.answer(text, reply_markup=_profile_markup(target))
     else:
-        await target.answer(text, reply_markup=profile_keyboard())
+        await target.answer(text, reply_markup=_profile_markup(target))
+
+
+async def _show_profile_section(
+    target: Message | CallbackQuery,
+    session: AsyncSession,
+    section: str,
+) -> None:
+    snapshot = await profile_service.snapshot(session, await _user_id(session, target))
+    text = {
+        "profile": _profile_identity_text(snapshot),
+        "war": _profile_war_text(snapshot),
+        "assets": _profile_assets_text(snapshot),
+        "knowledge": _profile_knowledge_text(snapshot),
+    }[section]
+    if isinstance(target, CallbackQuery):
+        if target.message is None:
+            return
+        await safe_edit_text(target.message, text, reply_markup=_profile_markup(target))
+    else:
+        await target.answer(text, reply_markup=_profile_markup(target))
 
 
 async def _show_error(target: Message | CallbackQuery) -> None:
@@ -179,27 +266,67 @@ async def _show_level_upgrade(target: CallbackQuery, session: AsyncSession) -> N
     snapshot = await profile_service.snapshot(session, user_id)
     cost = level_service.upgrade_cost(snapshot.user.level)
     resources = snapshot.user.resources
-    diamond = resources.diamond if resources else 0
+    xp = resources.banana if resources else 0
     text = (
         f"⬆️ ارتقای سطح فرمانده\n\n"
         f"سطح فعلی: {_number(snapshot.user.level)}\n"
         f"سطح بعدی: {_number(snapshot.user.level + 1)}\n"
-        f"هزینه: {_number(cost)} 💎\n"
-        f"الماس شما: {_number(diamond)}\n\n"
+        f"هزینه: {_number(cost)} موز\n"
+        f"موز شما: {_number(xp)}\n\n"
         "آیا ارتقای سطح را تأیید می‌کنی؟"
     )
-    await safe_edit_text(target.message, text, reply_markup=level_confirmation_keyboard())
+    await safe_edit_text(
+        target.message, text, reply_markup=level_confirmation_keyboard()
+    )
 
 
 @router.message(Command("profile"))
 @router.message(Command("stat"))
+@router.message(Command("profile_info"))
+@router.message(Command("war"))
+@router.message(Command("assets"))
+@router.message(Command("knowledge"))
 @router.message(F.text == PROFILE_LABEL)
+@router.message(
+    F.text.in_(
+        {
+            "اطلاعات پروفایل",
+            "اطلاعات جنگ",
+            "اطلاعات دارایی",
+            "اطلاعات دانش",
+        }
+    )
+)
 async def profile_handler(message: Message, session: AsyncSession) -> None:
     try:
         # The profile menu is an action hub. Keep /stat as the explicit
         # shortcut for the detailed report for backwards compatibility.
         message_text = (getattr(message, "text", None) or "").strip()
-        if not message_text or message_text.split(maxsplit=1)[0].split("@", 1)[0] == "/stat":
+        command_name = (
+            message_text.split(maxsplit=1)[0].split("@", 1)[0].removeprefix("/")
+            if message_text
+            else ""
+        )
+        section = {
+            "اطلاعات پروفایل": "profile",
+            "اطلاعات جنگ": "war",
+            "اطلاعات دارایی": "assets",
+            "اطلاعات دانش": "knowledge",
+            "profile_info": "profile",
+            "war": "war",
+            "assets": "assets",
+            "knowledge": "knowledge",
+        }.get(message_text, None)
+        if section is None:
+            section = {
+                "profile_info": "profile",
+                "war": "war",
+                "assets": "assets",
+                "knowledge": "knowledge",
+            }.get(command_name)
+        if section is not None:
+            await _show_profile_section(message, session, section)
+        elif not message_text or command_name == "stat":
             await _show_profile(message, session)
         else:
             await _show_profile_menu(message)
@@ -213,6 +340,23 @@ async def profile_callback_handler(
     callback_data: ProfileCallback,
     session: AsyncSession,
 ) -> None:
+    if callback_data.action == "delete":
+        if callback.from_user is None or callback.message is None:
+            return
+        if callback.from_user.id != callback_data.owner_id:
+            await callback.answer(
+                "فقط درخواست‌کننده اطلاعات می‌تواند این پیام را حذف کند.", show_alert=True
+            )
+            return
+        await callback.answer("پیام اطلاعات حذف شد.")
+        try:
+            await callback.message.delete()
+        except TelegramAPIError:
+            # The message may already have been removed or the bot may lack
+            # delete permission; do not turn that into a polling error.
+            pass
+        return
+
     if callback_data.action == "back":
         if callback.message is not None:
             await callback.message.answer(
@@ -228,11 +372,15 @@ async def profile_callback_handler(
 
     try:
         if callback_data.action == "upgrade":
-            await _show_level_upgrade(callback, session)
             await callback.answer()
+            await _show_level_upgrade(callback, session)
             return
         if callback_data.action == "info":
-            await _show_profile(callback, session)
+            # Compatibility with older profile messages: the former single
+            # "اطلاعات کاربری" button now opens only the profile section.
+            await _show_profile_section(callback, session, "profile")
+        elif callback_data.action in {"profile", "war", "assets", "knowledge"}:
+            await _show_profile_section(callback, session, callback_data.action)
         else:
             await _show_profile_menu(callback)
     except (ProfileNotFound, SchoolUserNotFound, UserInactiveError):
@@ -251,15 +399,18 @@ async def level_confirmation_handler(
         await callback.answer()
         return
     if callback_data.decision == "cancel":
-        await _show_profile(callback, session)
         await callback.answer("ارتقا لغو شد.")
+        await _show_profile_menu(callback)
         return
+    await callback.answer()
     try:
         user_id = await _user_id(session, callback)
         user = await level_service.upgrade(session, user_id)
         await _show_profile(callback, session)
-        await callback.answer(f"سطح شما به {user.level} رسید.")
+        await callback.message.answer(f"سطح شما به {user.level} رسید.")
     except InsufficientCoins:
-        await callback.answer("الماس کافی ندارید.", show_alert=True)
+        await callback.message.answer("XP کافی ندارید.")
+    except MaxLevelReached:
+        await callback.message.answer("به بالاترین سطح تنظیم‌شده رسیده‌اید.")
     except (OperationNotConfigured, SchoolUserNotFound, UserInactiveError):
-        await callback.answer("ارتقای سطح فعلاً در دسترس نیست.", show_alert=True)
+        await callback.message.answer("ارتقای سطح فعلاً در دسترس نیست.")

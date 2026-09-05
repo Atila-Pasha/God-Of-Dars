@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import TeacherStatus
+from app.core.enums import ResourceType, TeacherStatus
 from app.core.game_logic import GameConfig, GameConfigurationError, game_config
 from app.models.teacher import Teacher
 from app.models.user_teacher import UserTeacher
@@ -56,7 +56,7 @@ class TeacherService:
         return TeacherCapacity(
             owned=owned,
             available=self.config.teacher_slots(user.level),
-            maximum=self.config.max_teacher_slots,
+            maximum=self.config.ownership_limit,
         )
 
     async def owned(self, session: AsyncSession, user_id: int) -> list[UserTeacher]:
@@ -111,7 +111,13 @@ class TeacherService:
             raise TeacherAlreadyOwned
 
         owned_count = await self.repository.count_owned(session, user_id)
-        if owned_count >= self.config.max_teacher_slots:
+        level_capacity = self.config.teacher_slots(user.level)
+        if owned_count >= level_capacity:
+            raise TeacherSlotLocked
+        if (
+            self.config.ownership_limit is not None
+            and owned_count >= self.config.ownership_limit
+        ):
             raise TeacherLimitReached
         available_slots = self.config.teacher_slots(user.level)
         if owned_count >= available_slots:
@@ -176,15 +182,24 @@ class TeacherService:
             raise OperationNotConfigured
         if owned_teacher.teacher.upgrade_price < 0:
             raise OperationNotConfigured
-        if resources.coin < owned_teacher.teacher.upgrade_price:
+        if resources.diamond < owned_teacher.teacher.upgrade_price:
             raise InsufficientCoins
 
-        ResourceService.debit_coin(
+        ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
             amount=owned_teacher.teacher.upgrade_price,
             reason="TEACHER_UPGRADE",
+            reference_type="USER_TEACHER",
+            reference_id=owned_teacher.id,
+        )
+        ResourceService.credit_banana(
+            session,
+            resources,
+            user_id=user_id,
+            amount=self.config.upgrade_banana_reward(owned_teacher.teacher.upgrade_price),
+            reason="TEACHER_UPGRADE_XP",
             reference_type="USER_TEACHER",
             reference_id=owned_teacher.id,
         )
@@ -243,14 +258,16 @@ class TeacherService:
             raise TeacherNotOwned
         if owned_teacher.status is not TeacherStatus.DISABLED:
             raise InvalidTeacherState
-        if self.config.teacher_activation_cost is None:
+        cost = self.config.instant_recovery_diamond_cost
+        if cost is None:
             raise OperationNotConfigured
 
-        ResourceService.debit_coin(
+        ResourceService.debit(
             session,
             resources,
             user_id=user_id,
-            amount=self.config.teacher_activation_cost,
+            resource_type=ResourceType.DIAMOND,
+            amount=cost,
             reason="TEACHER_ACTIVATION",
             reference_type="USER_TEACHER",
             reference_id=owned_teacher.id,

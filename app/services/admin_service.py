@@ -9,6 +9,7 @@ from app.models.resource import Resource
 from app.models.teacher import Teacher
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.user_teacher import UserTeacher
 
 
 class AdminService:
@@ -51,6 +52,36 @@ class AdminService:
         )
         return result.scalar_one_or_none()
 
+    async def list_user_teachers(
+        self, session: AsyncSession, user_id: int
+    ) -> list[UserTeacher]:
+        result = await session.execute(
+            select(UserTeacher)
+            .where(UserTeacher.user_id == user_id)
+            .options(selectinload(UserTeacher.teacher))
+            .order_by(UserTeacher.id)
+        )
+        return list(result.scalars().unique().all())
+
+    async def delete_user_teacher(
+        self, session: AsyncSession, user_teacher_id: int, user_id: int
+    ) -> UserTeacher | None:
+        result = await session.execute(
+            select(UserTeacher)
+            .where(
+                UserTeacher.id == user_teacher_id,
+                UserTeacher.user_id == user_id,
+            )
+            .options(selectinload(UserTeacher.teacher))
+            .with_for_update()
+        )
+        user_teacher = result.scalars().unique().one_or_none()
+        if user_teacher is None:
+            return None
+        await session.delete(user_teacher)
+        await session.flush()
+        return user_teacher
+
     async def set_user_active(self, session: AsyncSession, user_id: int, active: bool) -> User | None:
         user = await self.get_user(session, user_id)
         if user is None:
@@ -63,6 +94,8 @@ class AdminService:
         self, session: AsyncSession, user_id: int, *, coin: int, diamond: int, banana: int
     ) -> User | None:
         """Grant resources and record each grant as an auditable transaction."""
+        if banana != 0:
+            raise ValueError("XP فقط از طریق حمله دریافت می‌شود")
         if min(coin, diamond, banana) < 0:
             raise ValueError("resource values cannot be negative")
         result = await session.execute(

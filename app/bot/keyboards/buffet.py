@@ -10,7 +10,7 @@ from app.core.game_logic import BuffetConversion
 from app.models.shield import Shield
 from app.models.user_shield import UserShield
 
-RESOURCE_LABELS = {"COIN": "طلا", "DIAMOND": "الماس", "BANANA": "موز"}
+RESOURCE_LABELS = {"COIN": "طلا", "DIAMOND": "الماس"}
 RESOURCE_CUSTOM_EMOJI_IDS = {
     "COIN": "5765076709556623066",
     "DIAMOND": "5462902520215002477",
