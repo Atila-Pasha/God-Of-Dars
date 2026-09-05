@@ -55,6 +55,7 @@ class ChannelStates(StatesGroup):
 class ChanceBoxStates(StatesGroup):
     section = State()
     value = State()
+    sticker = State()
 
 
 class ChanceCardStates(StatesGroup):

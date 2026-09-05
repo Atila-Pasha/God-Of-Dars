@@ -29,8 +29,14 @@ from app.services.library_errors import (
     WrongGroup,
 )
 from app.services.question_service import AnswerResult, QuestionService
+from app.services.school_errors import SchoolUserNotFound
+from app.services.study_service import (
+    StudyAlreadyActive,
+    StudyError,
+    StudyPackNotFound,
+    StudyService,
+)
 from app.services.user_service import UserInactiveError, UserService
-from app.services.study_service import StudyAlreadyActive, StudyError, StudyPackNotFound, StudyService
 
 router = Router(name="library")
 question_service = QuestionService()
@@ -153,8 +159,11 @@ async def library_handler(message: Message, state: FSMContext, session: AsyncSes
     await state.clear()
     await _show_library(message)
     if session is not None and message.from_user is not None:
-        user_id = await _user_id(session, message)
-        _, reward = await study_service.settle(session, user_id)
+        try:
+            user_id = await _user_id(session, message)
+            _, reward = await study_service.settle(session, user_id)
+        except (UserInactiveError, SchoolUserNotFound):
+            return
         if reward is not None:
             await message.answer(_study_reward_text(reward).strip(), reply_markup=library_keyboard())
 
@@ -256,7 +265,7 @@ async def study_callback_handler(
             text = _study_reward_text(result.completed_reward).strip() + "\n\n" + text
         if callback.message is not None:
             await safe_edit_text(cast(Message, callback.message), text, reply_markup=library_keyboard())
-    except (UserInactiveError, StudyError):
+    except (UserInactiveError, SchoolUserNotFound, StudyError):
         await _notify_callback(callback, "امکان ثبت مطالعه در حال حاضر وجود ندارد.")
 
 

@@ -107,6 +107,23 @@ async def mine_callback(
             await callback.message.answer(
                 "به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard()
             )
+        elif callback_data.action == "collect":
+            snapshot, amounts = await mine_service.collect(session, user.id)
+            labels = ("طلا", "الماس", "XP")
+            collected = "، ".join(
+                f"{amount} {label}"
+                for label, amount in zip(labels, amounts, strict=True)
+                if amount
+            )
+            await safe_edit_text(
+                callback.message,
+                _mine_text(snapshot),
+                reply_markup=mine_keyboard(can_upgrade=True),
+            )
+            await callback.answer(
+                f"منابع برداشت شد: {collected}" if collected else "منبع قابل برداشتی ندارید."
+            )
+            return
         elif callback_data.action == "upgrade":
             snapshot = await mine_service.open(session, user.id)
             try:

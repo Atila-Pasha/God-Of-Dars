@@ -108,4 +108,6 @@ class ShieldCallback(CallbackData, prefix="shield"):
 
 
 class MineCallback(CallbackData, prefix="mine"):
-    action: Literal["upgrade", "confirm_upgrade", "cancel_upgrade", "back"]
+    action: Literal[
+        "collect", "upgrade", "confirm_upgrade", "cancel_upgrade", "back"
+    ]

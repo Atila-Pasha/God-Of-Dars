@@ -4,7 +4,14 @@ from app.bot.callbacks import MineCallback
 
 
 def mine_keyboard(*, can_upgrade: bool) -> InlineKeyboardMarkup:
-    rows = []
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="📦 برداشت منابع",
+                callback_data=MineCallback(action="collect").pack(),
+            )
+        ]
+    ]
     if can_upgrade:
         rows.append(
             [

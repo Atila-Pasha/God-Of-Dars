@@ -116,6 +116,27 @@ def _chance_values(value: str) -> tuple[ResourceType, int]:
     return resource, number(parts[1], "مقدار", minimum=0)
 
 
+def _sticker_value(message: Message) -> str | None:
+    if message.sticker is not None:
+        return message.sticker.file_id
+    if message.text and message.text.strip() == "-":
+        return None
+    if message.text and message.text.strip():
+        return message.text.strip()
+    raise ValueError("یک استیکر بفرستید یا برای بدون استیکر - بفرستید.")
+
+
+def _custom_emoji_value(message: Message) -> str | None:
+    if message.text and message.text.strip() == "-":
+        return None
+    for entity in message.entities or []:
+        if entity.type == "custom_emoji" and entity.custom_emoji_id:
+            return entity.custom_emoji_id
+    if message.text and message.text.strip():
+        return message.text.strip()
+    raise ValueError("یک اموجی سفارشی تلگرام بفرستید یا برای بدون اموجی - بفرستید.")
+
+
 async def _main_bot() -> Bot:
     return Bot(
         token=settings.BOT_TOKEN,
@@ -171,8 +192,30 @@ async def chance_box_send(message: Message, state: FSMContext, session: AsyncSes
     except ValueError as exc:
         await message.answer(str(exc))
         return
+    await state.update_data(resource=resource.value, amount=amount)
+    await state.set_state(ChanceBoxStates.sticker)
+    await message.answer(
+        "اگر می‌خواهید قبل از جعبه استیکر ارسال شود، خود استیکر را بفرستید؛ "
+        "برای بدون استیکر، - بفرستید:"
+    )
+
+
+@router.message(ChanceBoxStates.sticker)
+async def chance_box_publish(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message):
+        return
+    data = await state.get_data()
+    try:
+        sticker = _sticker_value(message)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    resource = ResourceType(data["resource"])
+    amount = int(data["amount"])
     groups = await group_repository.list_active(session)
-    section = int((await state.get_data()).get("section", 1))
+    section = int(data.get("section", 1))
     # Telegram chat IDs provide a stable partition: removing/registering a
     # different group does not move existing groups between sections.
     groups = [
@@ -186,9 +229,18 @@ async def chance_box_send(message: Message, state: FSMContext, session: AsyncSes
             # itself; sending without a keyboard and editing afterwards is
             # racy and can leave a visible box with no button.
             box = await chance_service.create_box(group_id=group.id, session=session, message_id=0, resource=resource, amount=amount)
+            if sticker is not None:
+                try:
+                    await bot.send_sticker(group.telegram_chat_id, sticker)
+                except TelegramAPIError:
+                    logger.warning(
+                        "Could not send chance box sticker to group %s",
+                        group.telegram_chat_id,
+                    )
             sent_message = await bot.send_message(
                 group.telegram_chat_id,
-                f"🎁 جعبه شانس\n\nاولین نفری که جعبه را باز کند، {amount} {('طلا' if resource is ResourceType.COIN else 'الماس')} دریافت می‌کند!",
+                "🎁 جعبه شانس\n\n"
+                "اولین نفری که جعبه را باز کند، برنده جایزه می‌شود!",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(text="🎁 باز کردن جعبه", callback_data=ChanceBoxCallback(box_id=box.id).pack())
                 ]]),
@@ -261,7 +313,7 @@ async def chance_card_send(message: Message, state: FSMContext, session: AsyncSe
                                 await bot.send_photo(
                                     telegram_user_id,
                                     BufferedInputFile(image, filename="chance-captcha.png"),
-                                    caption=f"🃏 کارت شانس\n\nکپچا را حل کن تا {amount} {('طلا' if resource is ResourceType.COIN else 'الماس')} بگیری.",
+                                    caption="🃏 کارت شانس\n\nکپچا را حل کن تا جایزه‌ات را دریافت کنی.",
                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                                         InlineKeyboardButton(text="✅ وارد کردن کپچا", callback_data=ChanceCardCallback(card_id=card.id).pack())
                                     ]]),
@@ -937,25 +989,36 @@ async def t_ability(message: Message, state: FSMContext, session: AsyncSession) 
         ability_text=None if message.text.strip() == "-" else message.text.strip()
     )
     await state.set_state(TeacherStates.sticker)
-    await message.answer("آیدی استیکر دبیر را وارد کنید (برای خالی بودن - بفرستید):")
+    await message.answer("خود استیکر دبیر را بفرستید (برای خالی بودن - بفرستید):")
 
 
 @router.message(TeacherStates.sticker)
 async def t_sticker(message: Message, state: FSMContext) -> None:
-    if not allowed(message) or not message.text:
+    if not allowed(message):
         return
-    value = message.text.strip()
-    await state.update_data(sticker=None if value == "-" else value)
+    try:
+        value = _sticker_value(message)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(sticker=value)
     await state.set_state(TeacherStates.emoji)
-    await message.answer("آیدی اموجی دبیر را وارد کنید (برای خالی بودن - بفرستید):")
+    await message.answer(
+        "خود اموجی سفارشی تلگرام دبیر را بفرستید (برای خالی بودن - بفرستید):"
+    )
 
 
 @router.message(TeacherStates.emoji)
 async def t_emoji(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    if not allowed(message) or not message.text:
+    if not allowed(message):
+        return
+    try:
+        emoji = _custom_emoji_value(message)
+    except ValueError as exc:
+        await message.answer(str(exc))
         return
     data = await state.get_data()
-    data["emoji"] = None if message.text.strip() == "-" else message.text.strip()
+    data["emoji"] = emoji
     mode = data.pop("mode", "create")
     teacher_id = data.pop("teacher_id", None)
     teacher = (
@@ -1031,7 +1094,7 @@ async def teacher_callback(
 async def teacher_edit_value(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
-    if not allowed(message) or not message.text:
+    if not allowed(message):
         return
     data = await state.get_data()
     field = data.get("edit_field")
@@ -1040,14 +1103,26 @@ async def teacher_edit_value(
         await state.clear()
         await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
         return
-    value = message.text.strip()
     try:
         if field in {"name"}:
+            if not message.text:
+                raise ValueError("نام دبیر نمی‌تواند خالی باشد.")
+            value = message.text.strip()
             if not value:
                 raise ValueError("نام دبیر نمی‌تواند خالی باشد.")
-        elif field in {"ability_text", "sticker", "emoji"}:
+        elif field == "sticker":
+            value = _sticker_value(message)
+        elif field == "emoji":
+            value = _custom_emoji_value(message)
+        elif field == "ability_text":
+            if not message.text:
+                raise ValueError("متن توانایی نمی‌تواند خالی باشد.")
+            value = message.text.strip()
             value = None if value == "-" else value
         else:
+            if not message.text:
+                raise ValueError("مقدار نامعتبر است.")
+            value = message.text.strip()
             value = number(value, field, minimum=1 if field == "unlock_level" else 0)
             if field == "reduction_percent" and value > 100:
                 raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
