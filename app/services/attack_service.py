@@ -69,6 +69,7 @@ class AttackPreview:
 class AttackLaunch:
     target_name: str
     teacher_name: str
+    teacher_stickers: tuple[str, ...]
     resolve_at: datetime
 
 
@@ -263,6 +264,11 @@ class AttackService:
         return AttackLaunch(
             target_name=target.first_name,
             teacher_name="، ".join(teacher.teacher.name for teacher in teachers),
+            teacher_stickers=tuple(
+                teacher.teacher.sticker
+                for teacher in teachers
+                if teacher.teacher.sticker
+            ),
             resolve_at=resolve_at,
         )
 

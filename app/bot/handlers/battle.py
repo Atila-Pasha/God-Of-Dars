@@ -199,6 +199,12 @@ async def attack_confirmation(
             teacher_ids=teacher_ids,
         )
         await callback.message.edit_reply_markup(reply_markup=None)
+        for sticker in launch.teacher_stickers:
+            try:
+                await callback.message.answer_sticker(sticker)
+            except TelegramAPIError:
+                # A missing or invalid optional sticker must not block an attack.
+                continue
         await callback.message.answer(
             f"⚔️ حمله به «{launch.target_name}» آغاز شد!\n"
             f"👨‍🏫 {teacher_phrase(launch.teacher_name)}\n"

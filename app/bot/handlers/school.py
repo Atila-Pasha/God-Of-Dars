@@ -2,7 +2,7 @@ from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, MessageEntity
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks import (
@@ -12,6 +12,7 @@ from app.bot.callbacks import (
     SchoolCallback,
     TeacherCallback,
 )
+from app.bot.custom_emojis import custom_emoji_entity
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     main_menu_keyboard,
@@ -87,9 +88,8 @@ def _status_icon(teacher: UserTeacher) -> str:
     return STATUS_ICONS.get(teacher.status, "⚪")
 
 
-def _teacher_icon(teacher: UserTeacher) -> str:
-    """Use status text as fallback; the stored value is an icon id, not text."""
-    return _status_icon(teacher)
+def _teacher_icon(teacher: UserTeacher) -> tuple[str, MessageEntity | None]:
+    return custom_emoji_entity(teacher.teacher.emoji, fallback="👨‍🏫")
 
 
 def _recovery_text(teacher: UserTeacher) -> str:
@@ -109,16 +109,26 @@ async def _send_or_edit(
     text: str,
     *,
     reply_markup,
+    entities: list[MessageEntity] | None = None,
 ) -> None:
     if isinstance(target, CallbackQuery):
         if target.message is None:
             return
         try:
-            await safe_edit_text(target.message, text, reply_markup=reply_markup)
+            await safe_edit_text(
+                target.message,
+                text,
+                reply_markup=reply_markup,
+                entities=entities,
+            )
         except TelegramAPIError:
-            await target.message.answer(text, reply_markup=reply_markup)
+            await target.message.answer(
+                text,
+                reply_markup=reply_markup,
+                entities=entities,
+            )
         return
-    await target.answer(text, reply_markup=reply_markup)
+    await target.answer(text, reply_markup=reply_markup, entities=entities)
 
 
 async def _school_view(
@@ -230,8 +240,9 @@ async def _teacher_view(
     except SchoolError:
         pass
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
+    icon, icon_entity = _teacher_icon(teacher)
     text = (
-        f"{_teacher_icon(teacher)} {teacher.teacher.name}\n\n"
+        f"{icon} {teacher.teacher.name}\n\n"
         f"🎖 Level: {_number(teacher.level)}\n"
         f"⚔️ Damage: {damage_text}\n"
         f"❤️ HP: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
@@ -250,6 +261,7 @@ async def _teacher_view(
             can_sell=teacher_service.can_sell(teacher),
             can_activate=hospital_service.can_activate(),
         ),
+        entities=[icon_entity] if icon_entity is not None else None,
     )
 
 

@@ -127,6 +127,22 @@ def premium_emoji_id(value: str | None, *, fallback: str | None = None) -> str |
     return CUSTOM_EMOJI_IDS.get(fallback) if fallback else None
 
 
+def custom_emoji_entity(
+    value: str | None, *, fallback: str
+) -> tuple[str, MessageEntity | None]:
+    """Return visible fallback text and an entity for a stored custom emoji."""
+    visible = value if value and not value.isdigit() else fallback
+    emoji_id = premium_emoji_id(value)
+    if emoji_id is None:
+        return visible, None
+    return visible, MessageEntity(
+        type="custom_emoji",
+        offset=0,
+        length=len(visible.encode("utf-16-le")) // 2,
+        custom_emoji_id=emoji_id,
+    )
+
+
 def strip_custom_emoji_fallbacks(text: str) -> str:
     """Remove textual fallback emojis when a button has a premium icon slot."""
     for source in sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True):
