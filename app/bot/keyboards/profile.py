@@ -4,7 +4,10 @@ from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
 
 
 def profile_keyboard(
-    *, include_delete: bool = False, owner_id: int = 0
+    *,
+    include_delete: bool = False,
+    include_navigation: bool = True,
+    owner_id: int = 0,
 ) -> InlineKeyboardMarkup:
     rows = [
         [
@@ -33,21 +36,28 @@ def profile_keyboard(
                 ).pack(),
             ),
         ],
-        [
-            InlineKeyboardButton(
-                text="⬆️ ارتقای سطح",
-                callback_data=ProfileCallback(
-                    action="upgrade", owner_id=owner_id
-                ).pack(),
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🔙 بازگشت به منوی اصلی",
-                callback_data=ProfileCallback(action="back", owner_id=owner_id).pack(),
-            )
-        ],
     ]
+    if include_navigation:
+        rows.extend(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="⬆️ ارتقای سطح",
+                        callback_data=ProfileCallback(
+                            action="upgrade", owner_id=owner_id
+                        ).pack(),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔙 بازگشت به منوی اصلی",
+                        callback_data=ProfileCallback(
+                            action="back", owner_id=owner_id
+                        ).pack(),
+                    )
+                ],
+            ]
+        )
     if include_delete:
         rows.append(
             [

@@ -127,8 +127,10 @@ def _profile_markup(target: Message | CallbackQuery):
         else getattr(target, "chat", None)
     )
     owner_id = target.from_user.id if target.from_user is not None else 0
+    is_group = getattr(chat, "type", "private") in {"group", "supergroup"}
     return profile_keyboard(
-        include_delete=getattr(chat, "type", "private") in {"group", "supergroup"},
+        include_delete=is_group,
+        include_navigation=not is_group,
         owner_id=owner_id,
     )
 
@@ -299,8 +301,7 @@ async def _show_level_upgrade(target: CallbackQuery, session: AsyncSession) -> N
 )
 async def profile_handler(message: Message, session: AsyncSession) -> None:
     try:
-        # The profile menu is an action hub. Keep /stat as the explicit
-        # shortcut for the detailed report for backwards compatibility.
+        # The profile menu is an action hub; /stat opens profile identity only.
         message_text = (getattr(message, "text", None) or "").strip()
         command_name = (
             message_text.split(maxsplit=1)[0].split("@", 1)[0].removeprefix("/")
@@ -313,20 +314,22 @@ async def profile_handler(message: Message, session: AsyncSession) -> None:
             "اطلاعات دارایی": "assets",
             "اطلاعات دانش": "knowledge",
             "profile_info": "profile",
+            "stat": "profile",
             "war": "war",
             "assets": "assets",
             "knowledge": "knowledge",
-        }.get(message_text, None)
+        }.get(message_text)
         if section is None:
             section = {
                 "profile_info": "profile",
+                "stat": "profile",
                 "war": "war",
                 "assets": "assets",
                 "knowledge": "knowledge",
             }.get(command_name)
         if section is not None:
             await _show_profile_section(message, session, section)
-        elif not message_text or command_name == "stat":
+        elif not message_text:
             await _show_profile(message, session)
         else:
             await _show_profile_menu(message)
@@ -372,6 +375,15 @@ async def profile_callback_handler(
 
     try:
         if callback_data.action == "upgrade":
+            if (
+                callback.message is not None
+                and callback.message.chat.type in {"group", "supergroup"}
+            ):
+                await callback.answer(
+                    "ارتقای سطح فقط در گفت‌وگوی خصوصی قابل استفاده است.",
+                    show_alert=True,
+                )
+                return
             await callback.answer()
             await _show_level_upgrade(callback, session)
             return
