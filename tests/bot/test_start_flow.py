@@ -29,8 +29,9 @@ async def test_start_member_initializes_user_and_shows_menu(monkeypatch) -> None
     await start.start_handler(message, session)
 
     initialize.assert_awaited_once_with(session, message.from_user)
-    message.answer.assert_awaited_once()
-    keyboard = message.answer.await_args.kwargs["reply_markup"]
+    assert message.answer.await_count == 2
+    assert "راهنمای کدام بخش" in message.answer.await_args_list[1].args[0]
+    keyboard = message.answer.await_args_list[0].kwargs["reply_markup"]
     assert keyboard.is_persistent is False
     assert keyboard.resize_keyboard is True
     assert keyboard.keyboard
@@ -144,8 +145,12 @@ async def test_membership_callback_after_join_shows_menu(monkeypatch) -> None:
 
     initialize.assert_awaited_once_with(session, callback.from_user)
     assert callback.answer.await_args.args[0] == "عضویت تأیید شد."
-    assert "خوش آمدید" in callback.message.answer.await_args.args[0]
-    assert callback.message.answer.await_args.kwargs["reply_markup"].is_persistent is False
+    assert callback.message.answer.await_count == 2
+    assert "راهنمای کدام بخش" in callback.message.answer.await_args_list[1].args[0]
+    assert (
+        callback.message.answer.await_args_list[0].kwargs["reply_markup"].is_persistent
+        is False
+    )
 
 
 @pytest.mark.asyncio

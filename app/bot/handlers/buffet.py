@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,26 +56,25 @@ RESOURCE_LABELS = {
 }
 
 
-@router.message(Command("buy"))
 @router.message(
-    F.chat.type.in_({"group", "supergroup"}),
     F.text.regexp(r"^\s*خرید(?:\s+\S.*)?$"),
 )
 async def group_purchase_message(
     message: Message,
     session: AsyncSession,
-    command: CommandObject | None = None,
 ) -> None:
     if message.from_user is None or not message.text:
         return
-    if len(message.text.split(maxsplit=1)) != 2:
-        await message.answer("فرمت خرید: خرید نام دبیر یا خرید نام سپر")
+    parts = message.text.strip().split(maxsplit=2)
+    if len(parts) < 2 or (parts[1] == "سپر" and len(parts) < 3):
+        await message.answer(
+            "فرمت خرید:\n"
+            "خرید {اسم دبیر}\n"
+            "خرید سپر {اسم سپر}"
+        )
         return
-    name = (command.args if command is not None else None) or message.text.partition(" ")[2]
-    name = name.strip()
-    if not name:
-        await message.answer("فرمت خرید: /buy نام دبیر یا /buy نام سپر")
-        return
+    is_shield = parts[1] == "سپر"
+    name = parts[2].strip() if is_shield else message.text.strip().split(maxsplit=1)[1]
     try:
         user = await user_service.get_active_by_telegram_user_id(
             session, message.from_user.id
@@ -93,7 +91,12 @@ async def group_purchase_message(
             )
             return
 
-        shield_catalog = await shield_service.catalog(session, player_level=user.level)
+        if is_shield:
+            shield_catalog = await shield_service.catalog(
+                session, player_level=user.level
+            )
+        else:
+            shield_catalog = []
         shield = next(
             (item for item in shield_catalog if item.name.casefold() == name.casefold()),
             None,
@@ -105,7 +108,9 @@ async def group_purchase_message(
                 f"{purchased.quantity} عدد در موجودی دارید."
             )
             return
-        await message.answer("دبیر یا سپری با این نام برای سطح شما پیدا نشد.")
+        await message.answer(
+            "دبیر یا سپری با این نام برای سطح شما پیدا نشد."
+        )
     except TeacherSlotLocked:
         await message.answer(
             "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید یا سطح فرمانده را افزایش دهید."

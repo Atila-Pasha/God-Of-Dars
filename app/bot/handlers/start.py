@@ -46,13 +46,14 @@ MEMBERSHIP_ERROR_MESSAGE = (
 USER_ERROR_MESSAGE = "در آماده‌سازی حساب شما مشکلی پیش آمد. لطفاً دوباره تلاش کنید."
 BANNED_USER_MESSAGE = "حساب شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید."
 MAIN_MENU_MESSAGE = "🏫 به بازی خوش آمدید! یکی از بخش‌های زیر را انتخاب کنید:"
+RETURNING_USER_MESSAGE = "سلام دوباره فرمانده! 👑"
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
 HELP_MENU_TEXT = "📖 راهنمای کدام بخش را می‌خواهی فرمانده؟"
 HELP_TEXTS = {
     "attack": (
         "⚔️ راهنمای حمله\n\n"
         "در خصوصی: حمله {نام‌کاربری هدف} {اسم دبیر}\n"
-        "مثال: حمله @player افلاطون\n\n"
+        "مثال: حمله @player فراهانی\n\n"
         "در گروه: روی پیام هدف Reply بزن و بنویس:\n"
         "حمله {اسم دبیر}"
     ),
@@ -65,13 +66,14 @@ HELP_TEXTS = {
     "buffet": (
         "🍽 راهنمای بوفه و خرید\n\n"
         "در بوفه می‌توانی دبیر و سپر بخری یا منابع را تبدیل کنی.\n"
-        "برای خرید سریع دبیر هم می‌توانی بنویسی:\n"
-        "/buy {اسم دبیر}"
+        "برای خرید دبیر بنویس:\n"
+        "خرید {اسم دبیر}\n\n"
+        "برای خرید سپر بنویس:\n"
+        "خرید سپر {اسم سپر}"
     ),
     "library": (
         "📚 راهنمای کتابخانه\n\n"
-        "از کتابخانه سؤال روزانه، سؤال گروهی، مطالعه و فهرست دبیرها را ببین.\n"
-        "برای ورود مستقیم: /library"
+        "از بخش «کتابخانه» سؤال روزانه، سؤال گروهی، مطالعه و فهرست دبیرها را ببین."
     ),
     "profile": (
         "🧙 راهنمای پروفایل\n\n"
@@ -145,12 +147,17 @@ async def _initialize_and_show_menu(
     if user.is_active is False:
         raise UserInactiveError
 
+    greeting = (
+        MAIN_MENU_MESSAGE
+        if getattr(user, "_was_created", False) is True
+        else RETURNING_USER_MESSAGE
+    )
     if isinstance(target, CallbackQuery) or hasattr(target, "message"):
         if target.message is None:
             return False
         try:
             await target.message.answer(
-                MAIN_MENU_MESSAGE,
+                greeting,
                 reply_markup=main_menu_keyboard(),
             )
         except TelegramAPIError:
@@ -158,10 +165,18 @@ async def _initialize_and_show_menu(
             return False
     else:
         try:
-            await target.answer(MAIN_MENU_MESSAGE, reply_markup=main_menu_keyboard())
+            await target.answer(greeting, reply_markup=main_menu_keyboard())
         except TelegramAPIError:
             logger.exception("Could not send main menu message")
             return False
+    if isinstance(target, CallbackQuery) or hasattr(target, "message"):
+        if target.message is not None:
+            await target.message.answer(
+                HELP_MENU_TEXT,
+                reply_markup=help_keyboard(),
+            )
+    else:
+        await target.answer(HELP_MENU_TEXT, reply_markup=help_keyboard())
     if referral_notice:
         if isinstance(target, CallbackQuery):
             if target.message is not None:

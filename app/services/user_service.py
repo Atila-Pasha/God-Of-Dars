@@ -27,6 +27,7 @@ class UserService:
                 session, telegram_user.id
             )
             if user is not None:
+                user.__dict__["_was_created"] = False
                 if self._profile_changed(user, telegram_user):
                     await self.repository.update_telegram_profile(
                         session,
@@ -63,11 +64,13 @@ class UserService:
                         last_name=telegram_user.last_name,
                     )
                 if user.is_active is False:
-                    raise UserInactiveError
+                    raise UserInactiveError from None
+                user.__dict__["_was_created"] = False
                 return user
 
             if user.is_active is False:
                 raise UserInactiveError
+            user.__dict__["_was_created"] = True
             return user
         except UserInactiveError:
             raise

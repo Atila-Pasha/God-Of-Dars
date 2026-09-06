@@ -23,7 +23,6 @@ ALLOWED_GROUP_COMMANDS = frozenset(
         "help",
         "stat",
         "attack",
-        "buy",
         "profile_info",
         "war",
         "assets",

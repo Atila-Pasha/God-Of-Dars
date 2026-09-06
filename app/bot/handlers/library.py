@@ -6,7 +6,6 @@ from typing import Any, cast
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
-from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
@@ -219,7 +218,6 @@ async def group_teacher_introduction(
     await message.answer(text, entities=entities)
 
 
-@router.message(Command("library"))
 @router.message(F.text == LIBRARY_LABEL)
 async def library_handler(message: Message, state: FSMContext, session: AsyncSession | None = None) -> None:
     await state.clear()

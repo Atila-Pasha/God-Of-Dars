@@ -3,13 +3,13 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from app.bot.callbacks import HelpCallback
 
 HELP_SECTIONS = (
-    ("⚔️ حمله", "attack"),
-    ("🏫 مدرسه و دبیرها", "school"),
-    ("🍽 بوفه و خرید", "buffet"),
-    ("📚 کتابخانه", "library"),
-    ("🧙 پروفایل", "profile"),
-    ("⛏ معدن منابع", "mine"),
-    ("👥 دعوت دوستان", "referral"),
+    ("⚔️ راهنمای حمله", "attack"),
+    ("🏫 راهنمای مدرسه", "school"),
+    ("🍽 راهنمای بوفه", "buffet"),
+    ("📚 راهنمای کتابخانه", "library"),
+    ("🧙 راهنمای پروفایل", "profile"),
+    ("⛏ راهنمای معدن", "mine"),
+    ("👥 راهنمای دعوت", "referral"),
 )
 
 
