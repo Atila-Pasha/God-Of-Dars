@@ -221,7 +221,8 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
                 continue
             source = next((item for item in sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True) if item in text), None)
             if source is not None and hasattr(button, "icon_custom_emoji_id"):
-                button.icon_custom_emoji_id = CUSTOM_EMOJI_IDS[source]
+                if not getattr(button, "icon_custom_emoji_id", None):
+                    button.icon_custom_emoji_id = CUSTOM_EMOJI_IDS[source]
                 # Both inline and reply buttons have a dedicated icon slot.
                 # Remove textual fallbacks so exactly one premium emoji is
                 # rendered. Incoming handlers accept the plain labels below.

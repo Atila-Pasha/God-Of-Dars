@@ -69,6 +69,7 @@ TEACHER_EDIT_PROMPTS = {
     "upgrade_price": "قیمت ارتقای جدید را بفرستید:",
     "unlock_level": "سطح بازشدن جدید را بفرستید:",
     "ability_text": "متن توانایی جدید را بفرستید؛ برای حذف، - بفرستید:",
+    "description": "توضیحات جدید دبیر را بفرستید؛ برای حذف، - بفرستید:",
     "sticker": "آیدی استیکر جدید را بفرستید؛ برای حذف، - بفرستید:",
     "emoji": "آیدی اموجی پرمیوم جدید را بفرستید؛ برای حذف، - بفرستید:",
 }
@@ -896,6 +897,7 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
             f"خرید: {teacher.purchase_price} سکه | ارتقا: {teacher.upgrade_price} الماس\n"
             f"بازشدن در سطح: {teacher.unlock_level}\n"
             f"توانایی: {teacher.ability_text or '—'}\n"
+            f"توضیحات: {teacher.description or '—'}\n"
             f"استیکر: {teacher.sticker or '—'} | اموجی: {teacher.emoji or '—'}\n"
             f"وضعیت: {'فعال' if teacher.is_active else 'غیرفعال'}",
             reply_markup=keyboards.teacher_actions(teacher.id),
@@ -987,6 +989,17 @@ async def t_ability(message: Message, state: FSMContext, session: AsyncSession) 
         return
     await state.update_data(
         ability_text=None if message.text.strip() == "-" else message.text.strip()
+    )
+    await state.set_state(TeacherStates.description)
+    await message.answer("توضیحات دبیر را بفرستید (برای خالی بودن - بفرستید):")
+
+
+@router.message(TeacherStates.description)
+async def t_description(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    await state.update_data(
+        description=None if message.text.strip() == "-" else message.text.strip()
     )
     await state.set_state(TeacherStates.sticker)
     await message.answer("خود استیکر دبیر را بفرستید (برای خالی بودن - بفرستید):")
@@ -1114,7 +1127,7 @@ async def teacher_edit_value(
             value = _sticker_value(message)
         elif field == "emoji":
             value = _custom_emoji_value(message)
-        elif field == "ability_text":
+        elif field in {"ability_text", "description"}:
             if not message.text:
                 raise ValueError("متن توانایی نمی‌تواند خالی باشد.")
             value = message.text.strip()

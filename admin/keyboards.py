@@ -114,6 +114,7 @@ def teacher_edit_fields(teacher_id: int) -> InlineKeyboardMarkup:
         ("نام", "name"), ("آسیب", "damage"), ("جان", "max_hp"),
         ("قیمت خرید", "purchase_price"), ("قیمت ارتقا", "upgrade_price"),
         ("سطح بازشدن", "unlock_level"), ("توانایی", "ability_text"),
+        ("توضیحات", "description"),
         ("استیکر", "sticker"), ("اموجی", "emoji"),
     )
     rows = [

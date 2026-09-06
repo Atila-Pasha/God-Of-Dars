@@ -19,7 +19,16 @@ logger = logging.getLogger(__name__)
 
 GROUP_CHAT_TYPES = frozenset({"group", "supergroup"})
 ALLOWED_GROUP_COMMANDS = frozenset(
-    {"stat", "attack", "buy", "profile_info", "war", "assets", "knowledge"}
+    {
+        "help",
+        "stat",
+        "attack",
+        "buy",
+        "profile_info",
+        "war",
+        "assets",
+        "knowledge",
+    }
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
 
@@ -98,7 +107,7 @@ class GroupAccessMiddleware(BaseMiddleware):
             return True
         # Attack is intentionally a plain-text group action. Keep it explicit
         # here so future group restrictions cannot silently swallow it.
-        if text.startswith(("حمله", "خرید", "اطلاعات")):
+        if text.startswith(("حمله", "خرید", "اطلاعات", "معرفی")):
             return True
         if text.startswith("/"):
             command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
@@ -134,4 +143,13 @@ class GroupAccessMiddleware(BaseMiddleware):
         data = callback.data or ""
         if data in ALLOWED_GROUP_CALLBACKS:
             return True
-        return data.startswith(("profile:", "attack:", "chance_box:"))
+        return data.startswith(
+            (
+                "help:",
+                "profile:",
+                "attack:",
+                "chance_box:",
+                "library:",
+                "library_teacher:",
+            )
+        )

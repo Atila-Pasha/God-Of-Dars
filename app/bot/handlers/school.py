@@ -1,3 +1,4 @@
+from contextlib import suppress
 from datetime import datetime
 
 from aiogram import F, Router
@@ -31,7 +32,17 @@ from app.core.enums import TeacherStatus
 from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
-from app.services.school_errors import InsufficientDiamonds, SchoolError
+from app.services.school_errors import (
+    InsufficientCoins,
+    InsufficientDiamonds,
+    SchoolError,
+    TeacherAlreadyOwned,
+    TeacherLimitReached,
+    TeacherLocked,
+    TeacherNotFound,
+    TeacherNotPurchasable,
+    TeacherSlotLocked,
+)
 from app.services.teacher_service import TeacherService
 from app.services.user_service import UserInactiveError, UserService
 
@@ -74,6 +85,25 @@ def _progress_percent(value: int, maximum: int) -> str:
     if maximum <= 0:
         return "—"
     return _number(round(max(0, min(value, maximum)) / maximum * 100)) + "%"
+
+
+def _teacher_purchase_error(error: Exception) -> str:
+    if isinstance(error, (TeacherSlotLocked, TeacherLimitReached)):
+        return (
+            "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید "
+            "یا سطح فرمانده را افزایش دهید."
+        )
+    if isinstance(error, TeacherAlreadyOwned):
+        return "این دبیر را قبلاً خریده‌اید."
+    if isinstance(error, TeacherLocked):
+        return "این دبیر برای سطح فعلی شما باز نشده است."
+    if isinstance(error, TeacherNotFound):
+        return "این دبیر دیگر در فهرست خرید نیست."
+    if isinstance(error, TeacherNotPurchasable):
+        return "این دبیر فعلاً قابل خرید نیست."
+    if isinstance(error, InsufficientCoins):
+        return "سکه کافی برای خرید این دبیر ندارید."
+    return "خرید دبیر در حال حاضر امکان‌پذیر نیست."
 
 
 async def _user(session: AsyncSession, telegram_user_id: int):
@@ -193,7 +223,6 @@ async def _teachers_view(
     capacity = await teacher_service.capacity(session, user.id)
     teachers = await teacher_service.owned(session, user.id)
     catalog = await teacher_service.catalog(session, user.id)
-    free_slots = max(capacity.available - capacity.owned, 0)
     text_lines = [
         "👨‍🏫 دبیرهای من \n\n",
         f"🎖 سطح شما: {_number(user.level)}",
@@ -235,10 +264,8 @@ async def _teacher_view(
     user = await _user(session, target.from_user.id)
     teacher = await teacher_service.get_owned(session, user.id, user_teacher_id)
     damage = "تنظیم نشده"
-    try:
+    with suppress(SchoolError):
         damage = str(teacher_service.damage(teacher))
-    except SchoolError:
-        pass
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
     icon, icon_entity = _teacher_icon(teacher)
     text = (
@@ -596,6 +623,16 @@ async def confirmation_callback_handler(
         await callback.answer(notice)
     except InsufficientDiamonds:
         await callback.answer("الماس کافی برای تعمیر یا ارتقا ندارید.", show_alert=True)
+    except (
+        TeacherAlreadyOwned,
+        TeacherLimitReached,
+        TeacherLocked,
+        TeacherNotFound,
+        TeacherNotPurchasable,
+        TeacherSlotLocked,
+        InsufficientCoins,
+    ) as error:
+        await callback.answer(_teacher_purchase_error(error), show_alert=True)
     except SchoolError:
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 

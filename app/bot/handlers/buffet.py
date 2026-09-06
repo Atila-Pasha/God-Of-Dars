@@ -32,6 +32,12 @@ from app.services.school_errors import (
     ShieldLocked,
     ShieldNotFound,
     ShieldNotPurchasable,
+    TeacherAlreadyOwned,
+    TeacherLimitReached,
+    TeacherLocked,
+    TeacherNotFound,
+    TeacherNotPurchasable,
+    TeacherSlotLocked,
 )
 from app.services.shield_service import ShieldService
 from app.services.teacher_service import TeacherService
@@ -51,7 +57,7 @@ RESOURCE_LABELS = {
 }
 
 
-@router.message(F.chat.type.in_({"group", "supergroup"}), Command("buy"))
+@router.message(Command("buy"))
 @router.message(
     F.chat.type.in_({"group", "supergroup"}),
     F.text.regexp(r"^\s*خرید(?:\s+\S.*)?$"),
@@ -100,6 +106,22 @@ async def group_purchase_message(
             )
             return
         await message.answer("دبیر یا سپری با این نام برای سطح شما پیدا نشد.")
+    except TeacherSlotLocked:
+        await message.answer(
+            "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید یا سطح فرمانده را افزایش دهید."
+        )
+    except TeacherLimitReached:
+        await message.answer(
+            "به حداکثر تعداد دبیرهای قابل نگهداری رسیده‌اید؛ یک دبیر را بفروشید."
+        )
+    except TeacherAlreadyOwned:
+        await message.answer("این دبیر را قبلاً خریده‌اید.")
+    except TeacherLocked:
+        await message.answer("این دبیر برای سطح فعلی شما باز نشده است.")
+    except TeacherNotPurchasable:
+        await message.answer("این دبیر فعلاً قابل خرید نیست.")
+    except TeacherNotFound:
+        await message.answer("این دبیر برای سطح شما پیدا نشد.")
     except InsufficientCoins:
         await message.answer("سکه کافی برای این خرید ندارید.")
     except SchoolError:

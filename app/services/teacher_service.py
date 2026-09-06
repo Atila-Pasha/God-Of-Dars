@@ -76,6 +76,9 @@ class TeacherService:
     async def catalog(self, session: AsyncSession, user_id: int) -> list[Teacher]:
         return await self.repository.list_catalog(session, user_id)
 
+    async def public_teachers(self, session: AsyncSession) -> list[Teacher]:
+        return await self.repository.list_public(session)
+
     async def catalog_teacher(self, session: AsyncSession, teacher_id: int) -> Teacher:
         teacher = await self.repository.get_catalog_teacher(session, teacher_id)
         if teacher is None:

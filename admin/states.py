@@ -33,6 +33,7 @@ class TeacherStates(StatesGroup):
     upgrade_price = State()
     unlock_level = State()
     ability_text = State()
+    description = State()
     sticker = State()
     emoji = State()
     edit_value = State()

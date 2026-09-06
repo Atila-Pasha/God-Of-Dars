@@ -7,6 +7,18 @@ class ChannelCallback(CallbackData, prefix="channel"):
     action: Literal["check"]
 
 
+class HelpCallback(CallbackData, prefix="help"):
+    section: Literal[
+        "attack",
+        "school",
+        "buffet",
+        "library",
+        "profile",
+        "mine",
+        "referral",
+    ]
+
+
 class SchoolCallback(CallbackData, prefix="school"):
     action: Literal["castle", "teachers", "hospital", "back"]
 
@@ -62,7 +74,15 @@ class AttackConfirmationCallback(CallbackData, prefix="attack"):
 
 
 class LibraryCallback(CallbackData, prefix="library"):
-    action: Literal["daily", "group", "study", "back", "cancel"]
+    action: Literal[
+        "daily", "group", "study", "teachers", "back", "cancel"
+    ]
+
+
+class LibraryTeacherCallback(CallbackData, prefix="library_teacher"):
+    action: Literal["page", "view", "back"]
+    teacher_id: int = 0
+    page: int = 0
 
 
 class StudyCallback(CallbackData, prefix="study"):

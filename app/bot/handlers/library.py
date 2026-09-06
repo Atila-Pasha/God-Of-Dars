@@ -12,11 +12,14 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import LibraryCallback, StudyCallback
+from app.bot.callbacks import LibraryCallback, LibraryTeacherCallback, StudyCallback
+from app.bot.custom_emojis import custom_emoji_entity
 from app.bot.keyboards.library import (
     answer_keyboard,
     library_keyboard,
     study_keyboard,
+    teacher_library_detail_keyboard,
+    teacher_library_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
 from app.bot.utils.telegram import safe_edit_text
@@ -29,19 +32,21 @@ from app.services.library_errors import (
     WrongGroup,
 )
 from app.services.question_service import AnswerResult, QuestionService
-from app.services.school_errors import SchoolUserNotFound
+from app.services.school_errors import SchoolUserNotFound, TeacherNotFound
 from app.services.study_service import (
     StudyAlreadyActive,
     StudyError,
     StudyPackNotFound,
     StudyService,
 )
+from app.services.teacher_service import TeacherService
 from app.services.user_service import UserInactiveError, UserService
 
 router = Router(name="library")
 question_service = QuestionService()
 user_service = UserService()
 study_service = StudyService()
+teacher_service = TeacherService()
 logger = logging.getLogger(__name__)
 
 RESOURCE_LABELS = {
@@ -53,6 +58,7 @@ RESOURCE_LABELS = {
 LIBRARY_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "library"
 )
+TEACHERS_PER_PAGE = 5
 
 
 class LibraryState(StatesGroup):
@@ -153,6 +159,66 @@ async def _notify_callback(callback: CallbackQuery, text: str) -> None:
         logger.debug("Could not send library callback notice")
 
 
+def _teacher_list_text(page: int, page_count: int) -> str:
+    return f"👨‍🏫 معرفی دبیرها\n\nصفحه {page + 1} از {page_count}\nیک دبیر را انتخاب کنید:"
+
+
+def _teacher_detail_content(teacher) -> tuple[str, list]:
+    icon, entity = custom_emoji_entity(teacher.emoji, fallback="👨‍🏫")
+    text = (
+        f"{icon} {teacher.name}\n\n"
+        f"⚔️ آسیب پایه: {teacher.damage}\n"
+        f"❤️ حداکثر جان: {teacher.max_hp}\n"
+        f"🪙 قیمت خرید: {teacher.purchase_price} سکه\n"
+        f"💎 قیمت ارتقا: {teacher.upgrade_price} الماس\n"
+        f"🎖 سطح بازشدن: {teacher.unlock_level}\n\n"
+        f"✨ توانایی: {teacher.ability_text or 'تنظیم نشده'}\n"
+        f"📝 توضیحات: {teacher.description or 'توضیحی ثبت نشده است.'}"
+    )
+    return text, [entity] if entity is not None else []
+
+
+async def _show_teacher_list(
+    target: CallbackQuery, session: AsyncSession, page: int
+) -> None:
+    teachers = await teacher_service.public_teachers(session)
+    page_count = max(1, (len(teachers) + TEACHERS_PER_PAGE - 1) // TEACHERS_PER_PAGE)
+    page = max(0, min(page, page_count - 1))
+    start = page * TEACHERS_PER_PAGE
+    items = teachers[start : start + TEACHERS_PER_PAGE]
+    if target.message is not None:
+        await safe_edit_text(
+            cast(Message, target.message),
+            _teacher_list_text(page, page_count),
+            reply_markup=teacher_library_keyboard(
+                items, page=page, page_count=page_count
+            ),
+        )
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(r"^معرفی(?:\s+.+)?$"),
+)
+async def group_teacher_introduction(
+    message: Message, session: AsyncSession
+) -> None:
+    name = (message.text or "")[len("معرفی") :].strip()
+    if not name:
+        await message.answer("فرمت صحیح: معرفی نام دبیر")
+        return
+    teachers = await teacher_service.public_teachers(session)
+    teacher = next(
+        (item for item in teachers if item.name.casefold() == name.casefold()),
+        None,
+    )
+    if teacher is None:
+        await message.answer("دبیری با این نام پیدا نشد.")
+        return
+    text, entities = _teacher_detail_content(teacher)
+    await message.answer(text, entities=entities)
+
+
 @router.message(Command("library"))
 @router.message(F.text == LIBRARY_LABEL)
 async def library_handler(message: Message, state: FSMContext, session: AsyncSession | None = None) -> None:
@@ -217,6 +283,8 @@ async def library_callback_handler(
                 )
             if reward is not None:
                 await _notify_callback(callback, _study_reward_text(reward).strip())
+        elif callback_data.action == "teachers":
+            await _show_teacher_list(callback, session, 0)
         elif callback_data.action == "cancel":
             await state.clear()
             if callback.message is not None:
@@ -232,6 +300,40 @@ async def library_callback_handler(
         await state.clear()
         await _notify_callback(
             callback, "امکان استفاده از کتابخانه در حال حاضر وجود ندارد."
+        )
+
+
+@router.callback_query(LibraryTeacherCallback.filter())
+async def library_teacher_callback(
+    callback: CallbackQuery,
+    callback_data: LibraryTeacherCallback,
+    session: AsyncSession,
+) -> None:
+    await _safe_callback_answer(callback)
+    if callback_data.action in {"page", "back"}:
+        if callback_data.action == "back":
+            if callback.message is not None:
+                await _show_library(callback)
+        else:
+            await _show_teacher_list(callback, session, callback_data.page)
+        return
+    try:
+        teacher = await teacher_service.catalog_teacher(
+            session, callback_data.teacher_id
+        )
+    except TeacherNotFound:
+        await _notify_callback(callback, "این دبیر در دسترس نیست.")
+        return
+    if teacher is None or not teacher.is_active:
+        await _notify_callback(callback, "این دبیر در دسترس نیست.")
+        return
+    if callback.message is not None:
+        text, entities = _teacher_detail_content(teacher)
+        await safe_edit_text(
+            cast(Message, callback.message),
+            text,
+            reply_markup=teacher_library_detail_keyboard(callback_data.page),
+            entities=entities,
         )
 
 

@@ -55,6 +55,14 @@ class TeacherRepository:
         result = await session.execute(statement)
         return list(result.scalars().all())
 
+    async def list_public(self, session: AsyncSession) -> list[Teacher]:
+        result = await session.execute(
+            select(Teacher)
+            .where(Teacher.is_active.is_(True))
+            .order_by(Teacher.id)
+        )
+        return list(result.scalars().all())
+
     async def list_owned(
         self, session: AsyncSession, user_id: int
     ) -> list[UserTeacher]:

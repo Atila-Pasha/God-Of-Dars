@@ -1,6 +1,8 @@
+from contextlib import suppress
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +56,24 @@ def _preview_text(preview: AttackPreview) -> str:
     )
 
 
+def _attack_help_text(*, group: bool = False) -> str:
+    if group:
+        return (
+            "⚔️ راهنمای حمله در گروه\n\n"
+            "روی پیام هدف Reply بزن و یکی از این قالب‌ها را بفرست:\n"
+            "• حمله {اسم دبیر}\n\n"
+            "اگر روی پیام هدف Reply نزنی:\n"
+            "• حمله {نام‌کاربری هدف} {اسم دبیر}"
+        )
+    return (
+        "⚔️ راهنمای حمله در گفت‌وگوی خصوصی\n\n"
+        "حمله {نام‌کاربری هدف} {اسم دبیر}\n"
+        "مثال: حمله @player افلاطون\n\n"
+        "در گروه، روی پیام هدف Reply بزن و بنویس:\n"
+        "حمله {اسم دبیر}"
+    )
+
+
 def _attack_confirmation_keyboard(preview: AttackPreview) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
@@ -77,14 +97,11 @@ def _attack_confirmation_keyboard(preview: AttackPreview) -> InlineKeyboardMarku
 
 async def _send_result(message: Message, result: AttackResult) -> None:
     await message.answer(_attack_text(result))
-    try:
+    with suppress(TelegramAPIError):
         await message.bot.send_message(
             result.target_telegram_id,
             f"🎯 شما مورد حمله قرار گرفتید!\n\n{_attack_text(result)}",
         )
-    except TelegramAPIError:
-        # A target may have blocked the bot; the attack itself is already committed.
-        pass
 
 
 async def _report_error(message: Message, error: Exception) -> None:
@@ -103,22 +120,33 @@ async def _report_error(message: Message, error: Exception) -> None:
 
 
 @router.message(Command("attack"))
+async def attack_help_handler(message: Message) -> None:
+    await message.answer(
+        _attack_help_text(group=message.chat.type in {"group", "supergroup"})
+    )
+
+
 @router.message(F.text.regexp(r"^\s*حمله(?:\s+\S.*)?$"))
-async def attack_message(
-    message: Message, session: AsyncSession, command: CommandObject | None = None
-) -> None:
+async def attack_message(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return
     text = (message.text or "").strip()
-    arguments = (command.args if command is not None else None) or text.partition(" ")[2]
-    arguments = arguments.strip()
+    arguments = text.partition(" ")[2].strip()
+    if not arguments:
+        await message.answer(
+            _attack_help_text(
+                group=message.chat.type in {"group", "supergroup"}
+            )
+        )
+        return
     try:
         if message.chat.type in {"group", "supergroup"}:
             replied = message.reply_to_message
             if replied is not None and replied.from_user is not None:
                 if not arguments:
                     await message.answer(
-                        "نام استاد را هم بنویسید؛ مثال: /attack قاضی",
+                        "نام دبیر را هم بنویسید؛ مثال: حمله افلاطون\n\n"
+                        + _attack_help_text(group=True),
                         reply_to_message_id=message.message_id,
                     )
                     return
@@ -132,8 +160,8 @@ async def attack_message(
                 parts = arguments.split(maxsplit=1)
                 if len(parts) != 2:
                     await message.answer(
-                        "فرمت گروه: روی پیام هدف ریپلای کنید و /attack نام استاد را بنویسید؛ "
-                        "یا /attack نام کاربری نام استاد."
+                        "فرمت حمله در گروه درست نیست.\n\n"
+                        + _attack_help_text(group=True)
                     )
                     return
                 preview = await attack_service.preview_by_username(
@@ -145,7 +173,7 @@ async def attack_message(
         else:
             parts = arguments.split(maxsplit=1)
             if len(parts) != 2:
-                await message.answer("فرمت صحیح: حمله {نام کاربری} {نام دبیر}")
+                await message.answer(_attack_help_text())
                 return
             preview = await attack_service.preview_by_username(
                 session,

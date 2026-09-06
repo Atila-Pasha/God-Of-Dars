@@ -2,12 +2,13 @@ import logging
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
-from aiogram.filters import CommandObject, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import ChannelCallback
+from app.bot.callbacks import ChannelCallback, HelpCallback
+from app.bot.keyboards.help import help_keyboard
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     MENU_SECTION_KEYS,
@@ -46,6 +47,49 @@ USER_ERROR_MESSAGE = "در آماده‌سازی حساب شما مشکلی پی
 BANNED_USER_MESSAGE = "حساب شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید."
 MAIN_MENU_MESSAGE = "🏫 به بازی خوش آمدید! یکی از بخش‌های زیر را انتخاب کنید:"
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
+HELP_MENU_TEXT = "📖 راهنمای کدام بخش را می‌خواهی فرمانده؟"
+HELP_TEXTS = {
+    "attack": (
+        "⚔️ راهنمای حمله\n\n"
+        "در خصوصی: حمله {نام‌کاربری هدف} {اسم دبیر}\n"
+        "مثال: حمله @player افلاطون\n\n"
+        "در گروه: روی پیام هدف Reply بزن و بنویس:\n"
+        "حمله {اسم دبیر}"
+    ),
+    "school": (
+        "🏫 راهنمای مدرسه و دبیرها\n\n"
+        "از «مدرسه من» دبیرهای خودت، بیمارستان و دژ را مدیریت کن.\n"
+        "برای خرید دبیر از «بوفه» وارد بخش «خرید دبیر» شو.\n"
+        "اگر ظرفیت دبیرها پر باشد، یک دبیر را بفروش یا سطح فرمانده را افزایش بده."
+    ),
+    "buffet": (
+        "🍽 راهنمای بوفه و خرید\n\n"
+        "در بوفه می‌توانی دبیر و سپر بخری یا منابع را تبدیل کنی.\n"
+        "برای خرید سریع دبیر هم می‌توانی بنویسی:\n"
+        "/buy {اسم دبیر}"
+    ),
+    "library": (
+        "📚 راهنمای کتابخانه\n\n"
+        "از کتابخانه سؤال روزانه، سؤال گروهی، مطالعه و فهرست دبیرها را ببین.\n"
+        "برای ورود مستقیم: /library"
+    ),
+    "profile": (
+        "🧙 راهنمای پروفایل\n\n"
+        "/profile — منوی پروفایل\n"
+        "/stat — اطلاعات پروفایل\n"
+        "/war — آمار جنگ\n"
+        "/assets — دارایی‌ها\n"
+        "/knowledge — دانش و دعوت‌ها"
+    ),
+    "mine": (
+        "⛏ راهنمای معدن منابع\n\n"
+        "از معدن منابع، طلا و الماس تولیدشده را برداشت کن و معدن را ارتقا بده."
+    ),
+    "referral": (
+        "👥 راهنمای دعوت دوستان\n\n"
+        "با /referral لینک دعوت اختصاصی خودت را بگیر و دوستانت را دعوت کن."
+    ),
+}
 
 
 async def _membership_status(user_id: int, bot: Bot, session: AsyncSession | None = None, *, force_refresh: bool = False) -> bool | None:
@@ -163,6 +207,36 @@ async def start_handler(
 
     if not initialized:
         await message.answer(USER_ERROR_MESSAGE)
+
+
+@router.message(Command("help"))
+async def help_handler(message: Message) -> None:
+    await message.answer(HELP_MENU_TEXT, reply_markup=help_keyboard())
+
+
+@router.callback_query(HelpCallback.filter())
+async def help_callback_handler(
+    callback: CallbackQuery,
+    callback_data: HelpCallback,
+) -> None:
+    if callback.message is None:
+        await callback.answer()
+        return
+    text = HELP_TEXTS[callback_data.section]
+    await safe_edit_text(
+        callback.message,
+        text,
+        reply_markup=help_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.message(F.text.regexp(r"^/\S+"))
+async def unknown_command_handler(message: Message) -> None:
+    await message.answer(
+        "این فرمان شناخته نشد.\n\n"
+        "برای دیدن فرمان‌های قابل استفاده، /help را بزنید."
+    )
 
 
 @router.callback_query(ChannelCallback.filter(F.action == "check"))

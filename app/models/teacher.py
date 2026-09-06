@@ -47,6 +47,7 @@ class Teacher(Base):
         Integer, nullable=False, default=1, server_default="1"
     )
     ability_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Presentation assets are optional until the sticker/emoji feature is enabled.
     sticker: Mapped[str | None] = mapped_column(String(255), nullable=True)
     emoji: Mapped[str | None] = mapped_column(String(32), nullable=True)
