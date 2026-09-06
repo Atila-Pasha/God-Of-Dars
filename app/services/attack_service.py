@@ -18,6 +18,7 @@ from app.repositories.castle import CastleRepository
 from app.repositories.teacher import TeacherRepository
 from app.repositories.user import UserRepository
 from app.services.castle_service import CastleService
+from app.services.daily_quest_service import DailyQuestService
 from app.services.school_errors import (
     AttackInProgress,
     InvalidTeacherState,
@@ -321,6 +322,16 @@ class AttackService:
         attack.loot_diamond = loot["loot_diamond"]
         attack.loot_banana = 0
         attack.is_successful = castle_result.applied_damage > 0
+        quest_service = DailyQuestService()
+        await quest_service.record_event(
+            session, user_id=attacker.id, event_type="COMPLETE_BATTLES",
+            event_id=f"attack:{attack.id}",
+        )
+        if attack.is_successful:
+            await quest_service.record_event(
+                session, user_id=attacker.id, event_type="WIN_BATTLES",
+                event_id=f"attack:{attack.id}",
+            )
         xp_awarded = await self._claim_attack_xp(
             session,
             attack_command_id=attack.attack_command_id,

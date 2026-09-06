@@ -20,6 +20,7 @@ def main() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="❓ ساخت سؤال روزانه"),
                 KeyboardButton(text="👥 ساخت سؤال گروهی"),
             ],
+            [KeyboardButton(text="🎯 مدیریت فعالیت‌های روزانه")],
             [KeyboardButton(text="📣 پیام همگانی")],
             [KeyboardButton(text="❌ لغو")],
         ],

@@ -11,6 +11,7 @@ from app.models.group_question import GroupQuestion
 from app.models.question import Question
 from app.models.reward import Reward
 from app.repositories.question import QuestionRepository
+from app.services.daily_quest_service import DailyQuestService
 from app.services.library_errors import (
     DuplicateAnswer,
     GroupNotFound,
@@ -65,6 +66,7 @@ class QuestionService:
         self.reward_service = reward_service or RewardService()
         self.daily_reward = daily_reward
         self.group_reward = group_reward
+        self.daily_quest_service = DailyQuestService()
 
     async def create_question(
         self,
@@ -295,6 +297,15 @@ class QuestionService:
         )
         session.add(answer)
         await session.flush()
+        await self.daily_quest_service.record_event(
+            session, user_id=user_id, event_type="ANSWER_DAILY_QUESTION",
+            event_id=f"answer:{answer.id}",
+        )
+        if correct:
+            await self.daily_quest_service.record_event(
+                session, user_id=user_id, event_type="CORRECT_ANSWERS",
+                event_id=f"answer:{answer.id}",
+            )
 
         rewards: tuple[Reward, ...] = ()
         if correct:

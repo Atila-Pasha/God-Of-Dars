@@ -62,3 +62,14 @@ class ChanceBoxStates(StatesGroup):
 class ChanceCardStates(StatesGroup):
     target = State()
     value = State()
+
+
+class DailyQuestStates(StatesGroup):
+    activity_date = State()
+    quest_type = State()
+    target = State()
+    rewards = State()
+    title = State()
+    description = State()
+    metadata = State()
+    channel = State()

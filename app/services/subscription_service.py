@@ -94,6 +94,15 @@ class SubscriptionService:
         self._remember(cache_key, True)
         return True
 
+    async def is_member_in_channel(self, bot: Bot, telegram_user_id: int, channel: str) -> bool:
+        try:
+            member = await bot.get_chat_member(
+                chat_id=self.telegram_chat_id(channel), user_id=telegram_user_id
+            )
+        except Exception as exc:
+            raise MembershipCheckError from exc
+        return member.status in VALID_MEMBER_STATUSES
+
     def _remember(self, key: tuple[str, int], value: bool) -> None:
         if len(self._membership_cache) >= self.membership_cache_max_entries:
             now = monotonic()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
 
 from aiogram import Bot, F, Router
@@ -27,6 +27,7 @@ from admin.states import (
     ChanceBoxStates,
     ChanceCardStates,
     ChannelStates,
+    DailyQuestStates,
     QuestionStates,
     ShieldStates,
     TeacherStates,
@@ -40,12 +41,14 @@ from app.core.config import settings
 from app.core.enums import ResourceType
 from app.db.session import AsyncSessionLocal
 from app.models.chance_box import ChanceBox
+from app.models.daily_quest import QUEST_TYPES
 from app.models.user import User
 from app.repositories.bot_settings import BotSettingsRepository
 from app.repositories.group import GroupRepository
 from app.repositories.user import UserRepository
 from app.services.admin_service import AdminService
 from app.services.chance_service import ChanceService
+from app.services.daily_quest_service import DailyQuestService
 from app.services.library_errors import GroupNotFound
 from app.services.question_service import QuestionService
 from app.services.shield_service import ShieldAdminService
@@ -54,12 +57,85 @@ router = Router(name="admin")
 service = AdminService()
 question_service = QuestionService()
 shield_service = ShieldAdminService()
+daily_quest_service = DailyQuestService()
 bot_settings_repository = BotSettingsRepository()
 group_repository = GroupRepository()
 user_repository = UserRepository()
 chance_service = ChanceService()
 logger = logging.getLogger(__name__)
 group_question_publisher = GroupQuestionPublisher()
+
+
+@router.message(Command("daily_quests"))
+async def daily_quests_admin(message: Message, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    today = datetime.now(UTC).date()
+    parts = (message.text or "").split()
+    if len(parts) == 1:
+        quests = await daily_quest_service.list(session, today)
+        await message.answer("\n".join(
+            f"{q.id}: {'فعال' if q.is_active else 'خاموش'} {q.quest_type} {q.target} — {q.title}"
+            for q in quests
+        ) or "امروز فعالیتی ثبت نشده است.")
+        return
+    action = parts[1].lower()
+    try:
+        if action == "create" and len(parts) >= 6:
+            quest_type, target = parts[2], number(parts[3], "هدف", minimum=1)
+            if quest_type not in QUEST_TYPES:
+                raise ValueError("نوع فعالیت نامعتبر است.")
+            rewards = {}
+            for value in parts[4].split(","):
+                resource, amount = value.split(":", 1)
+                rewards[resource.upper()] = number(amount, "جایزه")
+            quest = await daily_quest_service.create(
+                session, activity_date=today, quest_type=quest_type,
+                title=" ".join(parts[5:]), target=target, rewards=rewards,
+            )
+            await message.answer(f"فعالیت {quest.id} ساخته شد.")
+        elif action == "stats" and len(parts) == 3:
+            stats = await daily_quest_service.stats(
+                session, quest_id=number(parts[2], "شناسه", minimum=1)
+            )
+            await message.answer(
+                f"شرکت‌کننده: {stats['participants']}\n"
+                f"کامل‌شده: {stats['completed']}\n"
+                f"جایزه‌گرفته: {stats['claimed']}"
+            )
+        elif action == "edit" and len(parts) >= 4:
+            quest_id = number(parts[2], "شناسه", minimum=1)
+            field, value = parts[3].split("=", 1)
+            if field == "title":
+                values = {"title": value}
+            elif field == "target":
+                values = {"target": number(value, "هدف", minimum=1)}
+            elif field == "type":
+                if value not in QUEST_TYPES:
+                    raise ValueError("نوع فعالیت نامعتبر است.")
+                values = {"quest_type": value}
+            else:
+                raise ValueError("ویرایش فقط با title=، target= یا type= انجام می‌شود.")
+            ok = await daily_quest_service.update(session, quest_id, **values)
+            await message.answer("ویرایش شد." if ok else "فعالیت پیدا نشد.")
+        elif action in {"activate", "deactivate", "delete"} and len(parts) == 3:
+            quest_id = number(parts[2], "شناسه", minimum=1)
+            if action == "delete":
+                ok = await daily_quest_service.delete(session, quest_id)
+            else:
+                ok = await daily_quest_service.update(
+                    session, quest_id, is_active=action == "activate"
+                )
+            await message.answer("انجام شد." if ok else "فعالیت پیدا نشد.")
+        else:
+            await message.answer(
+                "/daily_quests — فهرست\n"
+                "/daily_quests create TYPE TARGET COIN:10 عنوان\n"
+                "/daily_quests edit ID title=عنوان | target=10 | type=TYPE\n"
+                "/daily_quests activate|deactivate|delete|stats ID"
+            )
+    except (ValueError, KeyError) as exc:
+        await message.answer(str(exc))
 
 TEACHER_EDIT_PROMPTS = {
     "name": "نام جدید دبیر را بفرستید:",
@@ -518,7 +594,7 @@ async def broadcast_send(
             if not recipients:
                 break
             await session.commit()
-            for user_id, telegram_user_id in recipients:
+            for _, telegram_user_id in recipients:
                 try:
                     for attempt in range(2):
                         try:
@@ -741,6 +817,132 @@ async def group_question_start(message: Message, state: FSMContext) -> None:
         await state.update_data(scope="group")
         await state.set_state(QuestionStates.text)
         await message.answer("متن سؤال گروهی را بفرستید:")
+
+
+@router.message(F.text.in_({"مدیریت فعالیت‌های روزانه", "🎯 مدیریت فعالیت‌های روزانه"}))
+async def daily_quest_start(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    await state.set_state(DailyQuestStates.activity_date)
+    await message.answer(
+        "تاریخ فعالیت را به صورت YYYY-MM-DD بفرستید:"
+    )
+
+
+@router.message(DailyQuestStates.activity_date)
+async def daily_quest_date(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        activity_date = date.fromisoformat(message.text.strip())
+    except ValueError:
+        await message.answer("تاریخ نامعتبر است؛ نمونه: 2026-09-06")
+        return
+    quests = await daily_quest_service.list(session, activity_date)
+    listing = "\n".join(
+        f"{q.id}. {'✅' if q.is_active else '⛔'} {q.quest_type} {q.target} — {q.title}"
+        for q in quests
+    ) or "امروز فعالیتی تعریف نشده است."
+    await state.update_data(activity_date=activity_date.isoformat())
+    await state.set_state(DailyQuestStates.quest_type)
+    await message.answer(
+        f"{listing}\n\nنوع فعالیت جدید را بفرستید:\n" + "، ".join(QUEST_TYPES)
+    )
+
+
+@router.message(DailyQuestStates.quest_type)
+async def daily_quest_type(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    value = message.text.strip().upper()
+    if value not in QUEST_TYPES:
+        await message.answer("نوع فعالیت نامعتبر است.")
+        return
+    await state.update_data(quest_type=value)
+    await state.set_state(DailyQuestStates.target)
+    await message.answer("هدف عددی را بفرستید:")
+
+
+@router.message(DailyQuestStates.target)
+async def daily_quest_target(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        target = number(message.text, "هدف", minimum=1)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(target=target)
+    await state.set_state(DailyQuestStates.rewards)
+    await message.answer("جایزه‌ها را مثل COIN:10,DIAMOND:2 بفرستید:")
+
+
+@router.message(DailyQuestStates.rewards)
+async def daily_quest_rewards(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        rewards = {}
+        for item in message.text.replace("،", ",").split(","):
+            resource, amount = item.strip().split(":", 1)
+            if resource.strip().upper() not in {"COIN", "DIAMOND", "BANANA"}:
+                raise ValueError("منبع نامعتبر است.")
+            rewards[resource.strip().upper()] = number(amount, "مقدار")
+    except ValueError as exc:
+        await message.answer(f"فرمت جایزه نامعتبر است: {exc}")
+        return
+    await state.update_data(rewards=rewards)
+    await state.set_state(DailyQuestStates.title)
+    await message.answer("عنوان فعالیت را بفرستید:")
+
+
+@router.message(DailyQuestStates.title)
+async def daily_quest_title(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    await state.update_data(title=message.text.strip())
+    await state.set_state(DailyQuestStates.description)
+    await message.answer("توضیحات را بفرستید؛ برای بدون توضیح -:")
+
+
+@router.message(DailyQuestStates.description)
+async def daily_quest_description(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    description = None if message.text.strip() == "-" else message.text.strip()
+    await state.update_data(description=description)
+    await state.set_state(DailyQuestStates.metadata)
+    await message.answer(
+        'متادیتا را به صورت JSON بفرستید؛ برای بدون متادیتا {} (برای JOIN_CHANNEL، {"channel":"@name"}):'
+    )
+
+
+@router.message(DailyQuestStates.metadata)
+async def daily_quest_metadata(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message) or not message.text:
+        return
+    import json
+    data = await state.get_data()
+    try:
+        metadata = json.loads(message.text.strip())
+        if not isinstance(metadata, dict):
+            raise ValueError
+    except ValueError:
+        await message.answer("متادیتای JSON نامعتبر است.")
+        return
+    if data["quest_type"] == "JOIN_CHANNEL" and not metadata.get("channel"):
+        await message.answer('برای JOIN_CHANNEL باید channel تنظیم شود؛ نمونه: {"channel":"@name"}')
+        return
+    quest = await daily_quest_service.create(
+        session,
+        activity_date=date.fromisoformat(data["activity_date"]), quest_type=data["quest_type"],
+        title=data["title"], target=data["target"], rewards=data["rewards"],
+        description=data.get("description"),
+        metadata=metadata,
+    )
+    await state.clear()
+    await message.answer(f"فعالیت #{quest.id} ساخته شد.", reply_markup=keyboards.main())
 
 
 async def question_step(

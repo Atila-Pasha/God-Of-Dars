@@ -159,7 +159,9 @@ async def _notify_callback(callback: CallbackQuery, text: str) -> None:
 
 
 def _teacher_list_text(page: int, page_count: int) -> str:
-    return f"👨‍🏫 معرفی دبیرها\n\nصفحه {page + 1} از {page_count}\nیک دبیر را انتخاب کنید:"
+    return (
+        f"👨‍🏫 معرفی دبیرها\n\nصفحه {page + 1} از {page_count}\nیک دبیر را انتخاب کنید:"
+    )
 
 
 def _teacher_detail_content(teacher) -> tuple[str, list]:
@@ -199,9 +201,7 @@ async def _show_teacher_list(
     F.chat.type.in_({"group", "supergroup"}),
     F.text.regexp(r"^معرفی(?:\s+.+)?$"),
 )
-async def group_teacher_introduction(
-    message: Message, session: AsyncSession
-) -> None:
+async def group_teacher_introduction(message: Message, session: AsyncSession) -> None:
     name = (message.text or "")[len("معرفی") :].strip()
     if not name:
         await message.answer("فرمت صحیح: معرفی نام دبیر")
@@ -219,7 +219,9 @@ async def group_teacher_introduction(
 
 
 @router.message(F.text == LIBRARY_LABEL)
-async def library_handler(message: Message, state: FSMContext, session: AsyncSession | None = None) -> None:
+async def library_handler(
+    message: Message, state: FSMContext, session: AsyncSession | None = None
+) -> None:
     await state.clear()
     await _show_library(message)
     if session is not None and message.from_user is not None:
@@ -229,7 +231,9 @@ async def library_handler(message: Message, state: FSMContext, session: AsyncSes
         except (UserInactiveError, SchoolUserNotFound):
             return
         if reward is not None:
-            await message.answer(_study_reward_text(reward).strip(), reply_markup=library_keyboard())
+            await message.answer(
+                _study_reward_text(reward).strip(), reply_markup=library_keyboard()
+            )
 
 
 @router.callback_query(LibraryCallback.filter())
@@ -271,7 +275,10 @@ async def library_callback_handler(
             user_id = await _user_id(session, callback)
             active, reward = await study_service.settle(session, user_id)
             if active is not None and reward is None:
-                await _notify_callback(callback, f"📖 مطالعه فعال است. زمان باقی‌مانده: {_study_time(active.ends_at)}")
+                await _notify_callback(
+                    callback,
+                    f"📖 مطالعه فعال است. زمان باقی‌مانده: {_study_time(active.ends_at)}",
+                )
                 return
             if callback.message is not None:
                 await safe_edit_text(
@@ -349,7 +356,10 @@ async def study_callback_handler(
         try:
             result = await study_service.start(session, user_id, callback_data.pack_key)
         except StudyAlreadyActive as exc:
-            await _notify_callback(callback, f"⏳ یک پک فعال دارید. زمان باقی‌مانده: {_study_time(exc.study.ends_at)}")
+            await _notify_callback(
+                callback,
+                f"⏳ یک پک فعال دارید. زمان باقی‌مانده: {_study_time(exc.study.ends_at)}",
+            )
             return
         except (StudyPackNotFound, StudyError):
             await _notify_callback(callback, "این پک مطالعه در دسترس نیست.")
@@ -364,7 +374,9 @@ async def study_callback_handler(
         if result.completed_reward:
             text = _study_reward_text(result.completed_reward).strip() + "\n\n" + text
         if callback.message is not None:
-            await safe_edit_text(cast(Message, callback.message), text, reply_markup=library_keyboard())
+            await safe_edit_text(
+                cast(Message, callback.message), text, reply_markup=library_keyboard()
+            )
     except (UserInactiveError, SchoolUserNotFound, StudyError):
         await _notify_callback(callback, "امکان ثبت مطالعه در حال حاضر وجود ندارد.")
 

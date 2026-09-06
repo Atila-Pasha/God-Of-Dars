@@ -5,6 +5,7 @@ from app.models.castle import Castle
 from app.models.chance_box import ChanceBox
 from app.models.chance_card import ChanceCard
 from app.models.defense import Defense
+from app.models.daily_quest import DailyQuest, DailyQuestEvent, DailyQuestProgress
 from app.models.group import Group
 from app.models.group_question import GroupQuestion
 from app.models.mine import Mine
@@ -29,6 +30,9 @@ __all__ = [
     "ChanceBox",
     "ChanceCard",
     "Defense",
+    "DailyQuest",
+    "DailyQuestEvent",
+    "DailyQuestProgress",
     "Group",
     "GroupQuestion",
     "Mine",

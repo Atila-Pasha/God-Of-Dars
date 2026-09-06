@@ -121,7 +121,9 @@ async def mine_callback(
                 reply_markup=mine_keyboard(can_upgrade=True),
             )
             await callback.answer(
-                f"منابع برداشت شد: {collected}" if collected else "منبع قابل برداشتی ندارید."
+                f"منابع برداشت شد: {collected}"
+                if collected
+                else "منبع قابل برداشتی ندارید."
             )
             return
         elif callback_data.action == "upgrade":

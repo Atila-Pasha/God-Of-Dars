@@ -18,6 +18,7 @@ from app.bot.keyboards.main_menu import (
 from app.bot.keyboards.start import join_channel_keyboard
 from app.bot.middlewares.subscription import refresh_channels, subscription_service
 from app.bot.utils.telegram import safe_edit_text
+from app.services.daily_quest_service import DailyQuestService
 from app.services.referral_service import (
     ReferralCycle,
     ReferralError,
@@ -36,10 +37,14 @@ logger = logging.getLogger(__name__)
 router = Router(name="start")
 user_service = UserService()
 referral_service = ReferralService()
+daily_quest_service = DailyQuestService()
+
 
 def join_message() -> str:
     channels = subscription_service.channels_label or "کانال اعلام‌شده در ربات"
     return f"برای استفاده از ربات، ابتدا باید عضو کانال {channels} شوید.\nپس از عضویت، روی «بررسی عضویت» بزنید."
+
+
 MEMBERSHIP_ERROR_MESSAGE = (
     "در حال حاضر بررسی عضویت امکان‌پذیر نیست. لطفاً کمی بعد دوباره تلاش کنید."
 )
@@ -94,14 +99,23 @@ HELP_TEXTS = {
 }
 
 
-async def _membership_status(user_id: int, bot: Bot, session: AsyncSession | None = None, *, force_refresh: bool = False) -> bool | None:
+async def _membership_status(
+    user_id: int,
+    bot: Bot,
+    session: AsyncSession | None = None,
+    *,
+    force_refresh: bool = False,
+) -> bool | None:
     try:
         # /start bypasses the subscription middleware by design, so refresh the
         # channel list only for real database sessions. This keeps the hot path
         # cached while preserving lightweight unit-test doubles.
         if isinstance(session, AsyncSession):
             await refresh_channels(session, force=force_refresh)
-        return await subscription_service.is_member(bot, user_id, force_refresh=force_refresh)
+        member = await subscription_service.is_member(
+            bot, user_id, force_refresh=force_refresh
+        )
+        return member
     except MembershipCheckError:
         return None
 
@@ -146,6 +160,13 @@ async def _initialize_and_show_menu(
 
     if user.is_active is False:
         raise UserInactiveError
+    if isinstance(session, AsyncSession):
+        await daily_quest_service.record_event(
+            session,
+            user_id=user.id,
+            event_type="DAILY_LOGIN",
+            event_id=str(user.id),
+        )
 
     greeting = (
         MAIN_MENU_MESSAGE
@@ -195,7 +216,9 @@ async def start_handler(
     if message.from_user is None:
         return
 
-    is_member = await _membership_status(message.from_user.id, message.bot, session, force_refresh=True)
+    is_member = await _membership_status(
+        message.from_user.id, message.bot, session, force_refresh=True
+    )
     if is_member is None:
         await message.answer(
             MEMBERSHIP_ERROR_MESSAGE,
@@ -249,8 +272,7 @@ async def help_callback_handler(
 @router.message(F.text.regexp(r"^/\S+"))
 async def unknown_command_handler(message: Message) -> None:
     await message.answer(
-        "این فرمان شناخته نشد.\n\n"
-        "برای دیدن فرمان‌های قابل استفاده، /help را بزنید."
+        "این فرمان شناخته نشد.\n\nبرای دیدن فرمان‌های قابل استفاده، /help را بزنید."
     )
 
 
@@ -263,7 +285,9 @@ async def check_membership_handler(
         await callback.answer()
         return
 
-    is_member = await _membership_status(callback.from_user.id, callback.bot, session, force_refresh=True)
+    is_member = await _membership_status(
+        callback.from_user.id, callback.bot, session, force_refresh=True
+    )
     if is_member is None:
         await callback.answer(MEMBERSHIP_ERROR_MESSAGE, show_alert=True)
         return

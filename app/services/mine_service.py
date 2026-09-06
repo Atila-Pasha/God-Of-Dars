@@ -15,6 +15,7 @@ from app.core.game_logic import (
 from app.models.mine import Mine
 from app.models.resource import Resource
 from app.models.user import User
+from app.services.daily_quest_service import DailyQuestService
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
     MineLevelLocked,
@@ -123,6 +124,8 @@ class MineService:
             raise MineNotFound
         self._accrue(mine)
         amounts = (mine.today_coin, mine.today_diamond, mine.today_banana)
+        mine.collection_count += 1
+        collection_event_id = f"mine:{mine.id}:collection:{mine.collection_count}"
         ResourceService.credit_coin(
             session, resources, user_id=user_id, amount=amounts[0],
             reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
@@ -136,6 +139,10 @@ class MineService:
             reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
         )
         mine.today_coin = mine.today_diamond = mine.today_banana = 0
+        await DailyQuestService().record_event(
+            session, user_id=user_id, event_type="COLLECT_MINE",
+            event_id=collection_event_id,
+        )
         await session.flush()
         return (
             MineSnapshot(
