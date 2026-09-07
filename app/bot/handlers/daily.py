@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
@@ -7,7 +9,7 @@ from app.bot.keyboards.daily import daily_keyboard
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
 from app.bot.middlewares.subscription import subscription_service
 from app.bot.utils.telegram import safe_edit_text
-from app.models.daily_quest import DailyQuestProgress
+from app.models.daily_quest import DailyQuestEvent, DailyQuestProgress
 from app.services.daily_quest_service import DailyQuestService
 from app.services.subscription_service import (
     MembershipCheckError,
@@ -48,6 +50,18 @@ async def _show(target, session: AsyncSession, user_id: int):
                 )
                 session.add(progress)
                 await session.flush()
+            if quest.quest_type == "DAILY_LOGIN" and progress.progress < quest.target:
+                login_event = await session.scalar(
+                    select(DailyQuestEvent).where(
+                        DailyQuestEvent.user_id == user_id,
+                        DailyQuestEvent.activity_date == quest.activity_date,
+                        DailyQuestEvent.event_key == f"DAILY_LOGIN:{user_id}",
+                    )
+                )
+                if login_event is not None:
+                    progress.progress = quest.target
+                    progress.completed_at = progress.completed_at or datetime.now(UTC)
+                    await session.flush()
             progress.quest = quest
             progresses.append(progress)
         if not progresses:
@@ -74,7 +88,7 @@ async def _show(target, session: AsyncSession, user_id: int):
                 lines.append(
                     f"\n• {quest.title}\n"
                     f" {status}\n"
-                    f" 📝 توضیحات: {description}"
+                    f" 📝 {description}"
                 )
             text = "\n".join(lines)
             markup = daily_keyboard(progresses)
