@@ -217,11 +217,10 @@ async def _show_profile(target: Message | CallbackQuery, session: AsyncSession) 
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
         if isinstance(target, Message):
-            keyboard_message = await target.answer(
+            await target.answer(
                 "\u200c",
                 reply_markup=section_back_keyboard(),
             )
-            await keyboard_message.delete()
 
 
 async def _show_profile_menu(target: Message | CallbackQuery) -> None:
@@ -239,11 +238,10 @@ async def _show_profile_menu(target: Message | CallbackQuery) -> None:
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
         if isinstance(target, Message):
-            keyboard_message = await target.answer(
+            await target.answer(
                 "\u200c",
                 reply_markup=section_back_keyboard(),
             )
-            await keyboard_message.delete()
 
 
 async def _show_profile_section(
@@ -262,18 +260,16 @@ async def _show_profile_section(
         if target.message is None:
             return
         await safe_edit_text(target.message, text, reply_markup=_profile_markup(target))
-        keyboard_message = await target.message.answer(
-            ".",
+        await target.message.answer(
+            "\u200c",
             reply_markup=section_back_keyboard(),
         )
-        await keyboard_message.delete()
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
-        keyboard_message = await target.answer(
-            ".",
+        await target.answer(
+            "\u200c",
             reply_markup=section_back_keyboard(),
         )
-        await keyboard_message.delete()
 
 
 async def _show_error(target: Message | CallbackQuery) -> None:
