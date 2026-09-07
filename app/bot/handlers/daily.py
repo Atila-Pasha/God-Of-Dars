@@ -95,13 +95,13 @@ async def _show(target, session: AsyncSession, user_id: int):
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, reply_markup=markup)
         await target.message.answer(
-            "\u200c",
+            "\u2800",
             reply_markup=section_back_keyboard(),
         )
     else:
         await target.answer(text, reply_markup=markup)
         await target.answer(
-            "\u200c",
+            "\u2800",
             reply_markup=section_back_keyboard(),
         )
 

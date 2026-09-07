@@ -218,7 +218,7 @@ async def _show_profile(target: Message | CallbackQuery, session: AsyncSession) 
         await target.answer(text, reply_markup=_profile_markup(target))
         if isinstance(target, Message):
             await target.answer(
-                "\u200c",
+                "\u2800",
                 reply_markup=section_back_keyboard(),
             )
 
@@ -239,7 +239,7 @@ async def _show_profile_menu(target: Message | CallbackQuery) -> None:
         await target.answer(text, reply_markup=_profile_markup(target))
         if isinstance(target, Message):
             await target.answer(
-                "\u200c",
+                "\u2800",
                 reply_markup=section_back_keyboard(),
             )
 
@@ -261,13 +261,13 @@ async def _show_profile_section(
             return
         await safe_edit_text(target.message, text, reply_markup=_profile_markup(target))
         await target.message.answer(
-            "\u200c",
+            "\u2800",
             reply_markup=section_back_keyboard(),
         )
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
         await target.answer(
-            "\u200c",
+            "\u2800",
             reply_markup=section_back_keyboard(),
         )
 
