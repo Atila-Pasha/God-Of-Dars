@@ -473,13 +473,16 @@ async def shield_purchase_callback(
         )
         await callback.answer("خرید با موفقیت انجام شد.")
     except InsufficientCoins:
+        await session.rollback()
         await callback.answer("موجودی ارز کافی ندارید.", show_alert=True)
     except ShieldAlreadyActive:
+        await session.rollback()
         await callback.answer(
             "در حال حاضر یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
             show_alert=True,
         )
     except (ShieldNotFound, ShieldNotPurchasable, UserInactiveError):
+        await session.rollback()
         await callback.answer("این سپر دیگر قابل خرید نیست.", show_alert=True)
 
 

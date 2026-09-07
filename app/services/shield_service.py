@@ -20,6 +20,8 @@ from app.models.user import User
 from app.models.user_shield import UserShield
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
+    InsufficientCoins,
+    InsufficientDiamonds,
     ResourceNotFound,
     ShieldAlreadyActive,
     ShieldLocked,
@@ -134,6 +136,11 @@ class ShieldService:
             for item in owned_items
         ):
             raise ShieldAlreadyActive
+        balance = getattr(resources, shield.purchase_resource.value.lower())
+        if balance < shield.purchase_price:
+            if shield.purchase_resource is ResourceType.DIAMOND:
+                raise InsufficientDiamonds
+            raise InsufficientCoins
         owned = next(
             (item for item in owned_items if item.shield_id == shield_id), None
         )
