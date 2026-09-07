@@ -163,7 +163,7 @@ async def _show_library(target: Message | CallbackQuery) -> None:
         await target.answer(text, reply_markup=library_keyboard())
         if isinstance(target, Message):
             await target.answer(
-                "🔙", reply_markup=section_back_keyboard()
+                "منوی بخش:", reply_markup=section_back_keyboard()
             )
 
 
