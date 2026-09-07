@@ -94,16 +94,18 @@ async def _show(target, session: AsyncSession, user_id: int):
             markup = daily_keyboard(progresses)
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, reply_markup=markup)
-        await target.message.answer(
-            "برای خروج از فعالیت‌های روزانه، دکمه زیر را بزنید.",
+        keyboard_message = await target.message.answer(
+            ".",
             reply_markup=section_back_keyboard(),
         )
+        await keyboard_message.delete()
     else:
         await target.answer(text, reply_markup=markup)
-        await target.answer(
-            "برای خروج از فعالیت‌های روزانه، دکمه زیر را بزنید.",
+        keyboard_message = await target.answer(
+            ".",
             reply_markup=section_back_keyboard(),
         )
+        await keyboard_message.delete()
 
 
 @router.message(F.text == DAILY_LABEL)

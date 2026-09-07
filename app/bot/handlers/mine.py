@@ -75,16 +75,18 @@ async def _show(target: Message | CallbackQuery, session: AsyncSession) -> None:
     markup = mine_keyboard(can_upgrade=can_upgrade)
     if isinstance(target, CallbackQuery) and target.message is not None:
         await safe_edit_text(target.message, text, reply_markup=markup)
-        await target.message.answer(
-            "برای خروج از معدن، دکمه زیر را بزنید.",
+        keyboard_message = await target.message.answer(
+            ".",
             reply_markup=section_back_keyboard(),
         )
+        await keyboard_message.delete()
     else:
         await target.answer(text, reply_markup=markup)
-        await target.answer(
-            "برای خروج از معدن، دکمه زیر را بزنید.",
+        keyboard_message = await target.answer(
+            ".",
             reply_markup=section_back_keyboard(),
         )
+        await keyboard_message.delete()
 
 
 async def mine_handler(message: Message, session: AsyncSession | None = None) -> None:

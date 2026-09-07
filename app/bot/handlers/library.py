@@ -162,10 +162,10 @@ async def _show_library(target: Message | CallbackQuery) -> None:
     else:
         await target.answer(text, reply_markup=library_keyboard())
         if isinstance(target, Message):
-            await target.answer(
-                "برای خروج از کتابخانه، دکمه زیر را بزنید.",
-                reply_markup=section_back_keyboard(),
+            keyboard_message = await target.answer(
+                ".", reply_markup=section_back_keyboard()
             )
+            await keyboard_message.delete()
 
 
 async def _safe_callback_answer(

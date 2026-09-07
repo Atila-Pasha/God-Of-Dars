@@ -262,14 +262,15 @@ async def _show_profile_section(
         if target.message is None:
             return
         await safe_edit_text(target.message, text, reply_markup=_profile_markup(target))
-        await target.message.answer(
-            "",
+        keyboard_message = await target.message.answer(
+            ".",
             reply_markup=section_back_keyboard(),
         )
+        await keyboard_message.delete()
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
         keyboard_message = await target.answer(
-            "\u200c",
+            ".",
             reply_markup=section_back_keyboard(),
         )
         await keyboard_message.delete()
