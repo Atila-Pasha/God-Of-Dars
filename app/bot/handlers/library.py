@@ -20,7 +20,7 @@ from app.bot.keyboards.library import (
     teacher_library_detail_keyboard,
     teacher_library_keyboard,
 )
-from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
+from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, section_back_keyboard
 from app.bot.utils.telegram import safe_edit_text
 from app.services.library_errors import (
     DuplicateAnswer,
@@ -161,6 +161,8 @@ async def _show_library(target: Message | CallbackQuery) -> None:
             await safe_edit_text(target_message, text, reply_markup=library_keyboard())
     else:
         await target.answer(text, reply_markup=library_keyboard())
+        if isinstance(target, Message):
+            await target.answer("کتابخانه", reply_markup=section_back_keyboard())
 
 
 async def _safe_callback_answer(

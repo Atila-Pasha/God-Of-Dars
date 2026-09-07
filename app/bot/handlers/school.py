@@ -17,6 +17,7 @@ from app.bot.custom_emojis import custom_emoji_entity
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     main_menu_keyboard,
+    section_back_keyboard,
 )
 from app.bot.keyboards.school import (
     castle_keyboard,
@@ -180,6 +181,16 @@ async def _school_view(
         f"({_progress_percent(capacity.owned, capacity.available)})"
     )
     await _send_or_edit(target, text, reply_markup=school_keyboard())
+    if isinstance(target, CallbackQuery) and target.message is not None:
+        await target.message.answer(
+            "مدرسه",
+            reply_markup=section_back_keyboard(),
+        )
+    elif isinstance(target, Message):
+        await target.answer(
+            "مدرسه",
+            reply_markup=section_back_keyboard(),
+        )
 
 
 async def _castle_view(

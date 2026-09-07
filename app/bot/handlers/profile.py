@@ -12,6 +12,7 @@ from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     main_menu_keyboard,
+    section_back_keyboard,
 )
 from app.bot.keyboards.profile import level_confirmation_keyboard, profile_keyboard
 from app.bot.utils.telegram import safe_edit_text
@@ -215,6 +216,8 @@ async def _show_profile(target: Message | CallbackQuery, session: AsyncSession) 
             await target.message.answer(text, reply_markup=_profile_markup(target))
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
+        if isinstance(target, Message):
+            await target.answer("پروفایل", reply_markup=section_back_keyboard())
 
 
 async def _show_profile_menu(target: Message | CallbackQuery) -> None:
@@ -231,6 +234,8 @@ async def _show_profile_menu(target: Message | CallbackQuery) -> None:
             await target.message.answer(text, reply_markup=_profile_markup(target))
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
+        if isinstance(target, Message):
+            await target.answer("پروفایل", reply_markup=section_back_keyboard())
 
 
 async def _show_profile_section(
@@ -251,6 +256,8 @@ async def _show_profile_section(
         await safe_edit_text(target.message, text, reply_markup=_profile_markup(target))
     else:
         await target.answer(text, reply_markup=_profile_markup(target))
+        if isinstance(target, Message):
+            await target.answer("پروفایل", reply_markup=section_back_keyboard())
 
 
 async def _show_error(target: Message | CallbackQuery) -> None:
