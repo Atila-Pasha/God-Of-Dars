@@ -32,7 +32,7 @@ def daily_keyboard(progresses) -> InlineKeyboardMarkup:
                     InlineKeyboardButton(
                         text=f"✅ {QUEST_CHECK_LABELS[quest.quest_type]}",
                         style="success",
-                        callback_data=f"daily:join:{item.id}",
+                        callback_data=f"daily:join:{quest.id}:{item.id}",
                     )
                 ]
             )

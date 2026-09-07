@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.daily import daily_keyboard
@@ -95,16 +96,57 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
     user = await user_service.get_active_by_telegram_user_id(
         session, callback.from_user.id
     )
-    parts = callback.data.split(":", 2)
+    parts = callback.data.split(":")
     action = parts[1]
     value = parts[2] if len(parts) > 2 else ""
     if action == "join":
-        progress = await service.repository.progress(
-            session, user.id, int(value), for_update=True
+        try:
+            if len(parts) > 3:
+                quest_id = int(value)
+                progress_id = int(parts[3])
+            else:
+                progress_id = int(value)
+                legacy_progress = await session.scalar(
+                    select(DailyQuestProgress).where(
+                        DailyQuestProgress.id == progress_id,
+                        DailyQuestProgress.user_id == user.id,
+                    )
+                )
+                quest_id = legacy_progress.quest_id if legacy_progress else progress_id
+        except ValueError:
+            await callback.answer("اطلاعات فعالیت نامعتبر است.", show_alert=True)
+            return
+        progress = (
+            await service.repository.progress(
+                session, user.id, quest_id, for_update=True
+            )
+            if progress_id is None
+            else await session.scalar(
+                select(DailyQuestProgress)
+                .where(
+                    DailyQuestProgress.id == progress_id,
+                    DailyQuestProgress.user_id == user.id,
+                    DailyQuestProgress.quest_id == quest_id,
+                )
+                .with_for_update()
+            )
         )
         if progress is None:
-            await callback.answer("فعالیت پیدا نشد.", show_alert=True)
-            return
+            progress = await service.repository.progress(
+                session, user.id, quest_id, for_update=True
+            )
+        if progress is None:
+            quest = await service.repository.get(session, quest_id)
+            if quest is None or not quest.is_active:
+                await callback.answer("این فعالیت دیگر فعال نیست.", show_alert=True)
+                return
+            progress = DailyQuestProgress(
+                user_id=user.id,
+                quest_id=quest.id,
+                activity_date=quest.activity_date,
+            )
+            session.add(progress)
+            await session.flush()
         quest = await service.repository.get(session, progress.quest_id)
         if quest is None or not quest.is_active:
             await callback.answer("این فعالیت دیگر فعال نیست.", show_alert=True)
