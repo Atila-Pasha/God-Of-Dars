@@ -35,7 +35,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 
 
 def section_back_keyboard() -> ReplyKeyboardMarkup:
-    button = KeyboardButton(text="بازگشت به منوی اصلی")
+    button = KeyboardButton(text="بازگشت به منو اصلی")
     button.icon_custom_emoji_id = "5823443584237444682"
     return ReplyKeyboardMarkup(
         keyboard=[[button]],
