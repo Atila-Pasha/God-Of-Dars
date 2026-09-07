@@ -70,7 +70,12 @@ async def _show(target, session: AsyncSession, user_id: int):
                         else f"▫️ پیشرفت: {progress.progress}/{quest.target}"
                     )
                 )
-                lines.append(f"\n• {quest.title}\n {status}")
+                description = quest.description or "توضیحی برای این فعالیت ثبت نشده است."
+                lines.append(
+                    f"\n• {quest.title}\n"
+                    f" {status}\n"
+                    f" 📝 توضیحات: {description}"
+                )
             text = "\n".join(lines)
             markup = daily_keyboard(progresses)
     if isinstance(target, CallbackQuery):
@@ -178,7 +183,20 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
             event_id=f"{quest.id}:{channel}",
             event_metadata={"channel": channel},
         )
-        await callback.answer("عضویت تأیید شد.")
+        claimed = await service.claim(
+            session,
+            user_id=user.id,
+            progress_id=progress.id,
+            membership_checker=lambda checked_channel: subscription_service.is_member_in_channel(
+                callback.bot, user.telegram_user_id, checked_channel
+            ),
+        )
+        await callback.answer(
+            "عضویت تأیید شد و پاداش دریافت شد."
+            if claimed
+            else "عضویت تأیید شد؛ فعالیت تکمیل شده اما دریافت پاداش ممکن نشد.",
+            show_alert=not bool(claimed),
+        )
         await _show(callback, session, user.id)
         return
     if action == "claim":
