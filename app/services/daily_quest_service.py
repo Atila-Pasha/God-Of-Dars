@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.enums import ResourceType
 from app.models.daily_quest import (
     QUEST_TYPES,
@@ -25,8 +28,12 @@ class DailyQuestService:
     @staticmethod
     def _date(value: date | datetime | None) -> date:
         if value is None:
-            return datetime.now(UTC).date()
+            return DailyQuestService.today()
         return value.date() if isinstance(value, datetime) else value
+
+    @staticmethod
+    def today() -> date:
+        return datetime.now(ZoneInfo(settings.DAILY_QUEST_TIMEZONE)).date()
 
     @staticmethod
     def _rewards(rewards: dict[str, int] | None) -> dict[str, int]:
@@ -144,7 +151,7 @@ class DailyQuestService:
         amount: int = 1,
         activity_date: date | None = None,
         event_metadata: dict | None = None,
-    ) -> list[DailyQuestProgress]:
+    ) -> Sequence[DailyQuestProgress]:
         if event_type not in QUEST_TYPES or amount <= 0:
             return []
         if not hasattr(session, "begin_nested"):
@@ -197,11 +204,21 @@ class DailyQuestService:
         if progress is None or progress.user_id != user_id:
             return None
         quest = await self.repository.get(session, progress.quest_id, for_update=True)
-        if quest is None or progress.claimed or progress.progress < quest.target:
+        if (
+            quest is None
+            or not quest.is_active
+            or quest.activity_date != self._date(None)
+            or progress.claimed
+            or progress.progress < quest.target
+        ):
             return None
-        if quest.quest_type == "JOIN_CHANNEL" and membership_checker is not None:
+        if quest.quest_type == "JOIN_CHANNEL":
             channel = (quest.quest_metadata or {}).get("channel")
-            if not channel or not await membership_checker(channel):
+            if (
+                not channel
+                or membership_checker is None
+                or not await membership_checker(channel)
+            ):
                 return None
         for resource, amount in (quest.rewards or {}).items():
             result = await self.reward_service.grant(

@@ -72,6 +72,27 @@ class UserRepository:
         result = await session.execute(statement)
         return result.scalar_one_or_none()
 
+    async def list_active_at_level(
+        self, session: AsyncSession, *, level: int, exclude_user_id: int
+    ) -> list[User]:
+        result = await session.execute(
+            select(User)
+            .where(
+                User.is_active.is_(True),
+                User.level == level,
+                User.id != exclude_user_id,
+            )
+            .options(selectinload(User.resources))
+            .order_by(func.random())
+        )
+        return list(result.scalars().all())
+
+    async def max_active_level(self, session: AsyncSession) -> int:
+        result = await session.execute(
+            select(func.max(User.level)).where(User.is_active.is_(True))
+        )
+        return int(result.scalar_one() or 1)
+
     async def create(
         self,
         session: AsyncSession,

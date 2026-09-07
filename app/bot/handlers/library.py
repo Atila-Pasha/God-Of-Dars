@@ -284,7 +284,7 @@ async def library_callback_handler(
                 await safe_edit_text(
                     cast(Message, callback.message),
                     "📖 ثبت مطالعه\n\nیک پک مطالعه انتخاب کنید. تا پایان پک امکان انتخاب پک دیگر وجود ندارد:",
-                    reply_markup=study_keyboard(study_service.packs()),
+                    reply_markup=study_keyboard(await study_service.packs(session)),
                 )
             if reward is not None:
                 await _notify_callback(callback, _study_reward_text(reward).strip())
@@ -364,8 +364,11 @@ async def study_callback_handler(
         except (StudyPackNotFound, StudyError):
             await _notify_callback(callback, "این پک مطالعه در دسترس نیست.")
             return
-        pack = study_service.packs()[callback_data.pack_key]
-        label = "طلا" if pack.reward_resource.value == "COIN" else "الماس"
+        pack = await study_service.get_pack(session, callback_data.pack_key)
+        if pack is None:
+            await _notify_callback(callback, "این پک مطالعه دیگر فعال نیست.")
+            return
+        label = "طلا" if pack.reward_resource == "COIN" else "الماس"
         text = (
             f"✅ مطالعه شروع شد.\n\n⏳ مدت مطالعه: {pack.duration_minutes} دقیقه\n"
             f"🎁 پاداش پایان: {pack.reward_amount} {label}\n\n"

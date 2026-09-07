@@ -16,7 +16,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.enums import ResourceType
 from app.db.base import Base
+from app.models.resource import RESOURCE_TYPE_ENUM
 
 if TYPE_CHECKING:
     from app.models.user_shield import UserShield
@@ -37,6 +39,9 @@ class Shield(Base):
             "purchase_price >= 0", name="ck_shields_purchase_price_non_negative"
         ),
         CheckConstraint("unlock_level >= 1", name="ck_shields_unlock_level_positive"),
+        CheckConstraint(
+            "duration_minutes >= 1", name="ck_shields_duration_minutes_positive"
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -46,8 +51,17 @@ class Shield(Base):
         BigInteger, nullable=False, default=0, server_default="0"
     )
     purchase_price: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    purchase_resource: Mapped[ResourceType] = mapped_column(
+        RESOURCE_TYPE_ENUM,
+        nullable=False,
+        default=ResourceType.COIN,
+        server_default="COIN",
+    )
     unlock_level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
+    )
+    duration_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=60, server_default="60"
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(

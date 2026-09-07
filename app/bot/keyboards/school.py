@@ -148,18 +148,107 @@ def teacher_catalog_keyboard(
     back_action: str = "back_teachers",
     origin: str = "school",
 ) -> InlineKeyboardMarkup:
+    visible = [teacher for teacher in teachers if teacher.unlock_level <= player_level]
+    page_size = 5
+    page_count = max(1, (len(visible) + page_size - 1) // page_size)
+    page = 0
+    page_items = visible[:page_size]
     rows = [
         [
             InlineKeyboardButton(
-                text=f"🛒 {teacher.name} — {teacher.purchase_price} سکه",
+                text=f"{teacher.name} — {teacher.purchase_price} سکه",
+                icon_custom_emoji_id=premium_emoji_id(
+                    teacher.emoji, fallback="👨‍🏫"
+                ),
                 callback_data=TeacherCallback(
-                    action="buy", teacher_id=teacher.id, origin=origin
+                    action="buy", teacher_id=teacher.id, origin=origin, page=page
                 ).pack(),
             )
         ]
-        for teacher in teachers
-        if teacher.unlock_level <= player_level
+        for teacher in page_items
     ]
+    if page_count > 1:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"صفحه ۱ از {page_count} ▶️",
+                    callback_data=TeacherCallback(
+                        action="page", teacher_id=0, origin=origin, page=1
+                    ).pack(),
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🔙 دبیرها",
+                callback_data=TeacherCallback(
+                    action=back_action, teacher_id=0, origin=origin
+                ).pack(),
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def teacher_catalog_page_keyboard(
+    teachers: list[Teacher],
+    *,
+    player_level: int,
+    page: int,
+    back_action: str = "back_teachers",
+    origin: str = "school",
+) -> InlineKeyboardMarkup:
+    visible = [teacher for teacher in teachers if teacher.unlock_level <= player_level]
+    page_size = 5
+    page_count = max(1, (len(visible) + page_size - 1) // page_size)
+    page = max(0, min(page, page_count - 1))
+    items = visible[page * page_size : (page + 1) * page_size]
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{teacher.name} — {teacher.purchase_price} سکه",
+                icon_custom_emoji_id=premium_emoji_id(
+                    teacher.emoji, fallback="👨‍🏫"
+                ),
+                callback_data=TeacherCallback(
+                    action="buy", teacher_id=teacher.id, origin=origin, page=page
+                ).pack(),
+            )
+        ]
+        for teacher in items
+    ]
+    navigation = []
+    if page > 0:
+        navigation.append(
+            InlineKeyboardButton(
+                text="◀️ قبلی",
+                callback_data=TeacherCallback(
+                    action="page", teacher_id=0, origin=origin, page=page - 1
+                ).pack(),
+            )
+        )
+    if page < page_count - 1:
+        navigation.append(
+            InlineKeyboardButton(
+                text="بعدی ▶️",
+                callback_data=TeacherCallback(
+                    action="page", teacher_id=0, origin=origin, page=page + 1
+                ).pack(),
+            )
+        )
+    if navigation:
+        rows.append(navigation)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=f"صفحه {page + 1} از {page_count}",
+                callback_data=TeacherCallback(
+                    action="page", teacher_id=0, origin=origin, page=page
+                ).pack(),
+            )
+        ]
+    )
     rows.append(
         [
             InlineKeyboardButton(

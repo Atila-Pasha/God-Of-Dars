@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +7,9 @@ from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
 from app.bot.middlewares.subscription import subscription_service
 from app.models.daily_quest import DailyQuestProgress
 from app.services.daily_quest_service import DailyQuestService
+from app.services.subscription_service import (
+    MembershipCheckError,
+)
 from app.services.user_service import UserService
 
 router = Router(name="daily")
@@ -20,7 +21,7 @@ DAILY_LABEL = next(
 
 
 async def _show(target, session: AsyncSession, user_id: int):
-    quests = await service.list(session, datetime.now(UTC).date(), active_only=True)
+    quests = await service.list(session, service.today(), active_only=True)
     if not quests:
         text = "🎯 فعالیت‌های روزانه\n\nامروز فعالیتی تعریف نشده است."
         markup = None
@@ -75,9 +76,20 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
             return
         quest = await service.repository.get(session, progress.quest_id)
         channel = (quest.quest_metadata or {}).get("channel")
-        if not channel or not await subscription_service.is_member_in_channel(
-            callback.bot, user.telegram_user_id, channel
-        ):
+        try:
+            is_member = bool(
+                channel
+                and await subscription_service.is_member_in_channel(
+                    callback.bot, user.telegram_user_id, channel
+                )
+            )
+        except MembershipCheckError:
+            await callback.answer(
+                "در حال حاضر بررسی عضویت امکان‌پذیر نیست. لطفاً کمی بعد دوباره تلاش کنید.",
+                show_alert=True,
+            )
+            return
+        if not is_member:
             await callback.answer("ابتدا عضو کانال شوید.", show_alert=True)
             return
         await service.record_event(
@@ -95,12 +107,19 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
             return await subscription_service.is_member_in_channel(
                 callback.bot, user.telegram_user_id, channel
             )
-        result = await service.claim(
-            session,
-            user_id=user.id,
-            progress_id=int(value),
-            membership_checker=membership_checker,
-        )
+        try:
+            result = await service.claim(
+                session,
+                user_id=user.id,
+                progress_id=int(value),
+                membership_checker=membership_checker,
+            )
+        except MembershipCheckError:
+            await callback.answer(
+                "در حال حاضر بررسی عضویت امکان‌پذیر نیست. لطفاً کمی بعد دوباره تلاش کنید.",
+                show_alert=True,
+            )
+            return
         await callback.answer(
             "جایزه دریافت شد."
             if result

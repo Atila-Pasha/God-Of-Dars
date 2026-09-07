@@ -20,9 +20,13 @@ from app.repositories.user import UserRepository
 from app.services.castle_service import CastleService
 from app.services.daily_quest_service import DailyQuestService
 from app.services.school_errors import (
+    AttackerNotRegistered,
     AttackInProgress,
+    AttackTargetNotRegistered,
+    CannotAttackSelf,
     InvalidTeacherState,
-    SchoolUserNotFound,
+    RandomOpponentNotFound,
+    ShieldAlreadyActive,
     TeacherInHospital,
     TeacherLimitReached,
     TeacherNotOwned,
@@ -125,12 +129,12 @@ class AttackService:
             session, attacker_telegram_id, for_update=True
         )
         if attacker is None or not attacker.is_active:
-            raise SchoolUserNotFound
+            raise AttackerNotRegistered
         target = await self.users.get_active_by_username(
             session, target_username, for_update=True
         )
         if target is None:
-            raise SchoolUserNotFound
+            raise AttackTargetNotRegistered
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_username(
@@ -139,8 +143,10 @@ class AttackService:
     ) -> AttackPreview:
         attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
         target = await self.users.get_active_by_username(session, target_username)
-        if attacker is None or target is None or not attacker.is_active:
-            raise SchoolUserNotFound
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        if target is None:
+            raise AttackTargetNotRegistered
         return await self._preview(session, attacker, target, teacher_name)
 
     async def attack_by_telegram_id(
@@ -157,13 +163,10 @@ class AttackService:
         target = await self.users.get_by_telegram_user_id(
             session, target_telegram_id, for_update=True
         )
-        if (
-            attacker is None
-            or target is None
-            or not attacker.is_active
-            or not target.is_active
-        ):
-            raise SchoolUserNotFound
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        if target is None or not target.is_active:
+            raise AttackTargetNotRegistered
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_telegram_id(
@@ -172,9 +175,45 @@ class AttackService:
     ) -> AttackPreview:
         attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
         target = await self.users.get_by_telegram_user_id(session, target_telegram_id)
-        if attacker is None or target is None or not attacker.is_active or not target.is_active:
-            raise SchoolUserNotFound
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        if target is None or not target.is_active:
+            raise AttackTargetNotRegistered
         return await self._preview(session, attacker, target, teacher_name)
+
+    async def preview_random(
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        teacher_name: str | list[str],
+    ) -> AttackPreview:
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+
+        max_level = await self.users.max_active_level(session)
+        levels = [attacker.level]
+        distance = 1
+        while distance <= max(max_level - attacker.level, attacker.level - 1):
+            levels.extend((attacker.level + distance, attacker.level - distance))
+            distance += 1
+
+        for level in levels:
+            if level < 1:
+                continue
+            candidates = await self.users.list_active_at_level(
+                session, level=level, exclude_user_id=attacker.id
+            )
+            for target in candidates:
+                if await self.castle_service.shield_service.has_active_shield(
+                    session, target.id
+                ):
+                    continue
+                return await self._preview(session, attacker, target, teacher_name)
+        raise RandomOpponentNotFound
 
     async def attack_by_ids(
         self, session: AsyncSession, *, attacker_telegram_id: int,
@@ -184,8 +223,14 @@ class AttackService:
             session, attacker_telegram_id, for_update=True
         )
         target = await self.users.get_active_by_id(session, target_id, for_update=True)
-        if attacker is None or target is None or not attacker.is_active:
-            raise SchoolUserNotFound
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        if target is None or not target.is_active:
+            raise AttackTargetNotRegistered
+        if await self.castle_service.shield_service.has_active_shield(
+            session, target.id
+        ):
+            raise ShieldAlreadyActive
         selected_ids = teacher_ids or [teacher_id]
         if len(dict.fromkeys(selected_ids)) > self.config.max_attack_teachers:
             raise TeacherLimitReached
@@ -212,8 +257,14 @@ class AttackService:
             session, attacker_telegram_id, for_update=True
         )
         target = await self.users.get_active_by_id(session, target_id, for_update=True)
-        if attacker is None or target is None or not attacker.is_active:
-            raise SchoolUserNotFound
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        if target is None or not target.is_active:
+            raise AttackTargetNotRegistered
+        if await self.castle_service.shield_service.has_active_shield(
+            session, target.id
+        ):
+            raise ShieldAlreadyActive
 
         active_attack = await session.scalar(
             select(Attack)
@@ -288,6 +339,15 @@ class AttackService:
         attacker = await self.users.get_by_id_for_update(session, attack.attacker_id)
         target = await self.users.get_by_id_for_update(session, attack.target_id)
         if attacker is None or target is None or not attacker.is_active:
+            attack.status = AttackStatus.RESOLVED
+            attack.resolved_at = datetime.now(UTC)
+            attack.result_damage = 0
+            attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
+            attack.is_successful = False
+            return None
+        if await self.castle_service.shield_service.has_active_shield(
+            session, target.id
+        ):
             attack.status = AttackStatus.RESOLVED
             attack.resolved_at = datetime.now(UTC)
             attack.result_damage = 0
@@ -380,6 +440,10 @@ class AttackService:
     async def _preview(
         self, session, attacker, target, teacher_name: str | list[str]
     ) -> AttackPreview:
+        if await self.castle_service.shield_service.has_active_shield(
+            session, target.id
+        ):
+            raise ShieldAlreadyActive
         names = await self._normalize_teacher_names(session, attacker.id, teacher_name)
         names = [name.strip() for name in names if name.strip()]
         if not names:
@@ -410,29 +474,6 @@ class AttackService:
             for teacher in teachers
         ]
         raw_damages = [item[0] for item in resolved]
-        # Preview the same equipped-shield mitigation that the real attack
-        # will consume; otherwise the shown loot is larger than the result.
-        equipped = next(
-            (
-                item
-                for item in await self.castle_service.shield_service.list_owned(
-                    session, target.id
-                )
-                if item.is_equipped and item.quantity > 0
-            ),
-            None,
-        )
-        if equipped is not None:
-            raw_damages = [
-                self.config.apply_shield(
-                    value,
-                    reduction_percent=equipped.shield.reduction_percent,
-                    flat_absorption=equipped.shield.flat_absorption,
-                ).remaining_damage
-                if index < equipped.quantity
-                else value
-                for index, value in enumerate(raw_damages)
-            ]
         damage = min(castle.strength, sum(raw_damages))
         injury = sum(item[1] for item in resolved)
         loot = self._loot(target, damage, castle.strength)
@@ -502,7 +543,7 @@ class AttackService:
 
     async def _attack(self, session, attacker, target, teacher_name: str) -> AttackResult:
         if attacker.id == target.id:
-            raise SchoolUserNotFound
+            raise CannotAttackSelf
         teacher = await self.teachers.get_owned_by_name_for_update(
             session, attacker.id, teacher_name
         )

@@ -3,17 +3,27 @@ from contextlib import suppress
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    ReplyParameters,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks import AttackConfirmationCallback
 from app.bot.utils.attack import teacher_phrase
 from app.services.attack_service import AttackPreview, AttackResult, AttackService
 from app.services.school_errors import (
+    AttackerNotRegistered,
     AttackInProgress,
+    AttackTargetNotRegistered,
+    CannotAttackSelf,
     InvalidTeacherState,
+    RandomOpponentNotFound,
     SchoolError,
     SchoolUserNotFound,
+    ShieldAlreadyActive,
     TeacherInHospital,
     TeacherNotOwned,
 )
@@ -61,7 +71,8 @@ def _attack_help_text(*, group: bool = False) -> str:
         return (
             "⚔️ راهنمای حمله در گروه\n\n"
             "روی پیام هدف Reply بزن و یکی از این قالب‌ها را بفرست:\n"
-            "• حمله {اسم دبیر}\n\n"
+            "• حمله {اسم دبیر}\n"
+            "• حمله رندوم {اسم دبیر}\n\n"
             "اگر روی پیام هدف Reply نزنی:\n"
             "• حمله {نام‌کاربری هدف} {اسم دبیر}"
         )
@@ -70,18 +81,23 @@ def _attack_help_text(*, group: bool = False) -> str:
         "حمله {نام‌کاربری هدف} {اسم دبیر}\n"
         "مثال: حمله @player افلاطون\n\n"
         "در گروه، روی پیام هدف Reply بزن و بنویس:\n"
-        "حمله {اسم دبیر}"
+        "حمله {اسم دبیر}\n"
+        "حمله رندوم {اسم دبیر}"
     )
 
 
-def _attack_confirmation_keyboard(preview: AttackPreview) -> InlineKeyboardMarkup:
+def _attack_confirmation_keyboard(
+    preview: AttackPreview, *, source_message_id: int
+) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="✅ تأیید حمله",
             callback_data=AttackConfirmationCallback(
                 attacker_id=preview.attacker_id,
                 target_id=preview.target_id, teacher_id=preview.teacher_id,
-                decision="confirm", teacher_ids=preview.teacher_ids,
+                decision="confirm",
+                teacher_ids=preview.teacher_ids,
+                source_message_id=source_message_id,
             ).pack(),
         ),
         InlineKeyboardButton(
@@ -89,7 +105,9 @@ def _attack_confirmation_keyboard(preview: AttackPreview) -> InlineKeyboardMarku
             callback_data=AttackConfirmationCallback(
                 attacker_id=preview.attacker_id,
                 target_id=preview.target_id, teacher_id=preview.teacher_id,
-                decision="cancel", teacher_ids=preview.teacher_ids,
+                decision="cancel",
+                teacher_ids=preview.teacher_ids,
+                source_message_id=source_message_id,
             ).pack(),
         ),
     ]])
@@ -105,16 +123,30 @@ async def _send_result(message: Message, result: AttackResult) -> None:
 
 
 async def _report_error(message: Message, error: Exception) -> None:
-    if isinstance(error, SchoolUserNotFound):
-        await message.answer("بازیکن هدف پیدا نشد یا هنوز در ربات ثبت‌نام نکرده است.")
+    if isinstance(error, AttackerNotRegistered):
+        await message.answer("ابتدا ربات را با /start فعال کنید، سپس حمله را بفرستید.")
+    elif isinstance(error, AttackTargetNotRegistered):
+        await message.answer(
+            "این کاربر هنوز ربات را استارت نکرده است یا حسابش فعال نیست."
+        )
+    elif isinstance(error, SchoolUserNotFound):
+        await message.answer("اطلاعات کاربر پیدا نشد.")
     elif isinstance(error, TeacherNotOwned):
-        await message.answer("استادی با این نام پیدا نشد.")
+        await message.answer("این دبیر را هنوز نخریده‌اید.")
     elif isinstance(error, TeacherInHospital):
-        await message.answer("این استاد در حال بهبود است و فعلاً نمی‌تواند حمله کند.")
+        await message.answer("این دبیر در حال بهبود است و فعلاً نمی‌تواند حمله کند.")
     elif isinstance(error, AttackInProgress):
         await message.answer("⚔️ حمله فعال دارید؛ پس از پایان آن می‌توانید دوباره حمله کنید.")
+    elif isinstance(error, ShieldAlreadyActive):
+        await message.answer("🛡 این بازیکن سپر فعال دارد و فعلاً نمی‌توان به او حمله کرد.")
     elif isinstance(error, InvalidTeacherState):
-        await message.answer("این استاد در بیمارستان است و فعلاً نمی‌تواند حمله کند.")
+        await message.answer(
+            "این دبیر فعال نیست؛ ابتدا آن را فعال کنید تا آماده حمله شود."
+        )
+    elif isinstance(error, CannotAttackSelf):
+        await message.answer("نمی‌توانید به خودتان حمله کنید.")
+    elif isinstance(error, RandomOpponentNotFound):
+        await message.answer("حریفی برای حمله پیدا نکردم.")
     else:
         await message.answer("اجرای حمله ممکن نبود؛ لطفاً مشخصات حمله را بررسی کنید.")
 
@@ -132,24 +164,39 @@ async def attack_message(message: Message, session: AsyncSession) -> None:
         return
     text = (message.text or "").strip()
     arguments = text.partition(" ")[2].strip()
-    if not arguments:
+    if not arguments and not (
+        message.chat.type in {"group", "supergroup"}
+        and message.reply_to_message is not None
+    ):
         await message.answer(
             _attack_help_text(
                 group=message.chat.type in {"group", "supergroup"}
             )
         )
         return
+    if not arguments:
+        await message.answer(
+            "نام دبیر را هم بنویسید؛ مثال: حمله افلاطون",
+            reply_to_message_id=message.message_id,
+        )
+        return
     try:
-        if message.chat.type in {"group", "supergroup"}:
+        if arguments.casefold().startswith("رندوم"):
+            random_teacher = arguments[len("رندوم") :].strip()
+            if not random_teacher:
+                await message.answer(
+                    "برای حمله رندوم نام دبیر را هم بنویسید؛ "
+                    "مثال: حمله رندوم افلاطون"
+                )
+                return
+            preview = await attack_service.preview_random(
+                session,
+                attacker_telegram_id=message.from_user.id,
+                teacher_name=random_teacher,
+            )
+        elif message.chat.type in {"group", "supergroup"}:
             replied = message.reply_to_message
             if replied is not None and replied.from_user is not None:
-                if not arguments:
-                    await message.answer(
-                        "نام دبیر را هم بنویسید؛ مثال: حمله افلاطون\n\n"
-                        + _attack_help_text(group=True),
-                        reply_to_message_id=message.message_id,
-                    )
-                    return
                 preview = await attack_service.preview_by_telegram_id(
                     session,
                     attacker_telegram_id=message.from_user.id,
@@ -187,13 +234,17 @@ async def attack_message(message: Message, session: AsyncSession) -> None:
     if message.chat.type in {"group", "supergroup"}:
         await message.answer(
             _preview_text(preview),
-            reply_markup=_attack_confirmation_keyboard(preview),
+            reply_markup=_attack_confirmation_keyboard(
+                preview, source_message_id=message.message_id
+            ),
             reply_to_message_id=message.message_id,
         )
     else:
         await message.answer(
             _preview_text(preview),
-            reply_markup=_attack_confirmation_keyboard(preview),
+            reply_markup=_attack_confirmation_keyboard(
+                preview, source_message_id=message.message_id
+            ),
         )
 
 
@@ -208,7 +259,7 @@ async def attack_confirmation(
         await callback.answer("فقط شروع‌کننده حمله می‌تواند آن را تأیید کند.", show_alert=True)
         return
     if callback_data.decision == "cancel":
-        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.delete()
         await callback.answer("حمله لغو شد.")
         return
     # Acknowledge before the database transaction so Telegram does not expire
@@ -226,10 +277,18 @@ async def attack_confirmation(
             target_id=callback_data.target_id,
             teacher_ids=teacher_ids,
         )
-        await callback.message.edit_reply_markup(reply_markup=None)
+        with suppress(TelegramAPIError):
+            await callback.message.delete()
+        reply_parameters = (
+            ReplyParameters(message_id=callback_data.source_message_id)
+            if callback_data.source_message_id
+            else None
+        )
         for sticker in launch.teacher_stickers:
             try:
-                await callback.message.answer_sticker(sticker)
+                await callback.message.answer_sticker(
+                    sticker, reply_parameters=reply_parameters
+                )
             except TelegramAPIError:
                 # A missing or invalid optional sticker must not block an attack.
                 continue
@@ -237,7 +296,8 @@ async def attack_confirmation(
             f"⚔️ حمله به «{launch.target_name}» آغاز شد!\n"
             f"👨‍🏫 {teacher_phrase(launch.teacher_name)}\n"
             "⏱ زمان حمله: ۲ دقیقه\n"
-            "پس از پایان زمان، نتیجه حمله برای شما ارسال می‌شود."
+            "پس از پایان زمان، نتیجه حمله برای شما ارسال می‌شود.",
+            reply_parameters=reply_parameters,
         )
     except SchoolError as error:
         await _report_error(callback.message, error)

@@ -31,6 +31,7 @@ class TeacherCallback(CallbackData, prefix="teacher"):
     action: Literal[
         "view",
         "buy",
+        "page",
         "upgrade",
         "sell",
         "activate",
@@ -41,6 +42,7 @@ class TeacherCallback(CallbackData, prefix="teacher"):
     ]
     teacher_id: int
     origin: Literal["school", "buffet"] = "school"
+    page: int = 0
 
 
 class HospitalCallback(CallbackData, prefix="hospital"):
@@ -71,6 +73,7 @@ class AttackConfirmationCallback(CallbackData, prefix="attack"):
     # Comma-separated owned-teacher ids for multi-teacher attacks. An empty
     # value keeps callbacks created by older messages fully compatible.
     teacher_ids: str = ""
+    source_message_id: int = 0
 
 
 class LibraryCallback(CallbackData, prefix="library"):
@@ -124,6 +127,11 @@ class BuffetMenuCallback(CallbackData, prefix="buffet_menu"):
 
 class ShieldCallback(CallbackData, prefix="shield"):
     action: Literal["buy", "equip", "back"]
+    shield_id: int
+
+
+class ShieldPurchaseCallback(CallbackData, prefix="shield_purchase"):
+    decision: Literal["confirm", "cancel"]
     shield_id: int
 
 

@@ -30,6 +30,7 @@ from admin.states import (
     DailyQuestStates,
     QuestionStates,
     ShieldStates,
+    StudyPackStates,
     TeacherStates,
     UserStates,
 )
@@ -42,6 +43,7 @@ from app.core.enums import ResourceType
 from app.db.session import AsyncSessionLocal
 from app.models.chance_box import ChanceBox
 from app.models.daily_quest import QUEST_TYPES
+from app.models.study_pack import StudyPack
 from app.models.user import User
 from app.repositories.bot_settings import BotSettingsRepository
 from app.repositories.group import GroupRepository
@@ -151,10 +153,10 @@ TEACHER_EDIT_PROMPTS = {
 }
 SHIELD_EDIT_PROMPTS = {
     "name": "نام جدید سپر را بفرستید:",
-    "reduction_percent": "درصد کاهش جدید را بفرستید (۰ تا ۱۰۰):",
-    "flat_absorption": "مقدار جذب ثابت جدید را بفرستید:",
     "purchase_price": "قیمت خرید جدید را بفرستید:",
+    "purchase_resource": "نوع ارز جدید را بفرستید: طلا یا الماس",
     "unlock_level": "سطح بازشدن جدید را بفرستید:",
+    "duration_minutes": "مدت فعال بودن سپر را به دقیقه بفرستید (مثلاً 60):",
     "description": "توضیح جدید را بفرستید؛ برای حذف، - بفرستید:",
 }
 
@@ -826,8 +828,72 @@ async def daily_quest_start(message: Message, state: FSMContext, session: AsyncS
     await state.clear()
     await state.set_state(DailyQuestStates.activity_date)
     await message.answer(
-        "تاریخ فعالیت را به صورت YYYY-MM-DD بفرستید:"
+        "برای کدام روز فعالیت بسازیم؟",
+        reply_markup=keyboards.daily_quest_dates(),
     )
+
+
+@router.callback_query(F.data.startswith("admin_daily:"))
+async def daily_quest_callback(
+    callback: CallbackQuery, state: FSMContext
+) -> None:
+    if callback.from_user is None or callback.message is None or not allowed(callback):
+        await callback.answer()
+        return
+    parts = (callback.data or "").split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    value = parts[2] if len(parts) > 2 else ""
+    if action == "cancel":
+        await state.clear()
+        await callback.answer("لغو شد.")
+        if callback.message:
+            await callback.message.answer("عملیات فعالیت روزانه لغو شد.", reply_markup=keyboards.main())
+        return
+    if action == "date":
+        if value == "custom":
+            await state.set_state(DailyQuestStates.activity_date)
+            await callback.answer()
+            await callback.message.answer("تاریخ را به صورت YYYY-MM-DD بفرستید:")
+            return
+        selected = daily_quest_service.today()
+        if value == "tomorrow":
+            selected += timedelta(days=1)
+        await state.update_data(activity_date=selected.isoformat())
+        await state.set_state(DailyQuestStates.quest_type)
+        await callback.answer()
+        await callback.message.answer(
+            f"تاریخ انتخاب شد: {selected.isoformat()}\nنوع فعالیت را انتخاب کنید:",
+            reply_markup=keyboards.daily_quest_types(tuple(QUEST_TYPES)),
+        )
+        return
+    if action == "type":
+        if value not in QUEST_TYPES:
+            await callback.answer("نوع فعالیت نامعتبر است.", show_alert=True)
+            return
+        await state.update_data(quest_type=value, rewards={})
+        await state.set_state(DailyQuestStates.target)
+        await callback.answer()
+        await callback.message.answer("هدف فعالیت را به صورت عددی بفرستید:")
+        return
+    if action == "reward":
+        if value == "done":
+            data = await state.get_data()
+            if not data.get("rewards"):
+                await callback.answer("حداقل یک پاداش انتخاب کنید.", show_alert=True)
+                return
+            await state.set_state(DailyQuestStates.title)
+            await callback.answer()
+            await callback.message.answer("عنوان فعالیت را بفرستید:")
+            return
+        if value not in {"COIN", "DIAMOND", "BANANA"}:
+            await callback.answer("پاداش نامعتبر است.", show_alert=True)
+            return
+        await state.update_data(reward_resource=value)
+        await state.set_state(DailyQuestStates.rewards)
+        await callback.answer()
+        await callback.message.answer(f"مقدار {value} را وارد کنید:")
+        return
+    await callback.answer()
 
 
 @router.message(DailyQuestStates.activity_date)
@@ -847,7 +913,8 @@ async def daily_quest_date(message: Message, state: FSMContext, session: AsyncSe
     await state.update_data(activity_date=activity_date.isoformat())
     await state.set_state(DailyQuestStates.quest_type)
     await message.answer(
-        f"{listing}\n\nنوع فعالیت جدید را بفرستید:\n" + "، ".join(QUEST_TYPES)
+        f"{listing}\n\nنوع فعالیت جدید را انتخاب کنید:",
+        reply_markup=keyboards.daily_quest_types(tuple(QUEST_TYPES)),
     )
 
 
@@ -875,26 +942,31 @@ async def daily_quest_target(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(target=target)
     await state.set_state(DailyQuestStates.rewards)
-    await message.answer("جایزه‌ها را مثل COIN:10,DIAMOND:2 بفرستید:")
+    await message.answer(
+        "منابع پاداش را انتخاب کنید:",
+        reply_markup=keyboards.daily_quest_rewards(),
+    )
 
 
 @router.message(DailyQuestStates.rewards)
 async def daily_quest_rewards(message: Message, state: FSMContext) -> None:
     if not allowed(message) or not message.text:
         return
+    data = await state.get_data()
+    resource = data.get("reward_resource")
     try:
-        rewards = {}
-        for item in message.text.replace("،", ",").split(","):
-            resource, amount = item.strip().split(":", 1)
-            if resource.strip().upper() not in {"COIN", "DIAMOND", "BANANA"}:
-                raise ValueError("منبع نامعتبر است.")
-            rewards[resource.strip().upper()] = number(amount, "مقدار")
+        amount = number(message.text, "مقدار", minimum=1)
     except ValueError as exc:
         await message.answer(f"فرمت جایزه نامعتبر است: {exc}")
         return
-    await state.update_data(rewards=rewards)
-    await state.set_state(DailyQuestStates.title)
-    await message.answer("عنوان فعالیت را بفرستید:")
+    rewards = dict(data.get("rewards") or {})
+    rewards[resource] = amount
+    await state.update_data(rewards=rewards, reward_resource=None)
+    await state.set_state(DailyQuestStates.rewards)
+    await message.answer(
+        "پاداش ثبت شد. منبع دیگری انتخاب کنید یا پایان پاداش‌ها را بزنید.",
+        reply_markup=keyboards.daily_quest_rewards(),
+    )
 
 
 @router.message(DailyQuestStates.title)
@@ -912,37 +984,49 @@ async def daily_quest_description(message: Message, state: FSMContext, session: 
         return
     description = None if message.text.strip() == "-" else message.text.strip()
     await state.update_data(description=description)
-    await state.set_state(DailyQuestStates.metadata)
-    await message.answer(
-        'متادیتا را به صورت JSON بفرستید؛ برای بدون متادیتا {} (برای JOIN_CHANNEL، {"channel":"@name"}):'
-    )
-
-
-@router.message(DailyQuestStates.metadata)
-async def daily_quest_metadata(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    if not allowed(message) or not message.text:
-        return
-    import json
     data = await state.get_data()
-    try:
-        metadata = json.loads(message.text.strip())
-        if not isinstance(metadata, dict):
-            raise ValueError
-    except ValueError:
-        await message.answer("متادیتای JSON نامعتبر است.")
+    if data["quest_type"] == "JOIN_CHANNEL":
+        await state.set_state(DailyQuestStates.channel)
+        await message.answer(
+            "نام کاربری یا شناسه کانال را بفرستید:\nمثال: @example_channel"
+        )
         return
-    if data["quest_type"] == "JOIN_CHANNEL" and not metadata.get("channel"):
-        await message.answer('برای JOIN_CHANNEL باید channel تنظیم شود؛ نمونه: {"channel":"@name"}')
-        return
+    await daily_quest_create(message, state, session, metadata={})
+
+
+async def daily_quest_create(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    *,
+    metadata: dict,
+) -> None:
+    data = await state.get_data()
     quest = await daily_quest_service.create(
         session,
-        activity_date=date.fromisoformat(data["activity_date"]), quest_type=data["quest_type"],
-        title=data["title"], target=data["target"], rewards=data["rewards"],
+        activity_date=date.fromisoformat(data["activity_date"]),
+        quest_type=data["quest_type"],
+        title=data["title"],
+        target=data["target"],
+        rewards=data["rewards"],
         description=data.get("description"),
         metadata=metadata,
     )
     await state.clear()
     await message.answer(f"فعالیت #{quest.id} ساخته شد.", reply_markup=keyboards.main())
+
+
+@router.message(DailyQuestStates.channel)
+async def daily_quest_channel(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    channel = message.text.strip()
+    if not channel:
+        await message.answer("شناسه کانال نمی‌تواند خالی باشد.")
+        return
+    await daily_quest_create(message, state, session, metadata={"channel": channel})
 
 
 async def question_step(
@@ -1366,8 +1450,11 @@ async def shields(message: Message, state: FSMContext, session: AsyncSession) ->
     for shield in items:
         await message.answer(
             f"🛡 {shield.name}\nشناسه: {shield.id}\n"
-            f"کاهش آسیب: {shield.reduction_percent}% + {shield.flat_absorption} واحد\n"
-            f"قیمت: {shield.purchase_price} سکه\nبازشدن در سطح: {shield.unlock_level}\n"
+            f"قیمت: {shield.purchase_price} "
+            f"{'الماس' if shield.purchase_resource is ResourceType.DIAMOND else 'طلا'}\n"
+            f"بازشدن در سطح: {shield.unlock_level}\n"
+            f"ارز خرید: {'الماس' if shield.purchase_resource is ResourceType.DIAMOND else 'طلا'}\n"
+            f"مدت فعال بودن: {shield.duration_minutes} دقیقه\n"
             f"وضعیت: {'فعال' if shield.is_active else 'غیرفعال'}\n"
             f"توضیح: {shield.description or '—'}",
             reply_markup=keyboards.shield_actions(shield.id),
@@ -1398,7 +1485,11 @@ async def shield_value(
     if not allowed(message) or not message.text:
         return
     try:
-        value = number(message.text, key, minimum=minimum)
+        value = number(
+            message.text,
+            key,
+            minimum=1 if key == "duration_minutes" else minimum,
+        )
         if key == "reduction_percent" and value > 100:
             raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
     except ValueError as exc:
@@ -1414,8 +1505,8 @@ async def s_name(message, state):
     if not allowed(message) or not message.text:
         return
     await state.update_data(name=message.text.strip())
-    await state.set_state(ShieldStates.reduction_percent)
-    await message.answer("درصد کاهش آسیب (0 تا 100):")
+    await state.set_state(ShieldStates.purchase_price)
+    await message.answer("مبلغ خرید را وارد کنید:")
 
 
 @router.message(ShieldStates.reduction_percent)
@@ -1443,8 +1534,32 @@ async def s_absorption(message, state):
 @router.message(ShieldStates.purchase_price)
 async def s_price(message, state):
     await shield_value(
-        message, state, "purchase_price", ShieldStates.unlock_level, "سطح بازشدن:"
+        message,
+        state,
+        "purchase_price",
+        ShieldStates.purchase_resource,
+        "نوع ارز خرید را وارد کنید: طلا یا الماس",
     )
+
+
+@router.message(ShieldStates.purchase_resource)
+async def s_resource(message, state):
+    if not allowed(message) or not message.text:
+        return
+    value = message.text.strip().casefold()
+    resource = {
+        "طلا": ResourceType.COIN,
+        "سکه": ResourceType.COIN,
+        "coin": ResourceType.COIN,
+        "الماس": ResourceType.DIAMOND,
+        "diamond": ResourceType.DIAMOND,
+    }.get(value)
+    if resource is None:
+        await message.answer("نوع ارز نامعتبر است؛ فقط «طلا» یا «الماس» وارد کنید.")
+        return
+    await state.update_data(purchase_resource=resource)
+    await state.set_state(ShieldStates.unlock_level)
+    await message.answer("سطح بازشدن:")
 
 
 @router.message(ShieldStates.unlock_level)
@@ -1453,6 +1568,18 @@ async def s_unlock(message, state):
         message,
         state,
         "unlock_level",
+        ShieldStates.duration_minutes,
+        "مدت فعال بودن سپر به دقیقه (مثلاً 60):",
+        minimum=1,
+    )
+
+
+@router.message(ShieldStates.duration_minutes)
+async def s_duration(message, state):
+    await shield_value(
+        message,
+        state,
+        "duration_minutes",
         ShieldStates.description,
         "توضیح سپر (برای خالی بودن - بفرستید):",
         minimum=1,
@@ -1467,6 +1594,9 @@ async def s_description(
         return
     data = await state.get_data()
     data["description"] = None if message.text.strip() == "-" else message.text.strip()
+    data.setdefault("reduction_percent", 0)
+    data.setdefault("flat_absorption", 0)
+    data.setdefault("purchase_resource", ResourceType.COIN)
     mode = data.pop("mode", "create")
     shield_id = data.pop("shield_id", None)
     try:
@@ -1563,8 +1693,24 @@ async def shield_edit_value(
                 raise ValueError("نام سپر نمی‌تواند خالی باشد.")
         elif field == "description":
             value = None if value == "-" else value
+        elif field == "purchase_resource":
+            value = {
+                "طلا": ResourceType.COIN,
+                "سکه": ResourceType.COIN,
+                "coin": ResourceType.COIN,
+                "الماس": ResourceType.DIAMOND,
+                "diamond": ResourceType.DIAMOND,
+            }.get(value.casefold())
+            if value is None:
+                raise ValueError("نوع ارز نامعتبر است؛ فقط «طلا» یا «الماس» وارد کنید.")
         else:
-            value = number(value, field, minimum=1 if field == "unlock_level" else 0)
+            value = number(
+                value,
+                field,
+                minimum=1
+                if field in {"unlock_level", "duration_minutes"}
+                else 0,
+            )
             if field == "reduction_percent" and value > 100:
                 raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
         shield = await shield_service.update_shield(
@@ -1580,4 +1726,235 @@ async def shield_edit_value(
     await message.answer(
         f"ویرایش سپر «{shield.name}»\nیک مورد دیگر را برای تغییر انتخاب کنید:",
         reply_markup=keyboards.shield_edit_fields(shield.id),
+    )
+
+
+@router.message(F.text.in_({"مدیریت پک‌های مطالعه", "📖 مدیریت پک‌های مطالعه"}))
+async def study_packs_admin(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    all_packs = list(
+        (await session.execute(select(StudyPack).order_by(StudyPack.id))).scalars().all()
+    )
+    if not all_packs:
+        await message.answer("هنوز پک مطالعه‌ای ثبت نشده است.")
+    for pack in all_packs:
+        resource = "طلا" if pack.reward_resource == ResourceType.COIN.value else "الماس"
+        await message.answer(
+            f"📖 {pack.name}\nکلید: {pack.key} | شناسه: {pack.id}\n"
+            f"مدت: {pack.duration_minutes} دقیقه\n"
+            f"پاداش: {pack.reward_amount} {resource}\n"
+            f"وضعیت: {'فعال' if pack.is_active else 'غیرفعال'}",
+            reply_markup=keyboards.study_pack_actions(pack.id),
+        )
+    await message.answer(
+        "برای ساخت پک جدید، /study_pack را بفرستید.",
+        reply_markup=keyboards.main(),
+    )
+
+
+@router.message(Command("study_pack"))
+async def study_pack_start(message: Message, state: FSMContext) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    await state.update_data(mode="create")
+    await state.set_state(StudyPackStates.key)
+    await message.answer("کلید یکتا (لاتین، بدون فاصله):")
+
+
+@router.message(StudyPackStates.key)
+async def study_pack_key(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    key = message.text.strip()
+    if not key or any(char.isspace() for char in key) or len(key) > 64:
+        await message.answer("کلید باید بدون فاصله و حداکثر ۶۴ کاراکتر باشد.")
+        return
+    await state.update_data(key=key)
+    await state.set_state(StudyPackStates.name)
+    await message.answer("نام نمایشی پک:")
+
+
+@router.message(StudyPackStates.name)
+async def study_pack_name(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text or not message.text.strip():
+        await message.answer("نام پک نمی‌تواند خالی باشد.")
+        return
+    await state.update_data(name=message.text.strip())
+    await state.set_state(StudyPackStates.duration_minutes)
+    await message.answer("مدت مطالعه به دقیقه:")
+
+
+@router.message(StudyPackStates.duration_minutes)
+async def study_pack_duration(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        value = number(message.text, "مدت", minimum=1)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(duration_minutes=value)
+    await state.set_state(StudyPackStates.reward_resource)
+    await message.answer("نوع پاداش را وارد کنید: طلا یا الماس")
+
+
+def _study_resource(value: str) -> str | None:
+    return {
+        "طلا": ResourceType.COIN.value,
+        "سکه": ResourceType.COIN.value,
+        "coin": ResourceType.COIN.value,
+        "الماس": ResourceType.DIAMOND.value,
+        "diamond": ResourceType.DIAMOND.value,
+    }.get(value.casefold())
+
+
+@router.message(StudyPackStates.reward_resource)
+async def study_pack_resource(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    value = _study_resource(message.text.strip())
+    if value is None:
+        await message.answer("نوع پاداش نامعتبر است؛ فقط «طلا» یا «الماس».")
+        return
+    await state.update_data(reward_resource=value)
+    await state.set_state(StudyPackStates.reward_amount)
+    await message.answer("مقدار پاداش:")
+
+
+@router.message(StudyPackStates.reward_amount)
+async def study_pack_save(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        amount = number(message.text, "مقدار پاداش", minimum=0)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    data = await state.get_data()
+    data.pop("mode", None)
+    existing = await session.scalar(select(StudyPack).where(StudyPack.key == data["key"]))
+    if existing is not None:
+        await message.answer("این کلید قبلاً استفاده شده است.")
+        return
+    pack = StudyPack(**data, reward_amount=amount, is_active=True)
+    session.add(pack)
+    await session.flush()
+    await state.clear()
+    await message.answer(
+        f"✅ پک «{pack.name}» ساخته شد.", reply_markup=keyboards.main()
+    )
+
+
+@router.callback_query(F.data.startswith("study_pack:"))
+async def study_pack_callback(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(callback) or not callback.data:
+        return
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer("دکمه نامعتبر است.", show_alert=True)
+        return
+    try:
+        pack_id = int(parts[2])
+    except ValueError:
+        await callback.answer("شناسه پک نامعتبر است.", show_alert=True)
+        return
+    pack = await session.get(StudyPack, pack_id)
+    if pack is None:
+        await callback.answer("پک پیدا نشد.", show_alert=True)
+        return
+    action = parts[1]
+    if action in {"delete", "toggle"}:
+        pack.is_active = False if action == "delete" else not pack.is_active
+        await session.flush()
+        await callback.answer(
+            "پک غیرفعال شد." if action == "delete" else "وضعیت پک تغییر کرد."
+        )
+        await safe_edit_reply_markup(callback.message, reply_markup=None)
+        return
+    if action == "edit":
+        await state.clear()
+        await callback.message.answer(
+            f"ویرایش پک «{pack.name}»:",
+            reply_markup=keyboards.study_pack_edit_fields(pack.id),
+        )
+    elif action == "field" and len(parts) == 4:
+        field = parts[3]
+        if field not in {"key", "name", "duration_minutes", "reward_resource", "reward_amount"}:
+            await callback.answer("این گزینه معتبر نیست.", show_alert=True)
+            return
+        await state.clear()
+        await state.update_data(edit_id=pack.id, edit_field=field)
+        await state.set_state(StudyPackStates.edit_value)
+        await callback.message.answer(
+            {
+                "key": "کلید یکتا:",
+                "name": "نام نمایشی:",
+                "duration_minutes": "مدت به دقیقه:",
+                "reward_resource": "نوع پاداش: طلا یا الماس",
+                "reward_amount": "مقدار پاداش:",
+            }[field],
+            reply_markup=keyboards.cancel_keyboard(),
+        )
+    elif action == "done":
+        await state.clear()
+        await callback.message.answer("ویرایش پک تمام شد.", reply_markup=keyboards.main())
+    else:
+        await callback.answer("عملیات معتبر نیست.", show_alert=True)
+        return
+    await callback.answer()
+
+
+@router.message(StudyPackStates.edit_value)
+async def study_pack_edit_value(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    data = await state.get_data()
+    pack = await session.get(StudyPack, int(data["edit_id"]))
+    field = data.get("edit_field")
+    if pack is None or field not in {
+        "key", "name", "duration_minutes", "reward_resource", "reward_amount"
+    }:
+        await state.clear()
+        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        return
+    value = message.text.strip()
+    try:
+        if field == "key":
+            if not value or any(char.isspace() for char in value) or len(value) > 64:
+                raise ValueError("کلید نامعتبر است.")
+            duplicate = await session.scalar(
+                select(StudyPack).where(StudyPack.key == value, StudyPack.id != pack.id)
+            )
+            if duplicate is not None:
+                raise ValueError("این کلید قبلاً استفاده شده است.")
+        elif field == "name":
+            if not value:
+                raise ValueError("نام پک نمی‌تواند خالی باشد.")
+        elif field == "reward_resource":
+            value = _study_resource(value)
+            if value is None:
+                raise ValueError("نوع پاداش نامعتبر است؛ فقط «طلا» یا «الماس».")
+        else:
+            value = number(value, field, minimum=1 if field == "duration_minutes" else 0)
+    except ValueError as exc:
+        await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
+        return
+    setattr(pack, field, value)
+    await session.flush()
+    await state.clear()
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer(
+        f"ویرایش پک «{pack.name}»\nیک مورد دیگر را انتخاب کنید:",
+        reply_markup=keyboards.study_pack_edit_fields(pack.id),
     )

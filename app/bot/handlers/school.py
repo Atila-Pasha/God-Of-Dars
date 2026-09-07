@@ -24,6 +24,7 @@ from app.bot.keyboards.school import (
     hospital_keyboard,
     school_keyboard,
     teacher_catalog_keyboard,
+    teacher_catalog_page_keyboard,
     teacher_detail_keyboard,
     teachers_keyboard,
 )
@@ -471,6 +472,20 @@ async def teacher_callback_handler(
                 ),
             )
             await callback.answer()
+        elif callback_data.action == "page":
+            catalog = await teacher_service.catalog(session, user.id)
+            await _send_or_edit(
+                callback,
+                "🛒 خرید دبیر\n\nدبیر موردنظر را انتخاب کنید:",
+                reply_markup=teacher_catalog_page_keyboard(
+                    catalog,
+                    player_level=user.level,
+                    page=callback_data.page,
+                    back_action="back_teachers",
+                    origin=callback_data.origin,
+                ),
+            )
+            await callback.answer()
         elif callback_data.action == "buy":
             teacher = await teacher_service.catalog_teacher(
                 session, callback_data.teacher_id
@@ -569,6 +584,15 @@ async def confirmation_callback_handler(
     try:
         user = await _user(session, callback.from_user.id)
         if callback_data.decision == "cancel":
+            if (
+                callback_data.action == "teacher_buy"
+                and callback.message is not None
+                and callback.message.chat.type in {"group", "supergroup"}
+            ):
+                with suppress(TelegramAPIError):
+                    await callback.message.delete()
+                await callback.answer("خرید دبیر لغو شد.")
+                return
             if callback_data.action == "castle_upgrade":
                 await _castle_view(callback, session)
             elif callback_data.action == "hospital_instant_recover":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,12 +16,12 @@ from app.core.game_logic import (
 )
 from app.models.resource import Resource
 from app.models.shield import Shield
-from app.models.transaction import Transaction
 from app.models.user import User
 from app.models.user_shield import UserShield
+from app.services.resource_service import ResourceService
 from app.services.school_errors import (
-    InsufficientCoins,
     ResourceNotFound,
+    ShieldAlreadyActive,
     ShieldLocked,
     ShieldNotFound,
     ShieldNotPurchasable,
@@ -30,8 +31,7 @@ from app.services.school_errors import (
 @dataclass(frozen=True)
 class ShieldPurchase:
     shield: Shield
-    quantity: int
-    equipped: bool
+    active_until: datetime
 
 
 class ShieldService:
@@ -49,13 +49,31 @@ class ShieldService:
         return list(result.scalars().all())
 
     async def list_owned(self, session: AsyncSession, user_id: int) -> list[UserShield]:
+        now = datetime.now(UTC)
         result = await session.execute(
             select(UserShield)
-            .where(UserShield.user_id == user_id, UserShield.quantity > 0)
+            .where(
+                UserShield.user_id == user_id,
+                UserShield.active_until.is_not(None),
+                UserShield.active_until > now,
+            )
             .options(selectinload(UserShield.shield))
             .order_by(UserShield.is_equipped.desc(), UserShield.id)
         )
         return list(result.scalars().unique().all())
+
+    async def has_active_shield(self, session: AsyncSession, user_id: int) -> bool:
+        now = datetime.now(UTC)
+        result = await session.execute(
+            select(UserShield.id)
+            .where(
+                UserShield.user_id == user_id,
+                UserShield.active_until.is_not(None),
+                UserShield.active_until > now,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def get_shield(self, session: AsyncSession, shield_id: int) -> Shield | None:
         result = await session.execute(select(Shield).where(Shield.id == shield_id))
@@ -70,7 +88,11 @@ class ShieldService:
             )
         except GameConfigurationError as exc:
             raise ShieldNotPurchasable from exc
-        if shield.purchase_price < 0 or shield.unlock_level < 1:
+        if (
+            shield.purchase_price < 0
+            or shield.unlock_level < 1
+            or shield.duration_minutes < 1
+        ):
             raise ShieldNotPurchasable
 
     async def buy(
@@ -99,48 +121,42 @@ class ShieldService:
         if user.level < shield.unlock_level:
             raise ShieldLocked
         self.validate(shield)
-        if resources.coin < shield.purchase_price:
-            raise InsufficientCoins
-
         owned_result = await session.execute(
             select(UserShield)
-            .where(UserShield.user_id == user_id, UserShield.shield_id == shield_id)
+            .where(UserShield.user_id == user_id)
+            .options(selectinload(UserShield.shield))
             .with_for_update()
         )
-        owned = owned_result.scalar_one_or_none()
+        owned_items = list(owned_result.scalars().all())
+        now = datetime.now(UTC)
+        if any(
+            item.active_until is not None and item.active_until > now
+            for item in owned_items
+        ):
+            raise ShieldAlreadyActive
+        owned = next(
+            (item for item in owned_items if item.shield_id == shield_id), None
+        )
         if owned is None:
             owned = UserShield(user_id=user_id, shield_id=shield_id, quantity=0)
             session.add(owned)
             await session.flush()
-        owned.quantity += 1
-        equipped = False
-        active_result = await session.execute(
-            select(UserShield).where(
-                UserShield.user_id == user_id,
-                UserShield.is_equipped.is_(True),
-                UserShield.quantity > 0,
-            )
-        )
-        if active_result.scalar_one_or_none() is None:
-            owned.is_equipped = True
-            equipped = True
-        before = resources.coin
-        resources.coin -= shield.purchase_price
-        session.add(
-            Transaction(
-                user_id=user_id,
-                resource_type=ResourceType.COIN,
-                amount=-shield.purchase_price,
-                balance_before=before,
-                balance_after=resources.coin,
-                reason="SHIELD_PURCHASE",
-                reference_type="USER_SHIELD",
-                reference_id=owned.id,
-            )
+        owned.quantity = 1
+        owned.is_equipped = True
+        owned.active_until = now + timedelta(minutes=shield.duration_minutes)
+        ResourceService.debit(
+            session,
+            resources,
+            user_id=user_id,
+            resource_type=shield.purchase_resource,
+            amount=shield.purchase_price,
+            reason="SHIELD_PURCHASE",
+            reference_type="USER_SHIELD",
+            reference_id=owned.id,
         )
         await session.flush()
         owned.shield = shield
-        return ShieldPurchase(shield=shield, quantity=owned.quantity, equipped=equipped)
+        return ShieldPurchase(shield=shield, active_until=owned.active_until)
 
     async def equip(
         self, session: AsyncSession, user_id: int, user_shield_id: int
@@ -152,52 +168,19 @@ class ShieldService:
             .with_for_update()
         )
         selected = result.scalar_one_or_none()
-        if selected is None or selected.quantity <= 0:
+        if selected is None or selected.active_until is None:
             raise ShieldNotFound
-        await session.execute(
-            UserShield.__table__.update()
-            .where(UserShield.user_id == user_id)
-            .values(is_equipped=False)
-        )
-        selected.is_equipped = True
-        await session.flush()
-        return selected
+        raise ShieldNotPurchasable
 
     async def consume_for_attack(
         self, session: AsyncSession, user_id: int, incoming_damage: int
     ) -> ShieldMitigation:
-        """Apply and consume the equipped shield for one incoming attack.
-
-        The attack resolver should call this immediately before applying damage
-        to the castle. Returning a pure ``ShieldMitigation`` keeps the formula
-        in game_logic and makes the worker easy to test.
-        """
+        """Keep the legacy damage API while timed protection is enforced upstream."""
         if incoming_damage < 0:
             raise GameConfigurationError("Incoming damage cannot be negative")
-        result = await session.execute(
-            select(UserShield)
-            .where(
-                UserShield.user_id == user_id,
-                UserShield.is_equipped.is_(True),
-                UserShield.quantity > 0,
-            )
-            .options(selectinload(UserShield.shield))
-            .with_for_update()
-        )
-        equipped = result.scalar_one_or_none()
-        if equipped is None:
+        if not await self.has_active_shield(session, user_id):
             return ShieldMitigation(incoming_damage, 0, incoming_damage)
-        self.validate(equipped.shield)
-        mitigation = self.config.apply_shield(
-            incoming_damage,
-            reduction_percent=equipped.shield.reduction_percent,
-            flat_absorption=equipped.shield.flat_absorption,
-        )
-        equipped.quantity -= 1
-        if equipped.quantity == 0:
-            equipped.is_equipped = False
-        await session.flush()
-        return mitigation
+        return ShieldMitigation(incoming_damage, 0, incoming_damage)
 
 
 class ShieldAdminService:
@@ -228,8 +211,18 @@ class ShieldAdminService:
             raise ValueError("purchase_price cannot be negative")
         if int(values.get("unlock_level", 0)) < 1:
             raise ValueError("unlock_level must be positive")
+        if int(values.get("duration_minutes", 0)) < 1:
+            raise ValueError("duration_minutes must be positive")
+        if values.get("purchase_resource") not in (
+            ResourceType.COIN,
+            ResourceType.DIAMOND,
+        ):
+            raise ValueError("purchase_resource must be coin or diamond")
 
     async def create_shield(self, session: AsyncSession, **values: object) -> Shield:
+        values.setdefault("reduction_percent", 0)
+        values.setdefault("flat_absorption", 0)
+        values.setdefault("purchase_resource", ResourceType.COIN)
         self._validate(values)
         values["name"] = str(values["name"]).strip()
         shield = Shield(**values)
@@ -251,6 +244,12 @@ class ShieldAdminService:
             "flat_absorption": values.get("flat_absorption", shield.flat_absorption),
             "purchase_price": values.get("purchase_price", shield.purchase_price),
             "unlock_level": values.get("unlock_level", shield.unlock_level),
+            "duration_minutes": values.get(
+                "duration_minutes", shield.duration_minutes
+            ),
+            "purchase_resource": values.get(
+                "purchase_resource", shield.purchase_resource
+            ),
         }
         self._validate(merged)
         for key, value in values.items():

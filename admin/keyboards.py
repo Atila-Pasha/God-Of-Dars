@@ -6,6 +6,70 @@ from aiogram.types import (
 )
 
 
+def daily_quest_dates() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="امروز", callback_data="admin_daily:date:today"),
+                InlineKeyboardButton(
+                    text="فردا", callback_data="admin_daily:date:tomorrow"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="تاریخ دیگر", callback_data="admin_daily:date:custom"
+                )
+            ],
+        ]
+    )
+
+
+def daily_quest_types(types: tuple[str, ...]) -> InlineKeyboardMarkup:
+    labels = {
+        "DAILY_LOGIN": "🔐 ورود روزانه",
+        "ANSWER_DAILY_QUESTION": "❓ پاسخ به سؤال روزانه",
+        "CORRECT_ANSWERS": "🧠 پاسخ صحیح به سؤال‌ها",
+        "COMPLETE_BATTLES": "⚔️ انجام نبردها",
+        "WIN_BATTLES": "🏆 بردن نبردها",
+        "COLLECT_MINE": "⛏ جمع‌آوری معدن",
+        "JOIN_CHANNEL": "📢 عضویت در کانال",
+    }
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=labels.get(item, item),
+                callback_data=f"admin_daily:type:{item}",
+            )
+        ]
+        for item in types
+    ]
+    rows.append(
+        [InlineKeyboardButton(text="❌ لغو", callback_data="admin_daily:cancel")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def daily_quest_rewards() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🪙 سکه", callback_data="admin_daily:reward:COIN"),
+                InlineKeyboardButton(
+                    text="💎 الماس", callback_data="admin_daily:reward:DIAMOND"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🍌 موز", callback_data="admin_daily:reward:BANANA"
+                ),
+                InlineKeyboardButton(
+                    text="✅ پایان پاداش‌ها", callback_data="admin_daily:reward:done"
+                ),
+            ],
+        ]
+    )
+
+
 def main() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -21,6 +85,7 @@ def main() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="👥 ساخت سؤال گروهی"),
             ],
             [KeyboardButton(text="🎯 مدیریت فعالیت‌های روزانه")],
+            [KeyboardButton(text="📖 مدیریت پک‌های مطالعه")],
             [KeyboardButton(text="📣 پیام همگانی")],
             [KeyboardButton(text="❌ لغو")],
         ],
@@ -143,9 +208,10 @@ def shield_actions(shield_id: int) -> InlineKeyboardMarkup:
 
 def shield_edit_fields(shield_id: int) -> InlineKeyboardMarkup:
     fields = (
-        ("نام", "name"), ("درصد کاهش", "reduction_percent"),
-        ("جذب ثابت", "flat_absorption"), ("قیمت خرید", "purchase_price"),
-        ("سطح بازشدن", "unlock_level"), ("توضیح", "description"),
+        ("نام", "name"), ("قیمت خرید", "purchase_price"),
+        ("ارز خرید", "purchase_resource"),
+        ("سطح بازشدن", "unlock_level"), ("مدت (دقیقه)", "duration_minutes"),
+        ("توضیح", "description"),
     )
     rows = [
         [InlineKeyboardButton(text=label, callback_data=f"shield:field:{shield_id}:{field}")]
@@ -159,3 +225,46 @@ def cancel_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="❌ لغو")]], resize_keyboard=True
     )
+
+
+def study_pack_actions(pack_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ ویرایش", callback_data=f"study_pack:edit:{pack_id}"
+                ),
+                InlineKeyboardButton(
+                    text="🗑 حذف", callback_data=f"study_pack:delete:{pack_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 فعال/غیرفعال",
+                    callback_data=f"study_pack:toggle:{pack_id}",
+                )
+            ],
+        ]
+    )
+
+
+def study_pack_edit_fields(pack_id: int) -> InlineKeyboardMarkup:
+    fields = (
+        ("کلید", "key"),
+        ("نام نمایشی", "name"),
+        ("مدت (دقیقه)", "duration_minutes"),
+        ("نوع پاداش", "reward_resource"),
+        ("مقدار پاداش", "reward_amount"),
+    )
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=label, callback_data=f"study_pack:field:{pack_id}:{field}"
+            )
+        ]
+        for label, field in fields
+    ]
+    rows.append(
+        [InlineKeyboardButton(text="✅ پایان", callback_data=f"study_pack:done:{pack_id}")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)

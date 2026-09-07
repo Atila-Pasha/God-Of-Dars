@@ -44,7 +44,9 @@ class ShieldStates(StatesGroup):
     reduction_percent = State()
     flat_absorption = State()
     purchase_price = State()
+    purchase_resource = State()
     unlock_level = State()
+    duration_minutes = State()
     description = State()
     edit_value = State()
 
@@ -73,3 +75,12 @@ class DailyQuestStates(StatesGroup):
     description = State()
     metadata = State()
     channel = State()
+
+
+class StudyPackStates(StatesGroup):
+    key = State()
+    name = State()
+    duration_minutes = State()
+    reward_resource = State()
+    reward_amount = State()
+    edit_value = State()

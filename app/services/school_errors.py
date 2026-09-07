@@ -6,6 +6,22 @@ class SchoolUserNotFound(SchoolError):
     pass
 
 
+class AttackerNotRegistered(SchoolError):
+    pass
+
+
+class AttackTargetNotRegistered(SchoolError):
+    pass
+
+
+class CannotAttackSelf(SchoolError):
+    pass
+
+
+class RandomOpponentNotFound(SchoolError):
+    pass
+
+
 class ResourceNotFound(SchoolError):
     pass
 
@@ -84,6 +100,10 @@ class ShieldLocked(SchoolError):
 
 class ShieldNotPurchasable(SchoolError):
     pass
+
+
+class ShieldAlreadyActive(SchoolError):
+    """The player cannot activate another shield while one is protecting them."""
 
 
 class MineNotFound(SchoolError):

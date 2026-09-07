@@ -1,20 +1,31 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import BuffetCallback, BuffetMenuCallback, ShieldCallback
+from app.bot.callbacks import (
+    BuffetCallback,
+    BuffetMenuCallback,
+    ShieldCallback,
+    ShieldPurchaseCallback,
+)
 from app.bot.keyboards.buffet import (
     buffet_cancel_keyboard,
     buffet_keyboard,
     buffet_menu_keyboard,
     shield_catalog_keyboard,
     shield_inventory_keyboard,
+    shield_purchase_confirmation,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, main_menu_keyboard
-from app.bot.keyboards.school import teacher_catalog_keyboard
+from app.bot.keyboards.school import (
+    confirmation_keyboard,
+    teacher_catalog_page_keyboard,
+)
 from app.bot.states import BuffetStates
 from app.bot.utils.telegram import safe_edit_text
 from app.core.enums import ResourceType
@@ -28,6 +39,7 @@ from app.services.school_errors import (
     InsufficientCoins,
     SchoolError,
     SchoolUserNotFound,
+    ShieldAlreadyActive,
     ShieldLocked,
     ShieldNotFound,
     ShieldNotPurchasable,
@@ -56,8 +68,12 @@ RESOURCE_LABELS = {
 }
 
 
+def _shield_currency(shield) -> str:
+    return "الماس" if shield.purchase_resource is ResourceType.DIAMOND else "طلا"
+
+
 @router.message(
-    F.text.regexp(r"^\s*خرید(?:\s+\S.*)?$"),
+    F.text.regexp(r"^\s*خرید\s+(?!(?:سپر|دبیر)\s*$)\S.*$"),
 )
 async def group_purchase_message(
     message: Message,
@@ -79,15 +95,20 @@ async def group_purchase_message(
         user = await user_service.get_active_by_telegram_user_id(
             session, message.from_user.id
         )
-        teacher_catalog = await teacher_service.catalog(session, user.id)
+        teacher_catalog = await teacher_service.public_teachers(session)
         teacher = next(
             (item for item in teacher_catalog if item.name.casefold() == name.casefold()),
             None,
         )
         if teacher is not None:
-            purchased = await teacher_service.buy(session, user.id, teacher.id)
             await message.answer(
-                f"دبیر «{purchased.teacher.name}» با موفقیت خریداری شد."
+                f"🛒 خرید دبیر «{teacher.name}»\n\n"
+                f"قیمت: {teacher.purchase_price} سکه\n"
+                f"سطح بازشدن: {teacher.unlock_level}\n\n"
+                "آیا خرید این دبیر را تأیید می‌کنید؟",
+                reply_markup=confirmation_keyboard(
+                    action="teacher_buy", target_id=teacher.id, origin="buffet"
+                ),
             )
             return
 
@@ -102,10 +123,14 @@ async def group_purchase_message(
             None,
         )
         if shield is not None:
-            purchased = await shield_service.buy(session, user.id, shield.id)
             await message.answer(
-                f"سپر «{purchased.shield.name}» خریداری شد؛ "
-                f"{purchased.quantity} عدد در موجودی دارید."
+                f"🛒 خرید سپر «{shield.name}»\n\n"
+                f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
+                f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
+                "با خرید، سپر بلافاصله فعال می‌شود و در این مدت هیچ حمله‌ای "
+                "به شما اثر نمی‌کند.\n\n"
+                "آیا خرید را تأیید می‌کنید؟",
+                reply_markup=shield_purchase_confirmation(shield),
             )
             return
         await message.answer(
@@ -128,7 +153,7 @@ async def group_purchase_message(
     except TeacherNotFound:
         await message.answer("این دبیر برای سطح شما پیدا نشد.")
     except InsufficientCoins:
-        await message.answer("سکه کافی برای این خرید ندارید.")
+        await message.answer("موجودی ارز کافی برای این خرید ندارید.")
     except SchoolError:
         await message.answer("این خرید در حال حاضر امکان‌پذیر نیست.")
 
@@ -217,14 +242,20 @@ async def buffet_teachers_message(
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
-async def _teacher_shop_view(target: Message | CallbackQuery, session: AsyncSession) -> None:
+async def _teacher_shop_view(
+    target: Message | CallbackQuery, session: AsyncSession, page: int = 0
+) -> None:
     user = await user_service.get_active_by_telegram_user_id(
         session, target.from_user.id
     )
-    catalog = await teacher_service.catalog(session, user.id)
+    catalog = await teacher_service.public_teachers(session)
     text = "👨‍🏫 خرید دبیر\n\nدبیر موردنظر را انتخاب کنید:"
-    markup = teacher_catalog_keyboard(
-        catalog, player_level=user.level, back_action="back_buffet", origin="buffet"
+    markup = teacher_catalog_page_keyboard(
+        catalog,
+        player_level=user.level,
+        page=page,
+        back_action="back_buffet",
+        origin="buffet",
     )
     if isinstance(target, CallbackQuery) and target.message is not None:
         await safe_edit_text(target.message, text, reply_markup=markup)
@@ -265,10 +296,13 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     if owned:
         lines.append("\n📦 موجودی شما:")
         for item in owned:
-            state = "✅ فعال" if item.is_equipped else "⚪ آماده‌سازی"
+            remaining = max(
+                0, int((item.active_until - datetime.now(UTC)).total_seconds())
+            )
+            minutes = (remaining + 59) // 60
             lines.append(
-                f"\n{state} — {item.shield.name} × {item.quantity}"
-                f"\nکاهش آسیب: {item.shield.reduction_percent}% + {item.shield.flat_absorption} واحد"
+                f"\n✅ سپر فعال — {item.shield.name}"
+                f"\nزمان باقی‌مانده: {minutes} دقیقه"
             )
     else:
         lines.append("\nهنوز سپری ندارید.")
@@ -278,8 +312,8 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     else:
         for shield in catalog:
             lines.append(
-                f"\n🛡 {shield.name} — {shield.purchase_price} سکه"
-                f"\nکاهش آسیب: {shield.reduction_percent}% + {shield.flat_absorption} واحد"
+                f"\n🛡 {shield.name} — {shield.purchase_price} {_shield_currency(shield)}"
+                f"\nمحافظت کامل: {shield.duration_minutes} دقیقه"
                 + (f"\n{shield.description}" if shield.description else "")
             )
     reply_markup = (
@@ -376,18 +410,29 @@ async def shield_callback(
             shield = await shield_service.get_shield(session, callback_data.shield_id)
             if shield is None:
                 raise ShieldNotFound
-            purchase = await shield_service.buy(session, user.id, shield.id)
-            await _shields_view(callback, session)
             await callback.answer(
-                f"سپر «{purchase.shield.name}» خریداری شد؛ {purchase.quantity} عدد در موجودی.",
-                show_alert=True,
+                "اطلاعات خرید نمایش داده شد؛ تأیید کنید.",
+            )
+            await callback.message.answer(
+                f"🛒 خرید سپر «{shield.name}»\n\n"
+                f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
+                f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
+                "با خرید، سپر بلافاصله فعال می‌شود و در این مدت هیچ حمله‌ای "
+                "به شما اثر نمی‌کند.\n\n"
+                "آیا خرید را تأیید می‌کنید؟",
+                reply_markup=shield_purchase_confirmation(shield),
             )
             return
         await callback.answer()
     except InsufficientCoins:
-        await callback.answer("سکه کافی ندارید.", show_alert=True)
+        await callback.answer("موجودی ارز کافی ندارید.", show_alert=True)
     except ShieldLocked:
         await callback.answer("این سپر برای سطح شما باز نشده است.", show_alert=True)
+    except ShieldAlreadyActive:
+        await callback.answer(
+            "در حال حاضر یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
+            show_alert=True,
+        )
     except (
         ShieldNotFound,
         ShieldNotPurchasable,
@@ -395,6 +440,45 @@ async def shield_callback(
         SchoolUserNotFound,
     ):
         await callback.answer("این سپر در دسترس نیست.", show_alert=True)
+
+
+@router.callback_query(ShieldPurchaseCallback.filter())
+async def shield_purchase_callback(
+    callback: CallbackQuery,
+    callback_data: ShieldPurchaseCallback,
+    session: AsyncSession,
+) -> None:
+    if callback.from_user is None or callback.message is None:
+        await callback.answer()
+        return
+    try:
+        user = await user_service.get_active_by_telegram_user_id(
+            session, callback.from_user.id
+        )
+        if callback_data.decision == "cancel":
+            await callback.message.delete()
+            await callback.answer("خرید لغو شد.")
+            return
+        shield = await shield_service.get_shield(session, callback_data.shield_id)
+        if shield is None:
+            raise ShieldNotFound
+        purchase = await shield_service.buy(session, user.id, shield.id)
+        await callback.message.delete()
+        await callback.message.answer(
+            f"✅ سپر «{purchase.shield.name}» خریداری شد.\n"
+            f"🛡 مدت محافظت: {purchase.shield.duration_minutes} دقیقه\n"
+            "سپر شما همین حالا فعال شد."
+        )
+        await callback.answer("خرید با موفقیت انجام شد.")
+    except InsufficientCoins:
+        await callback.answer("موجودی ارز کافی ندارید.", show_alert=True)
+    except ShieldAlreadyActive:
+        await callback.answer(
+            "در حال حاضر یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
+            show_alert=True,
+        )
+    except (ShieldNotFound, ShieldNotPurchasable, UserInactiveError):
+        await callback.answer("این سپر دیگر قابل خرید نیست.", show_alert=True)
 
 
 @router.message(BuffetStates.convert_amount, F.text)

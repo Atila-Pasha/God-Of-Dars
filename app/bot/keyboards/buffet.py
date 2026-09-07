@@ -5,7 +5,13 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-from app.bot.callbacks import BuffetCallback, BuffetMenuCallback, ShieldCallback
+from app.bot.callbacks import (
+    BuffetCallback,
+    BuffetMenuCallback,
+    ShieldCallback,
+    ShieldPurchaseCallback,
+)
+from app.bot.custom_emojis import premium_emoji_id
 from app.core.game_logic import BuffetConversion
 from app.models.shield import Shield
 from app.models.user_shield import UserShield
@@ -78,24 +84,13 @@ def shield_catalog_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=f"🛡 {shield.name} — {shield.purchase_price} سکه",
+                text=f"{shield.name} — {shield.duration_minutes} دقیقه",
+                icon_custom_emoji_id=premium_emoji_id("🛡"),
                 callback_data=ShieldCallback(action="buy", shield_id=shield.id).pack(),
             )
         ]
         for shield in shields
     ]
-    for item in owned or []:
-        status = "✅ فعال" if item.is_equipped else "⚪ فعال‌سازی"
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text=f"{status} {item.shield.name} ({item.quantity})",
-                    callback_data=ShieldCallback(
-                        action="equip", shield_id=item.id
-                    ).pack(),
-                )
-            ]
-        )
     rows.append(
         [
             InlineKeyboardButton(
@@ -107,20 +102,29 @@ def shield_catalog_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def shield_inventory_keyboard(shields: list[UserShield]) -> InlineKeyboardMarkup:
-    rows = []
-    for owned in shields:
-        status = "✅ فعال" if owned.is_equipped else "⚪ فعال‌سازی"
-        rows.append(
+def shield_purchase_confirmation(shield: Shield) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"{status} {owned.shield.name} ({owned.quantity})",
-                    callback_data=ShieldCallback(
-                        action="equip", shield_id=owned.id
+                    text="✅ تأیید خرید",
+                    callback_data=ShieldPurchaseCallback(
+                        decision="confirm", shield_id=shield.id
                     ).pack(),
-                )
+                ),
+                InlineKeyboardButton(
+                    text="❌ لغو",
+                    callback_data=ShieldPurchaseCallback(
+                        decision="cancel", shield_id=shield.id
+                    ).pack(),
+                ),
             ]
-        )
+        ]
+    )
+
+
+def shield_inventory_keyboard(shields: list[UserShield]) -> InlineKeyboardMarkup:
+    rows = []
     rows.append(
         [
             InlineKeyboardButton(

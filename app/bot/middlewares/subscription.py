@@ -37,10 +37,10 @@ async def refresh_channels(session, *, force: bool = False) -> tuple[str, ...]:
         values = [str(item.telegram_id or item.username) for item in channels]
         if stored.is_active and (stored.required_channel_telegram_id or stored.required_channel_username):
             values.insert(0, str(stored.required_channel_telegram_id or stored.required_channel_username))
-        values = tuple(dict.fromkeys(values))
-        subscription_service.set_channels(values)
-        _channels_cache = (monotonic() + settings.CHANNELS_CACHE_TTL, values)
-        return values
+        normalized = tuple(dict.fromkeys(values))
+        subscription_service.set_channels(normalized)
+        _channels_cache = (monotonic() + settings.CHANNELS_CACHE_TTL, normalized)
+        return normalized
 
 JOIN_MESSAGE = (
     "برای استفاده از ربات، ابتدا باید عضو کانال‌های زیر شوید:\n\n"

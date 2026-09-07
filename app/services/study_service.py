@@ -6,8 +6,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.game_logic import GameConfigurationError, StudyPack, game_config
 from app.core.enums import ResourceType
+from app.models.study_pack import StudyPack
 from app.models.study_session import StudySession
 from app.services.reward_service import RewardService, RewardSpec
 
@@ -35,10 +35,21 @@ class StudyStartResult:
 class StudyService:
     def __init__(self, reward_service: RewardService | None = None) -> None:
         self.reward_service = reward_service or RewardService()
-        self.config = game_config
+    async def packs(self, session: AsyncSession) -> list[StudyPack]:
+        result = await session.execute(
+            select(StudyPack)
+            .where(StudyPack.is_active.is_(True))
+            .order_by(StudyPack.duration_minutes, StudyPack.id)
+        )
+        return list(result.scalars().all())
 
-    def packs(self) -> dict[str, StudyPack]:
-        return self.config.study_packs
+    async def get_pack(
+        self, session: AsyncSession, pack_key: str, *, active_only: bool = True
+    ) -> StudyPack | None:
+        statement = select(StudyPack).where(StudyPack.key == pack_key)
+        if active_only:
+            statement = statement.where(StudyPack.is_active.is_(True))
+        return await session.scalar(statement)
 
     async def active(self, session: AsyncSession, user_id: int) -> StudySession | None:
         result = await session.execute(
@@ -49,10 +60,9 @@ class StudyService:
         return result.scalar_one_or_none()
 
     async def start(self, session: AsyncSession, user_id: int, pack_key: str, *, now: datetime | None = None) -> StudyStartResult:
-        try:
-            pack = self.config.study_pack(pack_key)
-        except GameConfigurationError as exc:
-            raise StudyPackNotFound from exc
+        pack = await self.get_pack(session, pack_key)
+        if pack is None:
+            raise StudyPackNotFound
         now = now or datetime.now(UTC)
         active = await self.active(session, user_id)
         completed_reward = None
@@ -80,15 +90,17 @@ class StudyService:
         return active, reward
 
     async def _complete(self, session: AsyncSession, study: StudySession, now: datetime) -> tuple[ResourceType, int]:
-        pack = self.config.study_pack(study.pack_key)
+        pack = await self.get_pack(session, study.pack_key, active_only=False)
+        if pack is None:
+            raise StudyPackNotFound
         result = await self.reward_service.grant(
             session,
             user_id=study.user_id,
-            spec=RewardSpec(pack.reward_resource, pack.reward_amount),
+            spec=RewardSpec(ResourceType(pack.reward_resource), pack.reward_amount),
             source="STUDY",
             reference_type="STUDY_SESSION",
             reference_id=study.id,
         )
         study.completed_at = now
         await session.flush()
-        return pack.reward_resource, result.reward.amount if result else pack.reward_amount
+        return ResourceType(pack.reward_resource), result.reward.amount if result else pack.reward_amount

@@ -5,6 +5,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 from aiogram.types import User as TelegramUser
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks import ChannelCallback, HelpCallback
@@ -60,7 +61,10 @@ HELP_TEXTS = {
         "در خصوصی: حمله {نام‌کاربری هدف} {اسم دبیر}\n"
         "مثال: حمله @player فراهانی\n\n"
         "در گروه: روی پیام هدف Reply بزن و بنویس:\n"
-        "حمله {اسم دبیر}"
+        "حمله {اسم دبیر}\n\n"
+        "برای حمله تصادفی به یکی از بازیکنان هم‌سطح یا نزدیک:\n"
+        "حمله رندوم {اسم دبیر}\n"
+        "مثال: حمله رندوم فراهانی"
     ),
     "school": (
         "🏫 راهنمای مدرسه و دبیرها\n\n"
@@ -116,7 +120,8 @@ async def _membership_status(
             bot, user_id, force_refresh=force_refresh
         )
         return member
-    except MembershipCheckError:
+    except (MembershipCheckError, SQLAlchemyError):
+        logger.exception("Could not refresh membership state for user %s", user_id)
         return None
 
 
@@ -161,12 +166,18 @@ async def _initialize_and_show_menu(
     if user.is_active is False:
         raise UserInactiveError
     if isinstance(session, AsyncSession):
-        await daily_quest_service.record_event(
-            session,
-            user_id=user.id,
-            event_type="DAILY_LOGIN",
-            event_id=str(user.id),
-        )
+        try:
+            async with session.begin_nested():
+                await daily_quest_service.record_event(
+                    session,
+                    user_id=user.id,
+                    event_type="DAILY_LOGIN",
+                    event_id=str(user.id),
+                )
+        except SQLAlchemyError:
+            # Quest tracking must not prevent a valid user from entering the
+            # bot when quest storage is unavailable or being migrated.
+            logger.exception("Could not record daily login for user %s", user.id)
 
     greeting = (
         MAIN_MENU_MESSAGE

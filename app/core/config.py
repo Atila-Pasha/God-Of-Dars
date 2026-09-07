@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     MEMBERSHIP_CACHE_MAX_ENTRIES: int = Field(default=10_000, ge=100)
     CHANNELS_CACHE_TTL: float = Field(default=30, ge=0)
     GROUP_REGISTER_CACHE_TTL: float = Field(default=300, ge=0)
+    DAILY_QUEST_TIMEZONE: str = "UTC"
 
     @property
     def admin_id_set(self) -> frozenset[int]:
