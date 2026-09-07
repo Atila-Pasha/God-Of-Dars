@@ -6,7 +6,7 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import MessageEntity
+from aiogram.types import MessageEntity, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 # The visible character is retained as a fallback. Telegram replaces it with
 # the custom emoji when the entity is present, while old clients still see a
@@ -113,6 +113,10 @@ def _add_group_reply(kwargs: dict[str, Any]) -> None:
     if kwargs.pop("disable_group_reply", False):
         return
     context = _group_reply_context.get()
+    if context is not None and isinstance(
+        kwargs.get("reply_markup"), ReplyKeyboardMarkup
+    ):
+        kwargs["reply_markup"] = ReplyKeyboardRemove()
     if context is None or kwargs.get("reply_to_message_id") is not None:
         return
     chat_id = kwargs.get("chat_id")
@@ -191,6 +195,10 @@ def _decorate(kwargs: dict[str, Any], text_key: str, entities_key: str) -> None:
 def _decorate_method(method: Any) -> None:
     """Decorate aiogram method objects used by Message.answer/edit shortcuts."""
     context = _group_reply_context.get()
+    if context is not None and isinstance(
+        getattr(method, "reply_markup", None), ReplyKeyboardMarkup
+    ):
+        method.reply_markup = ReplyKeyboardRemove()
     if (
         context is not None
         and getattr(method, "chat_id", None) == context[0]
