@@ -330,7 +330,7 @@ async def check_membership_handler(
     await callback.answer("عضویت تأیید شد.")
 
 
-@router.message(F.text == "🔙 منوی اصلی")
+@router.message(F.text == "🔙 بازگشت به منوی اصلی")
 async def main_menu_back_handler(message: Message) -> None:
     await message.answer(
         "به منوی اصلی برگشتید.",

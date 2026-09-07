@@ -182,15 +182,17 @@ async def _school_view(
     )
     await _send_or_edit(target, text, reply_markup=school_keyboard())
     if isinstance(target, CallbackQuery) and target.message is not None:
-        await target.message.answer(
-            "برای خروج از مدرسه، دکمه زیر را بزنید.",
+        keyboard_message = await target.message.answer(
+            "\u200c",
             reply_markup=school_navigation_keyboard(),
         )
+        await keyboard_message.delete()
     elif isinstance(target, Message):
-        await target.answer(
-            "برای خروج از مدرسه، دکمه زیر را بزنید.",
+        keyboard_message = await target.answer(
+            "\u200c",
             reply_markup=school_navigation_keyboard(),
         )
+        await keyboard_message.delete()
 
 
 async def _castle_view(
@@ -356,7 +358,7 @@ async def school_handler(message: Message, session: AsyncSession) -> None:
         await message.answer("اطلاعات مدرسه در دسترس نیست. ابتدا /start را بزنید.")
 
 
-@router.message(F.text == "🔙 منوی اصلی")
+@router.message(F.text == "🔙 بازگشت به منوی اصلی")
 async def school_back_message(message: Message) -> None:
     await message.answer(
         "به منوی اصلی برگشتید.",

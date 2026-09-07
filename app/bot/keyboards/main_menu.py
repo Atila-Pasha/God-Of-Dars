@@ -36,7 +36,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 
 def section_back_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🔙 منوی اصلی")]],
+        keyboard=[[KeyboardButton(text="🔙 بازگشت به منوی اصلی")]],
         resize_keyboard=True,
         is_persistent=False,
     )
