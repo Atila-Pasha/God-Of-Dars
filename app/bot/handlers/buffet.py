@@ -468,7 +468,8 @@ async def shield_purchase_callback(
         await callback.message.answer(
             f"✅ سپر «{purchase.shield.name}» خریداری شد.\n"
             f"🛡 مدت محافظت: {purchase.shield.duration_minutes} دقیقه\n"
-            "سپر شما همین حالا فعال شد."
+            "سپر شما همین حالا فعال شد.",
+            disable_group_reply=True,
         )
         await callback.answer("خرید با موفقیت انجام شد.")
     except InsufficientCoins:

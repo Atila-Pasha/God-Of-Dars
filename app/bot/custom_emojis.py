@@ -110,6 +110,8 @@ def reset_group_reply_context(token) -> None:
 
 
 def _add_group_reply(kwargs: dict[str, Any]) -> None:
+    if kwargs.pop("disable_group_reply", False):
+        return
     context = _group_reply_context.get()
     if context is None or kwargs.get("reply_to_message_id") is not None:
         return
