@@ -264,7 +264,7 @@ async def _teacher_shop_view(
         await target.answer(text, reply_markup=markup)
 
 
-@router.message(F.text.in_({"منوی اصلی", "لغو", "🔙 بازگشت به منوی اصلی", "❌ لغو"}))
+@router.message(F.text.in_({"منوی اصلی", "لغو", "بازگشت به منو اصلی", "❌ لغو"}))
 async def buffet_back_to_main(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard())

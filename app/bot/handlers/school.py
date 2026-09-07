@@ -358,7 +358,7 @@ async def school_handler(message: Message, session: AsyncSession) -> None:
         await message.answer("اطلاعات مدرسه در دسترس نیست. ابتدا /start را بزنید.")
 
 
-@router.message(F.text == "🔙 بازگشت به منوی اصلی")
+@router.message(F.text == "بازگشت به منو اصلی")
 async def school_back_message(message: Message) -> None:
     await message.answer(
         "به منوی اصلی برگشتید.",

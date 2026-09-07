@@ -43,7 +43,7 @@ def school_keyboard() -> InlineKeyboardMarkup:
 
 def school_navigation_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🔙 بازگشت به منوی اصلی")]],
+        keyboard=[[KeyboardButton(text="بازگشت به منو اصلی")]],
         resize_keyboard=True,
         is_persistent=False,
     )
