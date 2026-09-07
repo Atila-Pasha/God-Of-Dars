@@ -10,11 +10,13 @@ from app.models.daily_quest import DailyQuestProgress
 from app.services.daily_quest_service import DailyQuestService
 from app.services.subscription_service import (
     MembershipCheckError,
+    SubscriptionService,
 )
 from app.services.user_service import UserService
 
 router = Router(name="daily")
 service = DailyQuestService()
+subscription_validator = SubscriptionService()
 user_service = UserService()
 DAILY_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "daily"
@@ -29,6 +31,13 @@ async def _show(target, session: AsyncSession, user_id: int):
     else:
         progresses = []
         for quest in quests:
+            if (
+                quest.quest_type == "JOIN_CHANNEL"
+                and not subscription_validator.is_valid_channel_identifier(
+                    (quest.quest_metadata or {}).get("channel")
+                )
+            ):
+                continue
             progress = await service.repository.progress(session, user_id, quest.id)
             if progress is None:
                 progress = DailyQuestProgress(
@@ -40,25 +49,29 @@ async def _show(target, session: AsyncSession, user_id: int):
                 await session.flush()
             progress.quest = quest
             progresses.append(progress)
-        lines = [
+        if not progresses:
+            text = "🎯 فعالیت‌های روزانه\n\nامروز فعالیت قابل بررسی‌ای تعریف نشده است."
+            markup = None
+        else:
+            lines = [
             "🎯 فعالیت‌های روزانه",
             "",
             "فعالیت‌های امروز را کامل کن و جایزه بگیر:",
-        ]
-        for progress in progresses:
-            quest = progress.quest
-            status = (
-                "✅ انجام و جایزه دریافت شد"
-                if progress.claimed
-                else (
-                    "🎁 آماده دریافت جایزه"
-                    if progress.progress >= quest.target
-                    else f"▫️ پیشرفت: {progress.progress}/{quest.target}"
+            ]
+            for progress in progresses:
+                quest = progress.quest
+                status = (
+                    "✅ انجام و جایزه دریافت شد"
+                    if progress.claimed
+                    else (
+                        "🎁 آماده دریافت جایزه"
+                        if progress.progress >= quest.target
+                        else f"▫️ پیشرفت: {progress.progress}/{quest.target}"
+                    )
                 )
-            )
-            lines.append(f"\n• {quest.title}\n {status}")
-        text = "\n".join(lines)
-        markup = daily_keyboard(progresses)
+                lines.append(f"\n• {quest.title}\n {status}")
+            text = "\n".join(lines)
+            markup = daily_keyboard(progresses)
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, reply_markup=markup)
     else:

@@ -1,4 +1,5 @@
 import logging
+import re
 from collections.abc import Iterable
 from time import monotonic
 
@@ -56,6 +57,15 @@ class SubscriptionService:
         if value.isdigit():
             return value
         return value if value.startswith("@") else f"@{value}"
+
+    @staticmethod
+    def is_valid_channel_identifier(channel: str | None) -> bool:
+        value = str(channel or "").strip()
+        if value.startswith("-") and value[1:].isdigit():
+            return True
+        if value.isdigit():
+            return True
+        return bool(re.fullmatch(r"@?[A-Za-z0-9_]{5,32}", value))
 
     async def is_member(
         self, bot: Bot, telegram_user_id: int, *, force_refresh: bool = False

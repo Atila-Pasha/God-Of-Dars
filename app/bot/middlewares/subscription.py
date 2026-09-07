@@ -34,9 +34,19 @@ async def refresh_channels(session, *, force: bool = False) -> tuple[str, ...]:
             return _channels_cache[1]
         channels = await settings_repository.list_channels(session)
         stored = await settings_repository.get(session)
-        values = [str(item.telegram_id or item.username) for item in channels]
+        values = [
+            str(item.telegram_id or item.username)
+            for item in channels
+            if SubscriptionService.is_valid_channel_identifier(
+                str(item.telegram_id or item.username)
+            )
+        ]
         if stored.is_active and (stored.required_channel_telegram_id or stored.required_channel_username):
-            values.insert(0, str(stored.required_channel_telegram_id or stored.required_channel_username))
+            required = str(
+                stored.required_channel_telegram_id or stored.required_channel_username
+            )
+            if SubscriptionService.is_valid_channel_identifier(required):
+                values.insert(0, required)
         normalized = tuple(dict.fromkeys(values))
         subscription_service.set_channels(normalized)
         _channels_cache = (monotonic() + settings.CHANNELS_CACHE_TTL, normalized)

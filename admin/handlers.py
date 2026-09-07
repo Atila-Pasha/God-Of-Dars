@@ -54,12 +54,14 @@ from app.services.daily_quest_service import DailyQuestService
 from app.services.library_errors import GroupNotFound
 from app.services.question_service import QuestionService
 from app.services.shield_service import ShieldAdminService
+from app.services.subscription_service import SubscriptionService
 
 router = Router(name="admin")
 service = AdminService()
 question_service = QuestionService()
 shield_service = ShieldAdminService()
 daily_quest_service = DailyQuestService()
+subscription_service = SubscriptionService()
 bot_settings_repository = BotSettingsRepository()
 group_repository = GroupRepository()
 user_repository = UserRepository()
@@ -1057,8 +1059,10 @@ async def daily_quest_edit_value(
         elif field == "target":
             value = 1 if quest.quest_type == "JOIN_CHANNEL" else number(raw, "هدف", minimum=1)
         elif field == "channel":
-            if not raw:
-                raise ValueError("شناسه کانال نمی‌تواند خالی باشد.")
+            if not subscription_service.is_valid_channel_identifier(raw):
+                raise ValueError(
+                    "شناسه کانال نامعتبر است. نمونه معتبر: @example_channel"
+                )
             metadata = dict(quest.quest_metadata or {})
             metadata["channel"] = raw
             value = metadata
@@ -1229,8 +1233,19 @@ async def daily_quest_channel(
     if not allowed(message) or not message.text:
         return
     channel = message.text.strip()
-    if not channel:
-        await message.answer("شناسه کانال نمی‌تواند خالی باشد.")
+    if channel in {"لغو", "❌ لغو"}:
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=keyboards.main())
+        return
+    if (
+        not channel
+        or channel == "@لغو"
+        or not subscription_service.is_valid_channel_identifier(channel)
+    ):
+        await message.answer(
+            "شناسه کانال نامعتبر است. شناسه عمومی مثل @example_channel "
+            "یا شناسه عددی -100123456789 را وارد کنید."
+        )
         return
     await daily_quest_create(message, state, session, metadata={"channel": channel})
 
