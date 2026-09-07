@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.daily import daily_keyboard
-from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
+from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, section_back_keyboard
 from app.bot.middlewares.subscription import subscription_service
 from app.bot.utils.telegram import safe_edit_text
 from app.models.daily_quest import DailyQuestEvent, DailyQuestProgress
@@ -94,8 +94,16 @@ async def _show(target, session: AsyncSession, user_id: int):
             markup = daily_keyboard(progresses)
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, reply_markup=markup)
+        await target.message.answer(
+            "برای خروج از فعالیت‌های روزانه، دکمه زیر را بزنید.",
+            reply_markup=section_back_keyboard(),
+        )
     else:
         await target.answer(text, reply_markup=markup)
+        await target.answer(
+            "برای خروج از فعالیت‌های روزانه، دکمه زیر را بزنید.",
+            reply_markup=section_back_keyboard(),
+        )
 
 
 @router.message(F.text == DAILY_LABEL)

@@ -330,6 +330,14 @@ async def check_membership_handler(
     await callback.answer("عضویت تأیید شد.")
 
 
+@router.message(F.text == "🔙 منوی اصلی")
+async def main_menu_back_handler(message: Message) -> None:
+    await message.answer(
+        "به منوی اصلی برگشتید.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
 @router.message(F.text.in_(NON_SCHOOL_MENU_SECTION_LABELS))
 async def main_menu_handler(
     message: Message,

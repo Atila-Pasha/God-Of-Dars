@@ -32,3 +32,11 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         is_persistent=False,
         resize_keyboard=True,
     )
+
+
+def section_back_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🔙 منوی اصلی")]],
+        resize_keyboard=True,
+        is_persistent=False,
+    )

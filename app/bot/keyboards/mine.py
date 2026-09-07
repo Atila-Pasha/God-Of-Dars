@@ -21,13 +21,6 @@ def mine_keyboard(*, can_upgrade: bool) -> InlineKeyboardMarkup:
                 )
             ]
         )
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="🔙 منوی اصلی", callback_data=MineCallback(action="back").pack()
-            )
-        ]
-    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

@@ -48,14 +48,6 @@ def profile_keyboard(
                         ).pack(),
                     )
                 ],
-                [
-                    InlineKeyboardButton(
-                        text="🔙 بازگشت به منوی اصلی",
-                        callback_data=ProfileCallback(
-                            action="back", owner_id=owner_id
-                        ).pack(),
-                    )
-                ],
             ]
         )
     if include_delete:
