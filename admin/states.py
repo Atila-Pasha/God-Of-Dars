@@ -30,6 +30,7 @@ class TeacherStates(StatesGroup):
     damage = State()
     max_hp = State()
     purchase_price = State()
+    purchase_resource = State()
     upgrade_price = State()
     unlock_level = State()
     ability_text = State()
@@ -75,6 +76,7 @@ class DailyQuestStates(StatesGroup):
     description = State()
     metadata = State()
     channel = State()
+    edit_value = State()
 
 
 class StudyPackStates(StatesGroup):

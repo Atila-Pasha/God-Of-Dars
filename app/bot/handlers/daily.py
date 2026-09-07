@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.daily import daily_keyboard
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL
 from app.bot.middlewares.subscription import subscription_service
+from app.bot.utils.telegram import safe_edit_text
 from app.models.daily_quest import DailyQuestProgress
 from app.services.daily_quest_service import DailyQuestService
 from app.services.subscription_service import (
@@ -39,10 +40,27 @@ async def _show(target, session: AsyncSession, user_id: int):
                 await session.flush()
             progress.quest = quest
             progresses.append(progress)
-        text = "🎯 فعالیت‌های روزانه\n\nفعالیت‌های امروز را کامل کن و جایزه بگیر:"
+        lines = [
+            "🎯 فعالیت‌های روزانه",
+            "",
+            "فعالیت‌های امروز را کامل کن و جایزه بگیر:",
+        ]
+        for progress in progresses:
+            quest = progress.quest
+            status = (
+                "✅ انجام و جایزه دریافت شد"
+                if progress.claimed
+                else (
+                    "🎁 آماده دریافت جایزه"
+                    if progress.progress >= quest.target
+                    else f"▫️ پیشرفت: {progress.progress}/{quest.target}"
+                )
+            )
+            lines.append(f"\n• {quest.title}\n {status}")
+        text = "\n".join(lines)
         markup = daily_keyboard(progresses)
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text(text, reply_markup=markup)
+        await safe_edit_text(target.message, text, reply_markup=markup)
     else:
         await target.answer(text, reply_markup=markup)
 
@@ -75,7 +93,13 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
             await callback.answer("فعالیت پیدا نشد.", show_alert=True)
             return
         quest = await service.repository.get(session, progress.quest_id)
+        if quest is None or not quest.is_active:
+            await callback.answer("این فعالیت دیگر فعال نیست.", show_alert=True)
+            return
         channel = (quest.quest_metadata or {}).get("channel")
+        if quest.quest_type != "JOIN_CHANNEL" or not channel:
+            await callback.answer("اطلاعات کانال این فعالیت ناقص است.", show_alert=True)
+            return
         try:
             is_member = bool(
                 channel

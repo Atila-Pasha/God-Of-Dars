@@ -7,12 +7,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
 from app.bot.states import ChanceCardStates
-from app.services.chance_service import AlreadyClaimed, BoxExpired, ChanceError, ChanceService, WrongCaptcha
+from app.services.chance_service import (
+    AlreadyClaimed,
+    BoxExpired,
+    ChanceError,
+    ChanceService,
+    WrongCaptcha,
+)
 from app.services.user_service import UserService
 
 router = Router(name="chance")
 chance_service = ChanceService()
 user_service = UserService()
+
+
+def _user_display_name(user) -> str:
+    name = " ".join(
+        part for part in (getattr(user, "first_name", None), getattr(user, "last_name", None))
+        if part
+    )
+    return name or (
+        f"@{user.username}" if getattr(user, "username", None) else str(user.id)
+    )
+
+
+def _resource_label(resource_type) -> str:
+    return {
+        "COIN": "طلا",
+        "DIAMOND": "الماس",
+        "BANANA": "موز",
+    }.get(resource_type.value, resource_type.value)
 
 
 @router.callback_query(ChanceBoxCallback.filter())
@@ -36,7 +60,11 @@ async def claim_box(callback: CallbackQuery, callback_data: ChanceBoxCallback, s
     await callback.answer("جعبه را شما زودتر باز کردید! 🎉")
     if callback.message is not None:
         await callback.message.edit_reply_markup(reply_markup=None)
-        await callback.message.answer(f"🎉 جایزه جعبه: {box.amount} {('طلا' if box.resource_type.value == 'COIN' else 'الماس')}")
+        await callback.message.answer(
+            f"🎉 {_user_display_name(callback.from_user)} جعبه شانس را باز کرد و "
+            f"{box.amount} {_resource_label(box.resource_type)} دریافت کرد!",
+            reply_to_message_id=callback.message.message_id,
+        )
 
 
 @router.callback_query(ChanceCardCallback.filter())

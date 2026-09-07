@@ -150,6 +150,12 @@ class AdminService:
                 raise ValueError(f"{field} cannot be negative")
         if int(values.get("unlock_level", 0)) < 1:
             raise ValueError("unlock_level must be positive")
+        values.setdefault("purchase_resource", ResourceType.COIN)
+        if values.get("purchase_resource") not in {
+            ResourceType.COIN,
+            ResourceType.DIAMOND,
+        }:
+            raise ValueError("purchase_resource must be coin or diamond")
         values["name"] = name
         teacher = Teacher(**values)
         session.add(teacher)
@@ -167,6 +173,11 @@ class AdminService:
                 raise ValueError(f"{field} cannot be negative")
         if "unlock_level" in values and int(values["unlock_level"]) < 1:
             raise ValueError("unlock_level must be positive")
+        if "purchase_resource" in values and values["purchase_resource"] not in {
+            ResourceType.COIN,
+            ResourceType.DIAMOND,
+        }:
+            raise ValueError("purchase_resource must be coin or diamond")
         for key, value in values.items():
             if key == "name":
                 value = str(value).strip()

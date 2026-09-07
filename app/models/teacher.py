@@ -16,7 +16,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.enums import ResourceType
 from app.db.base import Base
+from app.models.resource import RESOURCE_TYPE_ENUM
 
 if TYPE_CHECKING:
     from app.models.user_teacher import UserTeacher
@@ -42,6 +44,12 @@ class Teacher(Base):
     damage: Mapped[int] = mapped_column(Integer, nullable=False)
     max_hp: Mapped[int] = mapped_column(Integer, nullable=False)
     purchase_price: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    purchase_resource: Mapped[ResourceType] = mapped_column(
+        RESOURCE_TYPE_ENUM,
+        nullable=False,
+        default=ResourceType.COIN,
+        server_default="COIN",
+    )
     upgrade_price: Mapped[int] = mapped_column(BigInteger, nullable=False)
     unlock_level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"

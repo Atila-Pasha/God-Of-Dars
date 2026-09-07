@@ -129,8 +129,11 @@ class TeacherService:
             raise TeacherLocked
         if teacher.purchase_price < 0:
             raise TeacherNotPurchasable
-        if resources.coin < teacher.purchase_price:
-            raise InsufficientCoins
+        purchase_resource = (
+            getattr(teacher, "purchase_resource", None) or ResourceType.COIN
+        )
+        if purchase_resource not in {ResourceType.COIN, ResourceType.DIAMOND}:
+            raise TeacherNotPurchasable
 
         owned_teacher = UserTeacher(
             user_id=user_id,
@@ -141,10 +144,11 @@ class TeacherService:
         )
         session.add(owned_teacher)
         await session.flush()
-        ResourceService.debit_coin(
+        ResourceService.debit(
             session,
             resources,
             user_id=user_id,
+            resource_type=purchase_resource,
             amount=teacher.purchase_price,
             reason="TEACHER_PURCHASE",
             reference_type="USER_TEACHER",

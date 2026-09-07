@@ -156,7 +156,10 @@ def teacher_catalog_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=f"{teacher.name} — {teacher.purchase_price} سکه",
+                text=(
+                    f"{teacher.name} — {teacher.purchase_price} "
+                    f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}"
+                ),
                 icon_custom_emoji_id=premium_emoji_id(
                     teacher.emoji, fallback="👨‍🏫"
                 ),
@@ -207,7 +210,10 @@ def teacher_catalog_page_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=f"{teacher.name} — {teacher.purchase_price} سکه",
+                text=(
+                    f"{teacher.name} — {teacher.purchase_price} "
+                    f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}"
+                ),
                 icon_custom_emoji_id=premium_emoji_id(
                     teacher.emoji, fallback="👨‍🏫"
                 ),

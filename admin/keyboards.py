@@ -30,7 +30,6 @@ def daily_quest_types(types: tuple[str, ...]) -> InlineKeyboardMarkup:
         "ANSWER_DAILY_QUESTION": "❓ پاسخ به سؤال روزانه",
         "CORRECT_ANSWERS": "🧠 پاسخ صحیح به سؤال‌ها",
         "COMPLETE_BATTLES": "⚔️ انجام نبردها",
-        "WIN_BATTLES": "🏆 بردن نبردها",
         "COLLECT_MINE": "⛏ جمع‌آوری معدن",
         "JOIN_CHANNEL": "📢 عضویت در کانال",
     }
@@ -70,6 +69,60 @@ def daily_quest_rewards() -> InlineKeyboardMarkup:
     )
 
 
+def daily_quest_actions(quest_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ ویرایش", callback_data=f"admin_daily:edit:{quest_id}"
+                ),
+                InlineKeyboardButton(
+                    text="🗑 حذف", callback_data=f"admin_daily:delete:{quest_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⛔ غیرفعال کردن" if is_active else "✅ فعال کردن",
+                    callback_data=f"admin_daily:toggle:{quest_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📊 آمار", callback_data=f"admin_daily:stats:{quest_id}"
+                )
+            ],
+        ]
+    )
+
+
+def daily_quest_edit_fields(quest_id: int) -> InlineKeyboardMarkup:
+    fields = (
+        ("عنوان", "title"),
+        ("توضیحات", "description"),
+        ("هدف", "target"),
+        ("پاداش‌ها", "rewards"),
+        ("کانال عضویت", "channel"),
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=label,
+                    callback_data=f"admin_daily:field:{quest_id}:{field}",
+                )
+            ]
+            for label, field in fields
+        ]
+        + [
+            [
+                InlineKeyboardButton(
+                    text="✅ پایان", callback_data=f"admin_daily:done:{quest_id}"
+                )
+            ]
+        ]
+    )
+
+
 def main() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -77,6 +130,7 @@ def main() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="👤 مدیریت کاربران"),
                 KeyboardButton(text="👨‍🏫 مدیریت دبیرها"),
             ],
+            [KeyboardButton(text="📊 آمار کاربران ربات")],
             [KeyboardButton(text="🛡 مدیریت سپرها")],
             [KeyboardButton(text="📢 مدیریت قفل کانال")],
             [KeyboardButton(text="🎁 ارسال جعبه شانس"), KeyboardButton(text="🃏 ارسال کارت شانس")],
@@ -178,7 +232,8 @@ def teacher_actions(teacher_id: int) -> InlineKeyboardMarkup:
 def teacher_edit_fields(teacher_id: int) -> InlineKeyboardMarkup:
     fields = (
         ("نام", "name"), ("آسیب", "damage"), ("جان", "max_hp"),
-        ("قیمت خرید", "purchase_price"), ("قیمت ارتقا", "upgrade_price"),
+        ("قیمت خرید", "purchase_price"), ("ارز خرید", "purchase_resource"),
+        ("قیمت ارتقا", "upgrade_price"),
         ("سطح بازشدن", "unlock_level"), ("توانایی", "ability_text"),
         ("توضیحات", "description"),
         ("استیکر", "sticker"), ("اموجی", "emoji"),

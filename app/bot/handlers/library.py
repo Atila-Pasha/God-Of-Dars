@@ -117,6 +117,33 @@ def _resource_name(reward: Any) -> str:
     return getattr(resource_type, "value", str(resource_type))
 
 
+def _user_display_name(user: Any) -> str:
+    name = " ".join(
+        part
+        for part in (
+            getattr(user, "first_name", None),
+            getattr(user, "last_name", None),
+        )
+        if part
+    )
+    return name or (
+        f"@{user.username}" if getattr(user, "username", None) else str(user.id)
+    )
+
+
+def _group_reward_text(result: AnswerResult) -> str:
+    rewards = tuple(
+        reward for reward in getattr(result, "rewards", ()) if reward.amount > 0
+    )
+    if not rewards:
+        return "بدون پاداش"
+    return "، ".join(
+        f"{RESOURCE_LABELS.get(_resource_name(reward), _resource_name(reward))}: "
+        f"{reward.amount}"
+        for reward in rewards
+    )
+
+
 async def _user_id(session: AsyncSession, message: Message | CallbackQuery) -> int:
     if message.from_user is None:
         raise UserInactiveError
@@ -170,7 +197,8 @@ def _teacher_detail_content(teacher) -> tuple[str, list]:
         f"{icon} {teacher.name}\n\n"
         f"⚔️ آسیب پایه: {teacher.damage}\n"
         f"❤️ حداکثر جان: {teacher.max_hp}\n"
-        f"🪙 قیمت خرید: {teacher.purchase_price} سکه\n"
+        f"🪙 قیمت خرید: {teacher.purchase_price} "
+        f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
         f"💎 قیمت ارتقا: {teacher.upgrade_price} الماس\n"
         f"🎖 سطح بازشدن: {teacher.unlock_level}\n\n"
         f"✨ توانایی: {teacher.ability_text or 'تنظیم نشده'}\n"
@@ -456,7 +484,13 @@ async def group_reply_answer_handler(
             message.text,
             now=_now(),
         )
-        await _answer_group_reply(message, _result_text(result))
+        response = _result_text(result)
+        if result.correct:
+            response = (
+                f"✅ درست جواب دادی! {_user_display_name(message.from_user)} "
+                f"زودتر از همه پاسخ داد و {_group_reward_text(result)} دریافت کرد."
+            )
+        await _answer_group_reply(message, response)
     except WrongGroup:
         await _answer_group_reply(message, "این سؤال به گروه فعلی مربوط نیست.")
     except DuplicateAnswer:

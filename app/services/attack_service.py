@@ -387,11 +387,6 @@ class AttackService:
             session, user_id=attacker.id, event_type="COMPLETE_BATTLES",
             event_id=f"attack:{attack.id}",
         )
-        if attack.is_successful:
-            await quest_service.record_event(
-                session, user_id=attacker.id, event_type="WIN_BATTLES",
-                event_id=f"attack:{attack.id}",
-            )
         xp_awarded = await self._claim_attack_xp(
             session,
             attack_command_id=attack.attack_command_id,

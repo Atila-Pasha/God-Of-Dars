@@ -103,7 +103,8 @@ async def group_purchase_message(
         if teacher is not None:
             await message.answer(
                 f"🛒 خرید دبیر «{teacher.name}»\n\n"
-                f"قیمت: {teacher.purchase_price} سکه\n"
+                f"قیمت: {teacher.purchase_price} "
+                f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
                 f"سطح بازشدن: {teacher.unlock_level}\n\n"
                 "آیا خرید این دبیر را تأیید می‌کنید؟",
                 reply_markup=confirmation_keyboard(

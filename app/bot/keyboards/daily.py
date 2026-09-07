@@ -1,17 +1,51 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+QUEST_CHECK_LABELS = {
+    "DAILY_LOGIN": "بررسی ورود روزانه",
+    "ANSWER_DAILY_QUESTION": "بررسی پاسخ به سؤال روزانه",
+    "CORRECT_ANSWERS": "بررسی پاسخ‌های صحیح",
+    "COMPLETE_BATTLES": "بررسی انجام نبردها",
+    "COLLECT_MINE": "بررسی جمع‌آوری معدن",
+    "JOIN_CHANNEL": "بررسی عضویت در کانال",
+}
+
 
 def daily_keyboard(progresses) -> InlineKeyboardMarkup:
     rows = []
     for item in progresses:
         quest = item.quest
-        label = f"{'✅' if item.claimed else '🎁' if item.progress >= quest.target else '▫️'} {quest.title} ({item.progress}/{quest.target})"
-        if not item.claimed and quest.quest_type == "JOIN_CHANNEL" and item.progress < quest.target:
-            rows.append([InlineKeyboardButton(text=f"🔎 بررسی عضویت {label}", callback_data=f"daily:join:{item.id}")])
-        elif not item.claimed and item.progress >= quest.target:
+        if item.claimed:
+            continue
+        if quest.quest_type == "JOIN_CHANNEL" and item.progress < quest.target:
             rows.append(
-                [InlineKeyboardButton(text=label, callback_data=f"daily:claim:{item.id}")]
+                [
+                    InlineKeyboardButton(
+                        text=f"✅ {QUEST_CHECK_LABELS[quest.quest_type]}",
+                        style="success",
+                        callback_data=f"daily:join:{item.id}",
+                    )
+                ]
+            )
+        elif item.progress >= quest.target:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="🎁 دریافت جایزه",
+                        style="success",
+                        callback_data=f"daily:claim:{item.id}",
+                    )
+                ]
             )
         else:
-            rows.append([InlineKeyboardButton(text=label, callback_data="daily:noop")])
-    return InlineKeyboardMarkup(inline_keyboard=rows or [[InlineKeyboardButton(text="بازگشت", callback_data="daily:noop")]])
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"🔎 {QUEST_CHECK_LABELS.get(quest.quest_type, 'بررسی فعالیت')}",
+                        callback_data=f"daily:claim:{item.id}",
+                    )
+                ]
+            )
+    return InlineKeyboardMarkup(
+        inline_keyboard=rows
+        or [[InlineKeyboardButton(text="بازگشت", callback_data="daily:noop")]]
+    )

@@ -24,6 +24,8 @@ class ResourceService:
         field = resource_type.value.lower()
         before = getattr(resources, field)
         if before < amount:
+            if resource_type is ResourceType.DIAMOND:
+                raise InsufficientDiamonds
             raise InsufficientCoins
         setattr(resources, field, before - amount)
         session.add(Transaction(

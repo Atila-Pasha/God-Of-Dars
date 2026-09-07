@@ -144,6 +144,7 @@ TEACHER_EDIT_PROMPTS = {
     "damage": "میزان آسیب جدید را بفرستید:",
     "max_hp": "حداکثر جان جدید را بفرستید:",
     "purchase_price": "قیمت خرید جدید را بفرستید:",
+    "purchase_resource": "نوع ارز خرید را بفرستید: طلا یا الماس",
     "upgrade_price": "قیمت ارتقای جدید را بفرستید:",
     "unlock_level": "سطح بازشدن جدید را بفرستید:",
     "ability_text": "متن توانایی جدید را بفرستید؛ برای حذف، - بفرستید:",
@@ -643,6 +644,31 @@ async def users(message: Message, state: FSMContext) -> None:
         )
 
 
+@router.message(F.text.in_({"آمار کاربران ربات", "📊 آمار کاربران ربات"}))
+async def bot_user_stats(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    total = await session.scalar(select(func.count(User.id))) or 0
+    active = await session.scalar(
+        select(func.count(User.id)).where(User.is_active.is_(True))
+    ) or 0
+    today = datetime.now(UTC).date()
+    new_today = await session.scalar(
+        select(func.count(User.id)).where(func.date(User.created_at) == today)
+    ) or 0
+    await message.answer(
+        "📊 آمار کاربران ربات\n\n"
+        f"👥 کل کاربران: {total}\n"
+        f"✅ کاربران فعال: {active}\n"
+        f"⛔ کاربران غیرفعال: {total - active}\n"
+        f"🆕 ثبت‌نام امروز: {new_today}",
+        reply_markup=keyboards.main(),
+    )
+
+
 @router.message(UserStates.search)
 async def user_search(
     message: Message, state: FSMContext, session: AsyncSession
@@ -835,7 +861,7 @@ async def daily_quest_start(message: Message, state: FSMContext, session: AsyncS
 
 @router.callback_query(F.data.startswith("admin_daily:"))
 async def daily_quest_callback(
-    callback: CallbackQuery, state: FSMContext
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
     if callback.from_user is None or callback.message is None or not allowed(callback):
         await callback.answer()
@@ -843,6 +869,89 @@ async def daily_quest_callback(
     parts = (callback.data or "").split(":")
     action = parts[1] if len(parts) > 1 else ""
     value = parts[2] if len(parts) > 2 else ""
+    if action == "stats":
+        try:
+            quest_id = number(value, "شناسه", minimum=1)
+        except ValueError as exc:
+            await callback.answer(str(exc), show_alert=True)
+            return
+        stats = await daily_quest_service.stats(session, quest_id=quest_id)
+        await callback.answer()
+        await callback.message.answer(
+            f"📊 آمار فعالیت #{quest_id}\n\n"
+            f"👥 شرکت‌کننده: {stats['participants']}\n"
+            f"✅ کامل‌شده: {stats['completed']}\n"
+            f"🎁 جایزه‌گرفته: {stats['claimed']}"
+        )
+        return
+    if action in {"edit", "delete", "toggle", "done"}:
+        try:
+            quest_id = int(value)
+        except ValueError:
+            await callback.answer("شناسه فعالیت نامعتبر است.", show_alert=True)
+            return
+        quest = await daily_quest_service.repository.get(
+            session, quest_id, for_update=action != "edit"
+        )
+        if quest is None:
+            await callback.answer("فعالیت پیدا نشد.", show_alert=True)
+            return
+        if action == "delete":
+            await daily_quest_service.delete(session, quest_id)
+            await callback.answer("فعالیت حذف شد.")
+            await callback.message.edit_reply_markup(reply_markup=None)
+            return
+        if action == "toggle":
+            quest.is_active = not quest.is_active
+            await session.flush()
+            await callback.answer("وضعیت فعالیت تغییر کرد.")
+            await callback.message.edit_reply_markup(
+                reply_markup=keyboards.daily_quest_actions(quest.id, quest.is_active)
+            )
+            return
+        if action == "done":
+            await state.clear()
+            await callback.answer("ویرایش تمام شد.")
+            await callback.message.edit_reply_markup(reply_markup=None)
+            return
+        await state.clear()
+        await callback.message.answer(
+            f"ویرایش فعالیت «{quest.title}»\nیک مورد را انتخاب کنید:",
+            reply_markup=keyboards.daily_quest_edit_fields(quest.id),
+        )
+        await callback.answer()
+        return
+    if action == "field" and len(parts) == 4:
+        try:
+            quest_id = int(value)
+        except ValueError:
+            await callback.answer("شناسه فعالیت نامعتبر است.", show_alert=True)
+            return
+        quest = await daily_quest_service.repository.get(session, quest_id)
+        field = parts[3]
+        if quest is None or field not in {
+            "title", "description", "target", "rewards", "channel"
+        }:
+            await callback.answer("این گزینه معتبر نیست.", show_alert=True)
+            return
+        if field == "channel" and quest.quest_type != "JOIN_CHANNEL":
+            await callback.answer("این فعالیت کانالی نیست.", show_alert=True)
+            return
+        await state.clear()
+        await state.update_data(edit_id=quest.id, edit_field=field)
+        await state.set_state(DailyQuestStates.edit_value)
+        prompts = {
+            "title": "عنوان جدید:",
+            "description": "توضیحات جدید؛ برای حذف - بفرستید:",
+            "target": "هدف جدید:",
+            "rewards": "پاداش‌ها را مثل coin:100,diamond:2 وارد کنید:",
+            "channel": "شناسه یا نام کاربری کانال جدید:",
+        }
+        await callback.message.answer(
+            prompts[field], reply_markup=keyboards.cancel_keyboard()
+        )
+        await callback.answer()
+        return
     if action == "cancel":
         await state.clear()
         await callback.answer("لغو شد.")
@@ -853,6 +962,8 @@ async def daily_quest_callback(
         if value == "custom":
             await state.set_state(DailyQuestStates.activity_date)
             await callback.answer()
+
+
             await callback.message.answer("تاریخ را به صورت YYYY-MM-DD بفرستید:")
             return
         selected = daily_quest_service.today()
@@ -861,6 +972,20 @@ async def daily_quest_callback(
         await state.update_data(activity_date=selected.isoformat())
         await state.set_state(DailyQuestStates.quest_type)
         await callback.answer()
+        quests = await daily_quest_service.list(session, selected)
+        if quests:
+            await callback.message.answer(
+                f"فعالیت‌های ثبت‌شده برای {selected.isoformat()}:"
+            )
+            for quest in quests:
+                await callback.message.answer(
+                    f"#{quest.id} {'✅ فعال' if quest.is_active else '⛔ غیرفعال'}\n"
+                    f"{quest.title}\n{quest.description or 'بدون توضیحات'}\n"
+                    f"هدف: {quest.target} | پاداش: {quest.rewards or 'بدون پاداش'}",
+                    reply_markup=keyboards.daily_quest_actions(
+                        quest.id, quest.is_active
+                    ),
+                )
         await callback.message.answer(
             f"تاریخ انتخاب شد: {selected.isoformat()}\nنوع فعالیت را انتخاب کنید:",
             reply_markup=keyboards.daily_quest_types(tuple(QUEST_TYPES)),
@@ -871,6 +996,16 @@ async def daily_quest_callback(
             await callback.answer("نوع فعالیت نامعتبر است.", show_alert=True)
             return
         await state.update_data(quest_type=value, rewards={})
+        if value == "JOIN_CHANNEL":
+            await state.update_data(target=1)
+            await state.set_state(DailyQuestStates.rewards)
+            await callback.answer()
+            await callback.message.answer(
+                "هدف عضویت کانال به‌صورت خودکار ۱ است.\n"
+                "منابع پاداش را انتخاب کنید:",
+                reply_markup=keyboards.daily_quest_rewards(),
+            )
+            return
         await state.set_state(DailyQuestStates.target)
         await callback.answer()
         await callback.message.answer("هدف فعالیت را به صورت عددی بفرستید:")
@@ -896,6 +1031,59 @@ async def daily_quest_callback(
     await callback.answer()
 
 
+@router.message(DailyQuestStates.edit_value)
+async def daily_quest_edit_value(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    data = await state.get_data()
+    quest = await daily_quest_service.repository.get(session, int(data["edit_id"]))
+    field = data.get("edit_field")
+    if quest is None or field not in {
+        "title", "description", "target", "rewards", "channel"
+    }:
+        await state.clear()
+        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        return
+    try:
+        raw = message.text.strip()
+        if field == "title":
+            if not raw:
+                raise ValueError("عنوان نمی‌تواند خالی باشد.")
+            value = raw
+        elif field == "description":
+            value = None if raw == "-" else raw
+        elif field == "target":
+            value = 1 if quest.quest_type == "JOIN_CHANNEL" else number(raw, "هدف", minimum=1)
+        elif field == "channel":
+            if not raw:
+                raise ValueError("شناسه کانال نمی‌تواند خالی باشد.")
+            metadata = dict(quest.quest_metadata or {})
+            metadata["channel"] = raw
+            value = metadata
+            field = "quest_metadata"
+        else:
+            rewards: dict[str, int] = {}
+            for item in raw.split(","):
+                resource, amount = item.strip().split(":", 1)
+                resource = resource.strip().upper()
+                if resource not in {"COIN", "DIAMOND", "BANANA"}:
+                    raise ValueError("نوع پاداش نامعتبر است.")
+                rewards[resource] = number(amount.strip(), "مقدار پاداش", minimum=1)
+            value = rewards
+        await daily_quest_service.update(session, quest.id, **{field: value})
+    except (ValueError, IndexError) as exc:
+        await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
+        return
+    await state.clear()
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer(
+        f"ویرایش فعالیت «{quest.title}»\nیک مورد دیگر را انتخاب کنید:",
+        reply_markup=keyboards.daily_quest_edit_fields(quest.id),
+    )
+
+
 @router.message(DailyQuestStates.activity_date)
 async def daily_quest_date(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message) or not message.text:
@@ -906,14 +1094,23 @@ async def daily_quest_date(message: Message, state: FSMContext, session: AsyncSe
         await message.answer("تاریخ نامعتبر است؛ نمونه: 2026-09-06")
         return
     quests = await daily_quest_service.list(session, activity_date)
-    listing = "\n".join(
-        f"{q.id}. {'✅' if q.is_active else '⛔'} {q.quest_type} {q.target} — {q.title}"
-        for q in quests
-    ) or "امروز فعالیتی تعریف نشده است."
+    if quests:
+        await message.answer(f"فعالیت‌های ثبت‌شده برای {activity_date.isoformat()}:")
+        for quest in quests:
+            await message.answer(
+                f"#{quest.id} {'✅ فعال' if quest.is_active else '⛔ غیرفعال'}\n"
+                f"{quest.title}\n{quest.description or 'بدون توضیحات'}\n"
+                f"هدف: {quest.target} | پاداش: {quest.rewards or 'بدون پاداش'}",
+                reply_markup=keyboards.daily_quest_actions(
+                    quest.id, quest.is_active
+                ),
+            )
+    else:
+        await message.answer("برای این روز فعالیتی ثبت نشده است.")
     await state.update_data(activity_date=activity_date.isoformat())
     await state.set_state(DailyQuestStates.quest_type)
     await message.answer(
-        f"{listing}\n\nنوع فعالیت جدید را انتخاب کنید:",
+        "نوع فعالیت جدید را انتخاب کنید:",
         reply_markup=keyboards.daily_quest_types(tuple(QUEST_TYPES)),
     )
 
@@ -927,6 +1124,15 @@ async def daily_quest_type(message: Message, state: FSMContext) -> None:
         await message.answer("نوع فعالیت نامعتبر است.")
         return
     await state.update_data(quest_type=value)
+    if value == "JOIN_CHANNEL":
+        await state.update_data(target=1)
+        await state.set_state(DailyQuestStates.rewards)
+        await message.answer(
+            "هدف عضویت کانال به‌صورت خودکار ۱ است.\n"
+            "منابع پاداش را انتخاب کنید:",
+            reply_markup=keyboards.daily_quest_rewards(),
+        )
+        return
     await state.set_state(DailyQuestStates.target)
     await message.answer("هدف عددی را بفرستید:")
 
@@ -1180,7 +1386,9 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
     for teacher in items:
         await message.answer(
             f"👨‍🏫 {teacher.name}\nشناسه: {teacher.id}\nآسیب: {teacher.damage} | جان: {teacher.max_hp}\n"
-            f"خرید: {teacher.purchase_price} سکه | ارتقا: {teacher.upgrade_price} الماس\n"
+            f"خرید: {teacher.purchase_price} "
+            f"{'الماس' if teacher.purchase_resource is ResourceType.DIAMOND else 'طلا'}"
+            f" | ارتقا: {teacher.upgrade_price} الماس\n"
             f"بازشدن در سطح: {teacher.unlock_level}\n"
             f"توانایی: {teacher.ability_text or '—'}\n"
             f"توضیحات: {teacher.description or '—'}\n"
@@ -1247,8 +1455,31 @@ async def t_hp(message, state):
 @router.message(TeacherStates.purchase_price)
 async def t_buy(message, state):
     await teacher_value(
-        message, state, "purchase_price", TeacherStates.upgrade_price, "قیمت ارتقا:"
+        message,
+        state,
+        "purchase_price",
+        TeacherStates.purchase_resource,
+        "نوع ارز خرید را وارد کنید: طلا یا الماس",
     )
+
+
+@router.message(TeacherStates.purchase_resource)
+async def t_purchase_resource(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    value = {
+        "طلا": ResourceType.COIN,
+        "سکه": ResourceType.COIN,
+        "coin": ResourceType.COIN,
+        "الماس": ResourceType.DIAMOND,
+        "diamond": ResourceType.DIAMOND,
+    }.get(message.text.strip().casefold())
+    if value is None:
+        await message.answer("نوع ارز نامعتبر است؛ فقط «طلا» یا «الماس» وارد کنید.")
+        return
+    await state.update_data(purchase_resource=value)
+    await state.set_state(TeacherStates.upgrade_price)
+    await message.answer("قیمت ارتقا:")
 
 
 @router.message(TeacherStates.upgrade_price)
@@ -1413,6 +1644,16 @@ async def teacher_edit_value(
             value = _sticker_value(message)
         elif field == "emoji":
             value = _custom_emoji_value(message)
+        elif field == "purchase_resource":
+            value = {
+                "طلا": ResourceType.COIN,
+                "سکه": ResourceType.COIN,
+                "coin": ResourceType.COIN,
+                "الماس": ResourceType.DIAMOND,
+                "diamond": ResourceType.DIAMOND,
+            }.get(value.casefold())
+            if value is None:
+                raise ValueError("نوع ارز نامعتبر است؛ فقط «طلا» یا «الماس» وارد کنید.")
         elif field in {"ability_text", "description"}:
             if not message.text:
                 raise ValueError("متن توانایی نمی‌تواند خالی باشد.")

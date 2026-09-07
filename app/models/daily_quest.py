@@ -30,7 +30,6 @@ QUEST_TYPES = (
     "ANSWER_DAILY_QUESTION",
     "CORRECT_ANSWERS",
     "COMPLETE_BATTLES",
-    "WIN_BATTLES",
     "COLLECT_MINE",
     "JOIN_CHANNEL",
 )
@@ -42,7 +41,7 @@ class DailyQuest(Base):
         Index("ix_daily_quests_date_active", "activity_date", "is_active"),
         CheckConstraint("target > 0", name="ck_daily_quests_target_positive"),
         CheckConstraint(
-            "quest_type IN ('DAILY_LOGIN','ANSWER_DAILY_QUESTION','CORRECT_ANSWERS','COMPLETE_BATTLES','WIN_BATTLES','COLLECT_MINE','JOIN_CHANNEL')",
+            "quest_type IN ('DAILY_LOGIN','ANSWER_DAILY_QUESTION','CORRECT_ANSWERS','COMPLETE_BATTLES','COLLECT_MINE','JOIN_CHANNEL')",
             name="ck_daily_quests_type",
         ),
     )

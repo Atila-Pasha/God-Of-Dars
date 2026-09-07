@@ -71,6 +71,8 @@ class DailyQuestService:
     ):
         if quest_type not in QUEST_TYPES or not title.strip() or target <= 0:
             raise ValueError("invalid daily quest")
+        if quest_type == "JOIN_CHANNEL":
+            target = 1
         activity_date = self._date(activity_date)
         normalized = self._rewards(rewards)
         metadata = self._validate_metadata(metadata)
@@ -115,6 +117,8 @@ class DailyQuestService:
             if isinstance(values["target"], bool) or int(values["target"]) <= 0:
                 raise ValueError("quest target must be positive")
             quest.target = int(values["target"])
+        if quest.quest_type == "JOIN_CHANNEL":
+            quest.target = 1
         if "rewards" in values and values["rewards"] is not None:
             quest.rewards = self._rewards(values["rewards"])
         if "quest_metadata" in values and values["quest_metadata"] is not None:
@@ -130,7 +134,7 @@ class DailyQuestService:
         quest = await self.repository.get(session, quest_id, for_update=True)
         if quest is None:
             return False
-        quest.is_active = False
+        await session.delete(quest)
         await session.flush()
         return True
 

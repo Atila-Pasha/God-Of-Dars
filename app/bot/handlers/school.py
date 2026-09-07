@@ -494,7 +494,8 @@ async def teacher_callback_handler(
                 await _send_or_edit(
                     callback,
                     f"🛒 خرید دبیر «{teacher.name}»\n\n"
-                    f"قیمت: {_number(teacher.purchase_price)} سکه\n"
+                    f"قیمت: {_number(teacher.purchase_price)} "
+                    f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
                     "آیا خرید را تأیید می‌کنی؟",
                     reply_markup=confirmation_keyboard(
                         action="teacher_buy", target_id=teacher.id, origin="buffet"
@@ -505,7 +506,8 @@ async def teacher_callback_handler(
             await _send_or_edit(
                 callback,
                 f"🛒 خرید دبیر {teacher.name}\n\n"
-                f"قیمت: {_number(teacher.purchase_price)} سکه\n"
+                f"قیمت: {_number(teacher.purchase_price)} "
+                f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
                 "آیا می‌خواهی این دبیر را بخری؟",
                 reply_markup=confirmation_keyboard(
                     action="teacher_buy",
