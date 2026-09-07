@@ -51,7 +51,7 @@ class SubscriptionService:
         This also fixes legacy rows where the admin panel stored usernames
         without the leading ``@``.
         """
-        value = str(channel).strip()
+        value = SubscriptionService.normalize_channel_identifier(channel)
         if value.startswith("-") and value[1:].isdigit():
             return value
         if value.isdigit():
@@ -61,11 +61,45 @@ class SubscriptionService:
     @staticmethod
     def is_valid_channel_identifier(channel: str | None) -> bool:
         value = str(channel or "").strip()
+        if re.fullmatch(r"https?://(?:t\.me|telegram\.me)/[A-Za-z0-9_]{5,32}/?", value):
+            return True
         if value.startswith("-") and value[1:].isdigit():
             return True
         if value.isdigit():
             return True
         return bool(re.fullmatch(r"@?[A-Za-z0-9_]{5,32}", value))
+
+    @staticmethod
+    def normalize_channel_identifier(channel: str) -> str:
+        value = str(channel).strip().rstrip("/")
+        match = re.fullmatch(
+            r"https?://(?:t\.me|telegram\.me)/([A-Za-z0-9_]{5,32})", value
+        )
+        return f"@{match.group(1)}" if match else value
+
+    @staticmethod
+    def parse_daily_channel(value: str) -> tuple[str, str | None]:
+        """Return a checkable chat identifier and an optional invite URL.
+
+        Private invite links do not identify a chat to the Bot API, so they
+        must be entered together with the numeric chat id:
+        ``-100123456789 | https://t.me/+invite_hash``.
+        """
+        raw = str(value).strip()
+        parts = [part.strip() for part in raw.split("|")]
+        identifier = SubscriptionService.normalize_channel_identifier(parts[0])
+        if len(parts) == 2 and (
+            re.fullmatch(r"-100\d{5,}", parts[0])
+            and re.fullmatch(r"https?://(?:t\.me|telegram\.me)/\+[A-Za-z0-9_-]+", parts[1])
+        ):
+            return parts[0], parts[1]
+        if SubscriptionService.is_valid_channel_identifier(identifier):
+            return identifier, None
+        raise ValueError(
+            "فرمت کانال نامعتبر است. کانال عمومی: @channel یا "
+            "https://t.me/channel\n"
+            "کانال/گروه خصوصی: -100123456789 | https://t.me/+invite_link"
+        )
 
     async def is_member(
         self, bot: Bot, telegram_user_id: int, *, force_refresh: bool = False

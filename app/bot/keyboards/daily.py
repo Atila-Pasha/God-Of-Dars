@@ -17,6 +17,16 @@ def daily_keyboard(progresses) -> InlineKeyboardMarkup:
         if item.claimed:
             continue
         if quest.quest_type == "JOIN_CHANNEL" and item.progress < quest.target:
+            invite_link = (quest.quest_metadata or {}).get("invite_link")
+            if invite_link:
+                rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text="🔗 ورود به کانال/گروه",
+                            url=invite_link,
+                        )
+                    ]
+                )
             rows.append(
                 [
                     InlineKeyboardButton(

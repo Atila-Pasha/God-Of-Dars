@@ -1059,12 +1059,13 @@ async def daily_quest_edit_value(
         elif field == "target":
             value = 1 if quest.quest_type == "JOIN_CHANNEL" else number(raw, "هدف", minimum=1)
         elif field == "channel":
-            if not subscription_service.is_valid_channel_identifier(raw):
-                raise ValueError(
-                    "شناسه کانال نامعتبر است. نمونه معتبر: @example_channel"
-                )
+            identifier, invite_link = subscription_service.parse_daily_channel(raw)
             metadata = dict(quest.quest_metadata or {})
-            metadata["channel"] = raw
+            metadata["channel"] = identifier
+            if invite_link:
+                metadata["invite_link"] = invite_link
+            else:
+                metadata.pop("invite_link", None)
             value = metadata
             field = "quest_metadata"
         else:
@@ -1237,17 +1238,17 @@ async def daily_quest_channel(
         await state.clear()
         await message.answer("لغو شد.", reply_markup=keyboards.main())
         return
-    if (
-        not channel
-        or channel == "@لغو"
-        or not subscription_service.is_valid_channel_identifier(channel)
-    ):
+    try:
+        identifier, invite_link = subscription_service.parse_daily_channel(channel)
+    except ValueError as exc:
         await message.answer(
-            "شناسه کانال نامعتبر است. شناسه عمومی مثل @example_channel "
-            "یا شناسه عددی -100123456789 را وارد کنید."
+            str(exc)
         )
         return
-    await daily_quest_create(message, state, session, metadata={"channel": channel})
+    metadata = {"channel": identifier}
+    if invite_link:
+        metadata["invite_link"] = invite_link
+    await daily_quest_create(message, state, session, metadata=metadata)
 
 
 async def question_step(
