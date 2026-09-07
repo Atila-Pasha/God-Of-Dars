@@ -1213,16 +1213,43 @@ async def daily_quest_create(
     metadata: dict,
 ) -> None:
     data = await state.get_data()
-    quest = await daily_quest_service.create(
-        session,
-        activity_date=date.fromisoformat(data["activity_date"]),
-        quest_type=data["quest_type"],
-        title=data["title"],
-        target=data["target"],
-        rewards=data["rewards"],
-        description=data.get("description"),
-        metadata=metadata,
-    )
+    missing = [
+        field
+        for field in ("quest_type", "title", "target", "rewards")
+        if data.get(field) is None
+    ]
+    if missing:
+        await state.clear()
+        await message.answer(
+            "اطلاعات ساخت فعالیت ناقص یا منقضی شده است. "
+            "لطفاً از منوی مدیریت فعالیت‌های روزانه دوباره شروع کنید.",
+            reply_markup=keyboards.main(),
+        )
+        return
+    raw_date = data.get("activity_date")
+    try:
+        activity_date = (
+            date.fromisoformat(raw_date)
+            if raw_date
+            else daily_quest_service.today()
+        )
+        quest = await daily_quest_service.create(
+            session,
+            activity_date=activity_date,
+            quest_type=data["quest_type"],
+            title=data["title"],
+            target=data["target"],
+            rewards=data["rewards"],
+            description=data.get("description"),
+            metadata=metadata,
+        )
+    except (TypeError, ValueError, KeyError) as exc:
+        await state.clear()
+        await message.answer(
+            f"ساخت فعالیت انجام نشد: {exc}\nلطفاً دوباره از منوی مدیریت شروع کنید.",
+            reply_markup=keyboards.main(),
+        )
+        return
     await state.clear()
     await message.answer(f"فعالیت #{quest.id} ساخته شد.", reply_markup=keyboards.main())
 
