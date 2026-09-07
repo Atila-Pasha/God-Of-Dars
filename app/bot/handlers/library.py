@@ -329,7 +329,7 @@ async def library_callback_handler(
             await state.clear()
             if callback.message is not None:
                 await _show_library(callback)
-    except (UserInactiveError, LibraryError):
+    except (UserInactiveError, SchoolUserNotFound, LibraryError):
         await state.clear()
         await _notify_callback(
             callback, "امکان استفاده از کتابخانه در حال حاضر وجود ندارد."
