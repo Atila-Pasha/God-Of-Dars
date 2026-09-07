@@ -23,7 +23,6 @@ from app.bot.keyboards.school import (
     confirmation_keyboard,
     hospital_keyboard,
     school_keyboard,
-    school_navigation_keyboard,
     teacher_catalog_keyboard,
     teacher_catalog_page_keyboard,
     teacher_detail_keyboard,
@@ -181,16 +180,6 @@ async def _school_view(
         f"({_progress_percent(capacity.owned, capacity.available)})"
     )
     await _send_or_edit(target, text, reply_markup=school_keyboard())
-    if isinstance(target, CallbackQuery) and target.message is not None:
-        await target.message.answer(
-            "منوی بخش:",
-            reply_markup=school_navigation_keyboard(),
-        )
-    elif isinstance(target, Message):
-        await target.answer(
-            "منوی بخش:",
-            reply_markup=school_navigation_keyboard(),
-        )
 
 
 async def _castle_view(

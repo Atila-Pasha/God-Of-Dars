@@ -8,7 +8,6 @@ from app.bot.callbacks import MineCallback
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     main_menu_keyboard,
-    section_back_keyboard,
 )
 from app.bot.keyboards.mine import mine_keyboard, mine_upgrade_confirmation_keyboard
 from app.bot.utils.telegram import safe_edit_text
@@ -75,16 +74,8 @@ async def _show(target: Message | CallbackQuery, session: AsyncSession) -> None:
     markup = mine_keyboard(can_upgrade=can_upgrade)
     if isinstance(target, CallbackQuery) and target.message is not None:
         await safe_edit_text(target.message, text, reply_markup=markup)
-        await target.message.answer(
-            "منوی بخش:",
-            reply_markup=section_back_keyboard(),
-        )
     else:
         await target.answer(text, reply_markup=markup)
-        await target.answer(
-            "منوی بخش:",
-            reply_markup=section_back_keyboard(),
-        )
 
 
 async def mine_handler(message: Message, session: AsyncSession | None = None) -> None:
