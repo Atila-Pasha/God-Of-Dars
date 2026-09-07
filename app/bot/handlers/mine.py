@@ -76,13 +76,13 @@ async def _show(target: Message | CallbackQuery, session: AsyncSession) -> None:
     if isinstance(target, CallbackQuery) and target.message is not None:
         await safe_edit_text(target.message, text, reply_markup=markup)
         await target.message.answer(
-            "\u2800",
+            "🔙",
             reply_markup=section_back_keyboard(),
         )
     else:
         await target.answer(text, reply_markup=markup)
         await target.answer(
-            "\u2800",
+            "🔙",
             reply_markup=section_back_keyboard(),
         )
 

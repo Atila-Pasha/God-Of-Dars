@@ -183,12 +183,12 @@ async def _school_view(
     await _send_or_edit(target, text, reply_markup=school_keyboard())
     if isinstance(target, CallbackQuery) and target.message is not None:
         await target.message.answer(
-            "\u2800",
+            "🔙",
             reply_markup=school_navigation_keyboard(),
         )
     elif isinstance(target, Message):
         await target.answer(
-            "\u2800",
+            "🔙",
             reply_markup=school_navigation_keyboard(),
         )
 
