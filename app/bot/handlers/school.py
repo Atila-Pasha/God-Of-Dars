@@ -23,6 +23,7 @@ from app.bot.keyboards.school import (
     confirmation_keyboard,
     hospital_keyboard,
     school_keyboard,
+    school_navigation_keyboard,
     teacher_catalog_keyboard,
     teacher_catalog_page_keyboard,
     teacher_detail_keyboard,
@@ -180,6 +181,16 @@ async def _school_view(
         f"({_progress_percent(capacity.owned, capacity.available)})"
     )
     await _send_or_edit(target, text, reply_markup=school_keyboard())
+    if isinstance(target, CallbackQuery) and target.message is not None:
+        await target.message.answer(
+            "برای خروج از مدرسه، دکمه زیر را بزنید.",
+            reply_markup=school_navigation_keyboard(),
+        )
+    elif isinstance(target, Message):
+        await target.answer(
+            "برای خروج از مدرسه، دکمه زیر را بزنید.",
+            reply_markup=school_navigation_keyboard(),
+        )
 
 
 async def _castle_view(
@@ -343,6 +354,14 @@ async def school_handler(message: Message, session: AsyncSession) -> None:
         await message.answer("حساب شما مسدود شده است.")
     except SchoolError:
         await message.answer("اطلاعات مدرسه در دسترس نیست. ابتدا /start را بزنید.")
+
+
+@router.message(F.text == "🔙 منوی اصلی")
+async def school_back_message(message: Message) -> None:
+    await message.answer(
+        "به منوی اصلی برگشتید.",
+        reply_markup=main_menu_keyboard(),
+    )
 
 
 @router.callback_query(SchoolCallback.filter())

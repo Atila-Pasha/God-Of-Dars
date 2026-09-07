@@ -1,4 +1,9 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 from app.bot.callbacks import (
     CastleCallback,
@@ -31,12 +36,16 @@ def school_keyboard() -> InlineKeyboardMarkup:
                     text="🏥 بیمارستان",
                     callback_data=SchoolCallback(action="hospital").pack(),
                 ),
-                InlineKeyboardButton(
-                    text="🔙 منوی اصلی",
-                    callback_data=SchoolCallback(action="back").pack(),
-                ),
             ],
         ]
+    )
+
+
+def school_navigation_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🔙 منوی اصلی")]],
+        resize_keyboard=True,
+        is_persistent=False,
     )
 
 
