@@ -144,7 +144,7 @@ class TeacherService:
         )
         session.add(owned_teacher)
         await session.flush()
-        ResourceService.debit(
+        await ResourceService.debit(
             session,
             resources,
             user_id=user_id,
@@ -192,7 +192,7 @@ class TeacherService:
         if resources.diamond < owned_teacher.teacher.upgrade_price:
             raise InsufficientCoins
 
-        ResourceService.debit_diamond(
+        await ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
@@ -201,7 +201,7 @@ class TeacherService:
             reference_type="USER_TEACHER",
             reference_id=owned_teacher.id,
         )
-        ResourceService.credit_banana(
+        await ResourceService.credit_banana(
             session,
             resources,
             user_id=user_id,
@@ -239,7 +239,7 @@ class TeacherService:
             raise OperationNotConfigured from exc
 
         await session.delete(owned_teacher)
-        ResourceService.credit_coin(
+        await ResourceService.credit_coin(
             session,
             resources,
             user_id=user_id,
@@ -271,7 +271,7 @@ class TeacherService:
         if cost is None:
             raise OperationNotConfigured
 
-        ResourceService.debit(
+        await ResourceService.debit(
             session,
             resources,
             user_id=user_id,

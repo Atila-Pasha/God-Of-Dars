@@ -36,7 +36,8 @@ class Attack(Base):
         Index("ix_attacks_teacher_id", "teacher_id"),
         Index("ix_attacks_status", "status"),
         Index("ix_attacks_resolve_at", "resolve_at"),
-            Index("ix_attacks_attack_command_id", "attack_command_id"),
+        Index("ix_attacks_status_resolve_at", "status", "resolve_at"),
+        Index("ix_attacks_attack_command_id", "attack_command_id"),
         Index(
             "uq_pending_attack_per_teacher",
             "attacker_id",
@@ -97,6 +98,19 @@ class Attack(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    processing_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    retry_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    next_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     teacher_damage_snapshot: Mapped[int] = mapped_column(Integer, nullable=False)
     target_castle_strength_snapshot: Mapped[int] = mapped_column(
         BigInteger, nullable=False

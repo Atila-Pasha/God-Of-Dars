@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ResourceType
@@ -12,13 +13,30 @@ from app.services.school_errors import (
 
 class ResourceService:
     @staticmethod
-    def debit(
+    async def _lock(
+        session: AsyncSession, resources: Resource | None, user_id: int
+    ) -> Resource:
+        if not hasattr(session, "execute"):
+            if resources is None:
+                raise ResourceNotFound
+            return resources
+        result = await session.execute(
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+        )
+        locked = result.scalar_one_or_none()
+        if locked is None:
+            raise ResourceNotFound
+        return locked
+
+    @staticmethod
+    async def debit(
         session: AsyncSession, resources: Resource | None, *, user_id: int,
         resource_type: ResourceType, amount: int, reason: str,
         reference_type: str | None = None, reference_id: int | None = None,
     ) -> None:
-        if resources is None:
-            raise ResourceNotFound
+        resources = await ResourceService._lock(session, resources, user_id)
         if amount < 0:
             raise ValueError("amount must be non-negative")
         field = resource_type.value.lower()
@@ -35,7 +53,7 @@ class ResourceService:
         ))
 
     @staticmethod
-    def debit_coin(
+    async def debit_coin(
         session: AsyncSession,
         resources: Resource | None,
         *,
@@ -45,8 +63,7 @@ class ResourceService:
         reference_type: str | None = None,
         reference_id: int | None = None,
     ) -> None:
-        if resources is None:
-            raise ResourceNotFound
+        resources = await ResourceService._lock(session, resources, user_id)
         if amount < 0:
             raise ValueError("amount must be non-negative")
         if resources.coin < amount:
@@ -68,7 +85,7 @@ class ResourceService:
         )
 
     @staticmethod
-    def debit_diamond(
+    async def debit_diamond(
         session: AsyncSession,
         resources: Resource | None,
         *,
@@ -78,8 +95,7 @@ class ResourceService:
         reference_type: str | None = None,
         reference_id: int | None = None,
     ) -> None:
-        if resources is None:
-            raise ResourceNotFound
+        resources = await ResourceService._lock(session, resources, user_id)
         if amount < 0:
             raise ValueError("amount must be non-negative")
         if resources.diamond < amount:
@@ -101,7 +117,7 @@ class ResourceService:
         )
 
     @staticmethod
-    def credit_banana(
+    async def credit_banana(
         session: AsyncSession,
         resources: Resource | None,
         *,
@@ -111,8 +127,7 @@ class ResourceService:
         reference_type: str | None = None,
         reference_id: int | None = None,
     ) -> None:
-        if resources is None:
-            raise ResourceNotFound
+        resources = await ResourceService._lock(session, resources, user_id)
         if amount < 0:
             raise ValueError("amount must be non-negative")
         before = getattr(resources, "banana", 0)
@@ -131,7 +146,7 @@ class ResourceService:
         )
 
     @staticmethod
-    def credit_coin(
+    async def credit_coin(
         session: AsyncSession,
         resources: Resource | None,
         *,
@@ -141,8 +156,7 @@ class ResourceService:
         reference_type: str | None = None,
         reference_id: int | None = None,
     ) -> None:
-        if resources is None:
-            raise ResourceNotFound
+        resources = await ResourceService._lock(session, resources, user_id)
         if amount < 0:
             raise ValueError("amount must be non-negative")
 
@@ -162,7 +176,7 @@ class ResourceService:
         )
 
     @staticmethod
-    def credit_diamond(
+    async def credit_diamond(
         session: AsyncSession,
         resources: Resource | None,
         *,
@@ -172,8 +186,7 @@ class ResourceService:
         reference_type: str | None = None,
         reference_id: int | None = None,
     ) -> None:
-        if resources is None:
-            raise ResourceNotFound
+        resources = await ResourceService._lock(session, resources, user_id)
         if amount < 0:
             raise ValueError("amount must be non-negative")
         before = resources.diamond

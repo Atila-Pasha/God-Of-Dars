@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ResourceType
 from app.models.study_pack import StudyPack
 from app.models.study_session import StudySession
+from app.models.user import User
 from app.services.reward_service import RewardService, RewardSpec
 
 
@@ -60,6 +61,11 @@ class StudyService:
         return result.scalar_one_or_none()
 
     async def start(self, session: AsyncSession, user_id: int, pack_key: str, *, now: datetime | None = None) -> StudyStartResult:
+        user = await session.scalar(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        if user is None:
+            raise StudyPackNotFound
         pack = await self.get_pack(session, pack_key)
         if pack is None:
             raise StudyPackNotFound

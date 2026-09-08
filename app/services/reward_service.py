@@ -55,6 +55,11 @@ class RewardService:
         if spec is None:
             return None
 
+        resources = await self._resources_for_update(session, user_id)
+        if resources is None:
+            raise RewardNotConfigured
+
+        # Serialize a user's balance before checking the idempotency key.
         existing = await self.repository.get_by_reference(
             session,
             user_id=user_id,
@@ -67,15 +72,11 @@ class RewardService:
         if existing is not None:
             return RewardResult(reward=existing, created=False)
 
-        resources = await self._resources_for_update(session, user_id)
-        if resources is None:
-            raise RewardNotConfigured
-
         field = spec.resource_type.value.lower()
         before = getattr(resources, field)
         after = before + spec.amount
         if spec.resource_type is ResourceType.COIN:
-            ResourceService.credit_coin(
+            await ResourceService.credit_coin(
                 session,
                 resources,
                 user_id=user_id,

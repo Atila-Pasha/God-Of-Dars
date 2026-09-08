@@ -51,7 +51,7 @@ class HospitalService:
         if cost is None:
             raise OperationNotConfigured
         resources = await self.repository.get_resources_for_update(session, user_id)
-        ResourceService.debit(
+        await ResourceService.debit(
             session, resources, user_id=user_id, resource_type=ResourceType.DIAMOND,
             amount=cost, reason="TEACHER_INSTANT_RECOVERY",
             reference_type="USER_TEACHER", reference_id=teacher.id,

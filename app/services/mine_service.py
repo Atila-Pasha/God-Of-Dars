@@ -85,6 +85,7 @@ class MineService:
             mine.today = now.date()
             mine.today_coin = mine.today_diamond = mine.today_banana = 0
         elapsed_minutes = max(0, int((now - last).total_seconds() // 60))
+        capped = elapsed_minutes > self.config.mine_max_catchup_minutes
         elapsed_minutes = min(elapsed_minutes, self.config.mine_max_catchup_minutes)
         if elapsed_minutes == 0:
             return 0
@@ -99,7 +100,8 @@ class MineService:
             if amount == 0:
                 continue
             setattr(mine, f"today_{field}", getattr(mine, f"today_{field}") + amount)
-        mine.last_collected_at = last + timedelta(minutes=elapsed_minutes)
+        # Discard old backlog once the catch-up ceiling is reached.
+        mine.last_collected_at = now if capped else last + timedelta(minutes=elapsed_minutes)
         return elapsed_minutes
 
     async def collect(
@@ -126,15 +128,15 @@ class MineService:
         amounts = (mine.today_coin, mine.today_diamond, mine.today_banana)
         mine.collection_count += 1
         collection_event_id = f"mine:{mine.id}:collection:{mine.collection_count}"
-        ResourceService.credit_coin(
+        await ResourceService.credit_coin(
             session, resources, user_id=user_id, amount=amounts[0],
             reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
         )
-        ResourceService.credit_diamond(
+        await ResourceService.credit_diamond(
             session, resources, user_id=user_id, amount=amounts[1],
             reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
         )
-        ResourceService.credit_banana(
+        await ResourceService.credit_banana(
             session, resources, user_id=user_id, amount=amounts[2],
             reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
         )
@@ -185,7 +187,7 @@ class MineService:
             if "locked" in message.lower():
                 raise MineLevelLocked from exc
             raise MineUpgradeUnavailable from exc
-        ResourceService.debit_diamond(
+        await ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
@@ -194,7 +196,7 @@ class MineService:
             reference_type="MINE",
             reference_id=mine.id,
         )
-        ResourceService.credit_banana(
+        await ResourceService.credit_banana(
             session,
             resources,
             user_id=user_id,

@@ -151,7 +151,7 @@ class ShieldService:
         owned.quantity = 1
         owned.is_equipped = True
         owned.active_until = now + timedelta(minutes=shield.duration_minutes)
-        ResourceService.debit(
+        await ResourceService.debit(
             session,
             resources,
             user_id=user_id,

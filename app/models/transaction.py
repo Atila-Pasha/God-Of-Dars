@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     String,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +29,20 @@ class Transaction(Base):
         Index("ix_transactions_user_id", "user_id"),
         Index("ix_transactions_created_at", "created_at"),
         Index("ix_transactions_user_created_at", "user_id", "created_at"),
+        Index(
+            "uq_attack_transaction_per_resource",
+            "user_id",
+            "resource_type",
+            "reference_type",
+            "reference_id",
+            unique=True,
+            postgresql_where=text(
+                "reference_type = 'ATTACK' AND reference_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "reference_type = 'ATTACK' AND reference_id IS NOT NULL"
+            ),
+        ),
         CheckConstraint(
             "balance_before IS NULL OR balance_before >= 0",
             name="ck_transactions_before_non_negative",

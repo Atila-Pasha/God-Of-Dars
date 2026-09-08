@@ -44,7 +44,7 @@ class LevelService:
             if self.config.level_progression.reset_xp_on_level_up
             else cost
         )
-        ResourceService.debit(
+        await ResourceService.debit(
             session,
             resources,
             user_id=user.id,

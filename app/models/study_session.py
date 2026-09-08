@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -10,7 +10,16 @@ from app.db.base import Base
 
 class StudySession(Base):
     __tablename__ = "study_sessions"
-    __table_args__ = (Index("ix_study_sessions_user_active", "user_id", "completed_at"),)
+    __table_args__ = (
+        Index("ix_study_sessions_user_active", "user_id", "completed_at"),
+        Index(
+            "uq_study_sessions_active_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("completed_at IS NULL"),
+            sqlite_where=text("completed_at IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

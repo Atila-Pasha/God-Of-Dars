@@ -111,7 +111,7 @@ class CastleService:
         quote = self.repair_quote(castle)
         if quote.missing_strength == 0:
             return castle
-        ResourceService.debit_diamond(
+        await ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
@@ -152,7 +152,7 @@ class CastleService:
         if resources.diamond < upgrade.diamond_cost:
             raise InsufficientCoins
 
-        ResourceService.debit_diamond(
+        await ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
@@ -161,7 +161,7 @@ class CastleService:
             reference_type="CASTLE",
             reference_id=castle.id,
         )
-        ResourceService.credit_banana(
+        await ResourceService.credit_banana(
             session,
             resources,
             user_id=user_id,

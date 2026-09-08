@@ -10,7 +10,9 @@ class TeacherStatus(str, Enum):
 
 class AttackStatus(str, Enum):
     PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
     RESOLVED = "RESOLVED"
+    FAILED = "FAILED"
 
 
 class QuestionStatus(str, Enum):
