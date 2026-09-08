@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 from contextvars import ContextVar
 from functools import wraps
 from typing import Any
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.types import MessageEntity, ReplyKeyboardMarkup, ReplyKeyboardRemove
+
+from app.core.config import settings
 
 # The visible character is retained as a fallback. Telegram replaces it with
 # the custom emoji when the entity is present, while old clients still see a
@@ -99,6 +102,14 @@ CUSTOM_EMOJI_IDS: dict[str, str] = {
 _group_reply_context: ContextVar[tuple[int, int] | None] = ContextVar(
     "godofdars_group_reply_context", default=None
 )
+_telegram_api_semaphore: asyncio.Semaphore | None = None
+
+
+def _telegram_semaphore() -> asyncio.Semaphore:
+    global _telegram_api_semaphore
+    if _telegram_api_semaphore is None:
+        _telegram_api_semaphore = asyncio.Semaphore(settings.TELEGRAM_API_CONCURRENCY)
+    return _telegram_api_semaphore
 
 
 def set_group_reply_context(chat_id: int, message_id: int):
@@ -239,6 +250,21 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
                 button.text = strip_custom_emoji_fallbacks(text)
 
 
+async def _send_message_with_reply_fallback(
+    sender: Any,
+    bot: Bot,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Any:
+    try:
+        return await sender(bot, *args, **kwargs)
+    except TelegramBadRequest as exc:
+        if "message to be replied not found" not in str(exc).lower():
+            raise
+        kwargs.pop("reply_to_message_id", None)
+        return await sender(bot, *args, **kwargs)
+
+
 def install() -> None:
     """Install one process-wide outgoing-message decorator for all bots."""
     if getattr(Bot, "_godofdars_custom_emoji_installed", False):
@@ -255,7 +281,9 @@ def install() -> None:
         _add_group_reply(kwargs)
         _decorate(kwargs, "text", "entities")
         _decorate_markup(kwargs)
-        return await original_send_message(self, *args, **kwargs)
+        return await _send_message_with_reply_fallback(
+            original_send_message, self, args, kwargs
+        )
 
     @wraps(original_edit_message_text)
     async def edit_message_text(self: Bot, *args: Any, **kwargs: Any) -> Any:
@@ -279,18 +307,40 @@ def install() -> None:
     @wraps(original_call)
     async def call(self: Bot, method: Any, *args: Any, **kwargs: Any) -> Any:
         _decorate_method(method)
-        try:
-            return await original_call(self, method, *args, **kwargs)
-        except TelegramBadRequest as exc:
-            # Callback queries expire quickly. A late acknowledgement must not
-            # crash polling after the requested database operation completed.
-            description = str(exc).lower()
-            if (
-                method.__class__.__name__ == "AnswerCallbackQuery"
-                and ("query is too old" in description or "query id is invalid" in description)
-            ):
-                return None
-            raise
+        reply_fallback_used = False
+        for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
+            try:
+                async with _telegram_semaphore():
+                    return await original_call(self, method, *args, **kwargs)
+            except TelegramRetryAfter as exc:
+                if attempt >= settings.TELEGRAM_RETRY_AFTER_MAX:
+                    raise
+                await asyncio.sleep(exc.retry_after)
+            except TelegramBadRequest as exc:
+                description = str(exc).lower()
+                if (
+                    not reply_fallback_used
+                    and "message to be replied not found" in description
+                    and hasattr(method, "reply_to_message_id")
+                    and getattr(method, "reply_to_message_id", None) is not None
+                ):
+                    # Group replies can target a prompt that was just deleted
+                    # after a purchase. Retry the same message without a
+                    # stale reply target instead of failing the update.
+                    method.reply_to_message_id = None
+                    reply_fallback_used = True
+                    continue
+                # Callback queries expire quickly. A late acknowledgement must
+                # not crash polling after the database operation completed.
+                if (
+                    method.__class__.__name__ == "AnswerCallbackQuery"
+                    and (
+                        "query is too old" in description
+                        or "query id is invalid" in description
+                    )
+                ):
+                    return None
+                raise
 
     Bot.send_message = send_message  # type: ignore[method-assign]
     Bot.edit_message_text = edit_message_text  # type: ignore[method-assign]

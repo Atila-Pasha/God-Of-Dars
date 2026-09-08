@@ -108,6 +108,14 @@ def _teacher_purchase_error(error: Exception) -> str:
     return "خرید دبیر در حال حاضر امکان‌پذیر نیست."
 
 
+async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
+    message = callback.message
+    if message is None or message.chat.type not in {"group", "supergroup"}:
+        return
+    with suppress(TelegramAPIError):
+        await message.delete()
+
+
 async def _user(session: AsyncSession, telegram_user_id: int):
     return await user_service.get_active_by_telegram_user_id(session, telegram_user_id)
 
@@ -644,13 +652,21 @@ async def confirmation_callback_handler(
             await _hospital_view(callback, session)
             notice = "دبیر با پرداخت الماس فوراً بهبود پیدا کرد."
         elif callback_data.action == "teacher_buy":
-            await teacher_service.buy(session, user.id, callback_data.target_id)
+            purchased_teacher = await teacher_service.buy(
+                session, user.id, callback_data.target_id
+            )
             if callback_data.origin == "buffet":
                 from app.bot.handlers.buffet import _teacher_shop_view
 
                 await _teacher_shop_view(callback, session)
             else:
                 await _teachers_view(callback, session)
+            if callback.message is not None:
+                await _delete_group_purchase_prompt(callback)
+                await callback.message.answer(
+                    f"✅ دبیر «{purchased_teacher.teacher.name}» با موفقیت خریداری شد.",
+                    disable_group_reply=True,
+                )
             notice = "دبیر با موفقیت خریداری شد."
         elif callback_data.action == "teacher_upgrade":
             await teacher_service.upgrade(session, user.id, callback_data.target_id)
@@ -678,6 +694,8 @@ async def confirmation_callback_handler(
         TeacherSlotLocked,
         InsufficientCoins,
     ) as error:
+        if callback_data.action == "teacher_buy":
+            await _delete_group_purchase_prompt(callback)
         await callback.answer(_teacher_purchase_error(error), show_alert=True)
     except SchoolError:
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)

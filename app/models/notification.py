@@ -3,7 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, String, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    func,
+    text,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +29,18 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         Index("ix_notifications_status_next_attempt", "status", "next_attempt_at"),
+        Index(
+            "ix_notifications_due_order",
+            "created_at",
+            "id",
+            postgresql_where=text("status IN ('PENDING', 'FAILED')"),
+        ),
+        Index(
+            "ix_notifications_processing_at",
+            "processing_at",
+            "id",
+            postgresql_where=text("status = 'PROCESSING'"),
+        ),
         CheckConstraint("attempts >= 0", name="ck_notifications_attempts_non_negative"),
     )
 

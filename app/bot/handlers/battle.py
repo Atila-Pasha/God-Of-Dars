@@ -277,6 +277,8 @@ async def attack_confirmation(
             target_id=callback_data.target_id,
             teacher_ids=teacher_ids,
         )
+        # Attack creation is complete before Telegram cleanup/stickers/messages.
+        await session.commit()
         with suppress(TelegramAPIError):
             await callback.message.delete()
         reply_parameters = (

@@ -37,6 +37,18 @@ class Attack(Base):
         Index("ix_attacks_status", "status"),
         Index("ix_attacks_resolve_at", "resolve_at"),
         Index("ix_attacks_status_resolve_at", "status", "resolve_at"),
+        Index(
+            "ix_attacks_failed_next_retry",
+            "next_retry_at",
+            "id",
+            postgresql_where=text("status = 'FAILED'"),
+        ),
+        Index(
+            "ix_attacks_processing_at",
+            "processing_at",
+            "id",
+            postgresql_where=text("status = 'PROCESSING'"),
+        ),
         Index("ix_attacks_attack_command_id", "attack_command_id"),
         Index(
             "uq_pending_attack_per_teacher",

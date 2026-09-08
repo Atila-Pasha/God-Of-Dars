@@ -33,7 +33,7 @@ from app.services.mine_service import MineService
 from app.services.reward_service import RewardService, RewardSpec
 from app.services.daily_quest_service import DailyQuestService
 from app.services.referral_service import ReferralService
-from app.services.school_errors import InsufficientCoins
+from app.services.school_errors import AttackInProgress, InsufficientCoins
 from app.services.study_service import StudyAlreadyActive, StudyService
 from app.services.notification_service import NotificationService
 from app.services.shield_service import ShieldService
@@ -366,6 +366,301 @@ async def test_two_postgres_workers_resolve_one_attack() -> None:
                     await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
 
 
+async def _attack_fixture() -> tuple[int, int, int, int]:
+    attacker_id = await _user()
+    target_id = await _user(coin=100)
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            teacher = Teacher(
+                name=f"active-teacher-{uuid4().hex[:8]}",
+                damage=10,
+                max_hp=100,
+                purchase_price=1,
+                upgrade_price=1,
+            )
+            attacker = await session.get(User, attacker_id)
+            target = await session.get(User, target_id)
+            attacker.castle = Castle(strength=100, defense=Defense(defense_power=0))
+            target.castle = Castle(strength=100, defense=Defense(defense_power=0))
+            owned = UserTeacher(
+                user_id=attacker_id,
+                teacher=teacher,
+                current_hp=100,
+                status=TeacherStatus.ACTIVE,
+            )
+            session.add(owned)
+            await session.flush()
+            return attacker_id, target_id, owned.id, teacher.id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,retryable",
+    [
+        (AttackStatus.PROCESSING, True),
+        (AttackStatus.FAILED, True),
+        (AttackStatus.FAILED, False),
+    ],
+)
+async def test_active_attack_states_control_new_attack(
+    status: AttackStatus, retryable: bool
+) -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    attack_id = None
+    try:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                attack = Attack(
+                    attacker_id=attacker_id,
+                    target_id=target_id,
+                    teacher_id=owned_id,
+                    status=status,
+                    processing_at=datetime.now(UTC) if status is AttackStatus.PROCESSING else None,
+                    failed_at=datetime.now(UTC) if status is AttackStatus.FAILED else None,
+                    next_retry_at=(
+                        datetime.now(UTC) + timedelta(minutes=1)
+                        if retryable and status is AttackStatus.FAILED
+                        else None
+                    ),
+                    resolve_at=datetime.now(UTC),
+                    teacher_damage_snapshot=10,
+                    target_castle_strength_snapshot=100,
+                    target_defense_power_snapshot=0,
+                )
+                session.add(attack)
+                await session.flush()
+                attack_id = attack.id
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                if retryable:
+                    with pytest.raises(AttackInProgress):
+                        await AttackService().start_attack_by_ids(
+                            session,
+                            attacker_telegram_id=(
+                                await session.scalar(
+                                    select(User.telegram_user_id).where(User.id == attacker_id)
+                                )
+                            ),
+                            target_id=target_id,
+                            teacher_ids=[owned_id],
+                        )
+                else:
+                    result = await AttackService().start_attack_by_ids(
+                        session,
+                        attacker_telegram_id=(
+                            await session.scalar(
+                                select(User.telegram_user_id).where(User.id == attacker_id)
+                            )
+                        ),
+                        target_id=target_id,
+                        teacher_ids=[owned_id],
+                    )
+                    assert result.resolve_at > datetime.now(UTC)
+    finally:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await session.execute(delete(Attack).where(Attack.id == attack_id))
+                await session.execute(
+                    delete(Attack).where(
+                        Attack.attacker_id.in_([attacker_id, target_id])
+                    )
+                )
+                await session.execute(
+                    delete(Transaction).where(
+                        Transaction.user_id.in_([attacker_id, target_id])
+                    )
+                )
+                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
+async def test_concurrent_attack_starts_are_serialized_by_user_lock() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    telegram_id = None
+    try:
+        async with AsyncSessionLocal() as session:
+            telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == attacker_id)
+            )
+
+        async def start():
+            async with AsyncSessionLocal() as session:
+                try:
+                    async with session.begin():
+                        await AttackService().start_attack_by_ids(
+                            session,
+                            attacker_telegram_id=telegram_id,
+                            target_id=target_id,
+                            teacher_ids=[owned_id],
+                        )
+                    return True
+                except AttackInProgress:
+                    return False
+
+        assert sorted(await asyncio.gather(start(), start())) == [False, True]
+        async with AsyncSessionLocal() as session:
+            count = await session.scalar(
+                select(func.count(Attack.id)).where(
+                    Attack.attacker_id == attacker_id,
+                    Attack.status == AttackStatus.PENDING,
+                )
+            )
+            assert count == 1
+    finally:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await session.execute(delete(Attack).where(Attack.attacker_id == attacker_id))
+                await session.execute(delete(Transaction).where(Transaction.user_id.in_([attacker_id, target_id])))
+                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
+async def test_opposing_direct_attacks_follow_shared_lock_order() -> None:
+    first_id, second_id, first_teacher_id, first_catalog_id = await _attack_fixture()
+    second_teacher_id = second_catalog_id = None
+    try:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                teacher = Teacher(
+                    name=f"reverse-teacher-{uuid4().hex[:8]}",
+                    damage=10,
+                    max_hp=100,
+                    purchase_price=1,
+                    upgrade_price=1,
+                )
+                owned = UserTeacher(
+                    user_id=second_id,
+                    teacher=teacher,
+                    current_hp=100,
+                    status=TeacherStatus.ACTIVE,
+                )
+                session.add(owned)
+                await session.flush()
+                second_teacher_id = owned.id
+                second_catalog_id = teacher.id
+                first_telegram_id = await session.scalar(
+                    select(User.telegram_user_id).where(User.id == first_id)
+                )
+                second_telegram_id = await session.scalar(
+                    select(User.telegram_user_id).where(User.id == second_id)
+                )
+
+        async def attack(telegram_id, target_id, teacher_id):
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    return await AttackService().attack_by_ids(
+                        session,
+                        attacker_telegram_id=telegram_id,
+                        target_id=target_id,
+                        teacher_id=teacher_id,
+                    )
+
+        results = await asyncio.gather(
+            attack(first_telegram_id, second_id, first_teacher_id),
+            attack(second_telegram_id, first_id, second_teacher_id),
+        )
+        assert len(results) == 2
+    finally:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await session.execute(
+                    delete(Attack).where(
+                        Attack.attacker_id.in_([first_id, second_id])
+                    )
+                )
+                await session.execute(
+                    delete(Transaction).where(
+                        Transaction.user_id.in_([first_id, second_id])
+                    )
+                )
+                await session.execute(delete(User).where(User.id.in_([first_id, second_id])))
+                await session.execute(
+                    delete(Teacher).where(Teacher.id == first_catalog_id)
+                )
+                if second_catalog_id is not None:
+                    await session.execute(
+                        delete(Teacher).where(Teacher.id == second_catalog_id)
+                    )
+
+
+@pytest.mark.asyncio
+async def test_attack_resource_lock_prevents_stale_reward_overwrite() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    attack_id = None
+    paused = asyncio.Event()
+    reward_started = asyncio.Event()
+    release = asyncio.Event()
+    service = AttackService()
+    original_receive = service.castle_service.receive_attack_damage
+
+    async def receive_and_pause(session, user_id, incoming_damage):
+        result = await original_receive(session, user_id, incoming_damage)
+        paused.set()
+        await reward_started.wait()
+        release.set()
+        return result
+
+    service.castle_service.receive_attack_damage = receive_and_pause
+    try:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                attack = Attack(
+                    attacker_id=attacker_id,
+                    target_id=target_id,
+                    teacher_id=owned_id,
+                    status=AttackStatus.PENDING,
+                    resolve_at=datetime.now(UTC),
+                    teacher_damage_snapshot=10,
+                    target_castle_strength_snapshot=100,
+                    target_defense_power_snapshot=0,
+                )
+                session.add(attack)
+                await session.flush()
+                attack_id = attack.id
+
+        async def resolve():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    return await service.resolve_pending_attack(session, attack_id)
+
+        async def grant():
+            await paused.wait()
+            reward_started.set()
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    await RewardService().grant(
+                        session,
+                        user_id=target_id,
+                        spec=RewardSpec(ResourceType.COIN, 7),
+                        source="CONCURRENT_TEST",
+                        reference_type="TEST",
+                        reference_id=attack_id,
+                    )
+
+        await asyncio.gather(resolve(), grant())
+        async with AsyncSessionLocal() as session:
+            final_balance = await session.scalar(
+                select(Resource.coin).where(Resource.user_id == target_id)
+            )
+            target_ledger = await session.scalars(
+                select(Transaction.amount).where(
+                    Transaction.user_id == target_id,
+                    Transaction.resource_type == ResourceType.COIN,
+                )
+            )
+            assert final_balance == 100 + sum(target_ledger)
+    finally:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await session.execute(delete(Attack).where(Attack.id == attack_id))
+                await session.execute(delete(Transaction).where(Transaction.user_id.in_([attacker_id, target_id])))
+                await session.execute(delete(Reward).where(Reward.user_id.in_([attacker_id, target_id])))
+                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
 @pytest.mark.asyncio
 async def test_postgres_deadlock_is_real_and_attack_retry_is_bounded() -> None:
     first_id = await _user()
@@ -615,6 +910,45 @@ async def test_notification_failure_retries_and_preserves_idempotency() -> None:
             assert row.status is NotificationStatus.SENT
             assert row.attempts == 2
             assert bot.send_message.await_count == 2
+    finally:
+        await _cleanup([user_id])
+
+
+@pytest.mark.asyncio
+async def test_notification_crash_window_is_at_least_once() -> None:
+    user_id = await _user()
+    deliveries = []
+    bot = AsyncMock()
+
+    async def delivered_then_crash(**kwargs):
+        deliveries.append(kwargs)
+        raise RuntimeError("crash after provider accepted message")
+
+    bot.send_message = AsyncMock(side_effect=delivered_then_crash)
+    try:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await NotificationService().enqueue(
+                    session,
+                    notification_type="TEST",
+                    recipient_user_id=user_id,
+                    idempotency_key="TEST:notification:crash-window",
+                    payload={"chat_id": 123, "text": "may duplicate"},
+                )
+        await process_due_notifications(bot, batch_size=1)
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                row = await session.scalar(
+                    select(Notification)
+                    .where(
+                        Notification.idempotency_key
+                        == "TEST:notification:crash-window"
+                    )
+                    .with_for_update()
+                )
+                row.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+        await process_due_notifications(bot, batch_size=1)
+        assert len(deliveries) == 2
     finally:
         await _cleanup([user_id])
 

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     BOT_CONCURRENCY_LIMIT: int = Field(default=100, ge=1)
     ADMIN_CONCURRENCY_LIMIT: int = Field(default=10, ge=1)
     TELEGRAM_HTTP_LIMIT: int = Field(default=100, ge=1)
+    TELEGRAM_API_CONCURRENCY: int = Field(default=30, ge=1)
+    TELEGRAM_RETRY_AFTER_MAX: int = Field(default=3, ge=0)
     WORKER_COUNT: int = Field(default=4, ge=1)
     WORKER_POLL_INTERVAL: float = Field(default=2.0, gt=0)
     WORKER_BATCH_SIZE: int = Field(default=100, ge=1)

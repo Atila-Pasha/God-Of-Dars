@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from datetime import UTC, datetime
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +68,14 @@ RESOURCE_LABELS = {
     ResourceType.COIN: "طلا",
     ResourceType.DIAMOND: "الماس",
 }
+
+
+async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
+    message = callback.message
+    if message is None or message.chat.type not in {"group", "supergroup"}:
+        return
+    with suppress(TelegramAPIError):
+        await message.delete()
 
 
 def _shield_currency(shield) -> str:
@@ -216,7 +226,7 @@ async def buffet_conversion_message(
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
-@router.message(F.text.in_({"خرید سپر", "🛡 خرید سپر"}))
+@router.message(F.text == "🛡 خرید سپر")
 async def buffet_shields_message(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
@@ -227,6 +237,13 @@ async def buffet_shields_message(
         await _shields_view(message, session)
     except (UserInactiveError, SchoolUserNotFound):
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
+
+
+@router.message(F.text == "خرید سپر")
+async def invalid_shield_purchase_message(
+    message: Message,
+) -> None:
+    await message.answer("فرمت صحیح: خرید سپر {اسم سپر}")
 
 
 @router.message(F.text.in_({"خرید دبیر", "👨‍🏫 خرید دبیر"}))
@@ -434,6 +451,7 @@ async def shield_callback(
             "در حال حاضر یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
             show_alert=True,
         )
+        await _delete_group_purchase_prompt(callback)
     except (
         ShieldNotFound,
         ShieldNotPurchasable,
@@ -457,14 +475,19 @@ async def shield_purchase_callback(
             session, callback.from_user.id
         )
         if callback_data.decision == "cancel":
-            await callback.message.delete()
+            with suppress(TelegramAPIError):
+                await callback.message.delete()
             await callback.answer("خرید لغو شد.")
             return
         shield = await shield_service.get_shield(session, callback_data.shield_id)
         if shield is None:
             raise ShieldNotFound
         purchase = await shield_service.buy(session, user.id, shield.id)
-        await callback.message.delete()
+        # The purchase is durable before Telegram I/O starts. A slow or
+        # deleted group message must not hold the database connection.
+        await session.commit()
+        with suppress(TelegramAPIError):
+            await callback.message.delete()
         await callback.message.answer(
             f"✅ سپر «{purchase.shield.name}» خریداری شد.\n"
             f"🛡 مدت محافظت: {purchase.shield.duration_minutes} دقیقه\n"

@@ -19,7 +19,7 @@ from app.repositories.teacher import TeacherRepository
 from app.repositories.user import UserRepository
 from app.services.castle_service import CastleService
 from app.services.daily_quest_service import DailyQuestService
-from app.services.lock_order import lock_users_ordered
+from app.services.lock_order import lock_attack_dependencies, lock_users_ordered
 from app.services.school_errors import (
     AttackerNotRegistered,
     AttackInProgress,
@@ -89,6 +89,28 @@ class AttackService:
         self.castle_service = CastleService(self.castles, config=self.config)
 
     @staticmethod
+    async def _ensure_no_active_attack(
+        session: AsyncSession, attacker_id: int
+    ) -> None:
+        active = await session.scalar(
+            select(Attack)
+            .where(
+                Attack.attacker_id == attacker_id,
+                (
+                    Attack.status.in_(
+                        (AttackStatus.PENDING, AttackStatus.PROCESSING)
+                    )
+                    | (
+                        (Attack.status == AttackStatus.FAILED)
+                        & Attack.next_retry_at.is_not(None)
+                    )
+                ),
+            )
+        )
+        if active is not None:
+            raise AttackInProgress
+
+    @staticmethod
     async def _claim_attack_xp(
         session: AsyncSession, *, attack_command_id: str | None, attack_id: int
     ) -> bool:
@@ -135,6 +157,8 @@ class AttackService:
         attacker, target = await lock_users_ordered(
             session, (attacker, target), repository=self.users
         )
+        await lock_attack_dependencies(session, (attacker, target))
+        await self._ensure_no_active_attack(session, attacker.id)
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_username(
@@ -166,6 +190,8 @@ class AttackService:
         attacker, target = await lock_users_ordered(
             session, (attacker, target), repository=self.users
         )
+        await lock_attack_dependencies(session, (attacker, target))
+        await self._ensure_no_active_attack(session, attacker.id)
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_telegram_id(
@@ -227,6 +253,8 @@ class AttackService:
         attacker, target = await lock_users_ordered(
             session, (attacker, target), repository=self.users
         )
+        await lock_attack_dependencies(session, (attacker, target))
+        await self._ensure_no_active_attack(session, attacker.id)
         if await self.castle_service.shield_service.has_active_shield(
             session, target.id
         ):
@@ -267,16 +295,8 @@ class AttackService:
         ):
             raise ShieldAlreadyActive
 
-        active_attack = await session.scalar(
-            select(Attack)
-            .where(
-                Attack.attacker_id == attacker.id,
-                Attack.status == AttackStatus.PENDING,
-            )
-            .with_for_update()
-        )
-        if active_attack is not None:
-            raise AttackInProgress
+        await lock_attack_dependencies(session, (attacker, target))
+        await self._ensure_no_active_attack(session, attacker.id)
 
         selected_ids = list(dict.fromkeys(teacher_ids))
         if not selected_ids:
@@ -359,6 +379,7 @@ class AttackService:
             attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
             attack.is_successful = False
             return None
+        _, castles = await lock_attack_dependencies(session, (attacker, target))
         if await self.castle_service.shield_service.has_active_shield(
             session, target.id
         ):
@@ -369,6 +390,9 @@ class AttackService:
             attack.is_successful = False
             return None
 
+        target_castle = castles.get(target.id)
+        if target_castle is None:
+            raise AttackTargetNotRegistered
         teacher = await self.teachers.get_owned_for_update(
             session, attacker.id, attack.teacher_id
         ) if attack.teacher_id is not None else None
@@ -585,12 +609,10 @@ class AttackService:
                 teacher.current_hp = 0
                 teacher.status = TeacherStatus.DISABLED
                 raise InvalidTeacherState
-        await session.execute(
-            select(Resource)
-            .where(Resource.user_id.in_((attacker.id, target.id)))
-            .with_for_update()
-        )
-        target_castle = await self.castle_service.battle_snapshot(session, target.id)
+        _, castles = await lock_attack_dependencies(session, (attacker, target))
+        target_castle = castles.get(target.id)
+        if target_castle is None:
+            raise AttackTargetNotRegistered
         total_damage = 0
         total_injury = 0
         teacher_results = []
@@ -598,7 +620,9 @@ class AttackService:
         for teacher in teachers:
             teacher_damage = self.teacher_service.damage(teacher)
             damage, injury = self.config.attack_rules.resolve(
-                teacher_damage, target_castle.defense_power, teacher.current_hp
+                teacher_damage,
+                target_castle.defense.defense_power,
+                teacher.current_hp,
             )
             castle_damage_result = await self.castle_service.receive_attack_damage(
                 session, target.id, damage
@@ -623,7 +647,7 @@ class AttackService:
                 attack_command_id=attack_command_id,
                 teacher_damage_snapshot=teacher_damage,
                 target_castle_strength_snapshot=target_castle.strength,
-                target_defense_power_snapshot=target_castle.defense_power,
+                target_defense_power_snapshot=target_castle.defense.defense_power,
                 result_damage=applied_damage,
                 loot_coin=loot["loot_coin"],
                 loot_diamond=loot["loot_diamond"],

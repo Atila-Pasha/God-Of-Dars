@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +29,7 @@ class Teacher(Base):
     __tablename__ = "teachers"
     __table_args__ = (
         Index("ix_teachers_name", "name", unique=True),
+        Index("ix_teachers_name_lower", text("lower(name)")),
         CheckConstraint("damage >= 0", name="ck_teachers_damage_non_negative"),
         CheckConstraint("max_hp >= 0", name="ck_teachers_max_hp_non_negative"),
         CheckConstraint(

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +38,7 @@ class User(Base):
     __table_args__ = (
         Index("ix_users_telegram_user_id", "telegram_user_id", unique=True),
         Index("ix_users_username", "username"),
+        Index("ix_users_username_lower", text("lower(username)")),
         Index("ix_users_referrer_id", "referrer_id"),
         CheckConstraint("level >= 1", name="ck_users_level_positive"),
         CheckConstraint(
