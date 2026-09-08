@@ -62,15 +62,28 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                     result = await AttackService().resolve_pending_attack(
                         session, attack_id
                     )
+                    can_upgrade = (
+                        result is not None
+                        and await _can_upgrade_level(
+                            session, result.attacker_telegram_id
+                        )
+                    )
                 if result is None:
                     continue
                 text = _result_text(result)
-                await bot.send_message(result.attacker_telegram_id, text)
-                await _notify_level_upgrade(
-                    bot,
-                    session,
-                    result.attacker_telegram_id,
-                )
+                try:
+                    await bot.send_message(result.attacker_telegram_id, text)
+                    if can_upgrade:
+                        await bot.send_message(
+                            result.attacker_telegram_id,
+                            "🎉 موز کافی داری!\n"
+                            "الان می‌تونی سطح کاربریت رو بالا ببری.",
+                            reply_markup=level_confirmation_keyboard(),
+                        )
+                except TelegramAPIError:
+                    logger.info(
+                        "Could not notify attacker for attack %s", attack_id
+                    )
                 try:
                     await bot.send_message(
                         result.target_telegram_id,
@@ -82,28 +95,20 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                 logger.exception("Could not resolve attack %s", attack_id)
 
 
-async def _notify_level_upgrade(
-    bot: Bot,
+async def _can_upgrade_level(
     session,
     telegram_user_id: int,
-) -> None:
+) -> bool:
     user = await user_repository.get_by_telegram_user_id(session, telegram_user_id)
     if user is None or user.resources is None:
-        return
+        return False
     if user.level >= level_service.config.level_progression.max_level:
-        return
+        return False
     try:
         cost = level_service.upgrade_cost(user.level)
     except OperationNotConfigured:
-        return
-    if user.resources.banana < cost:
-        return
-    await bot.send_message(
-        telegram_user_id,
-        "🎉 موز کافی داری!\n"
-        "الان می‌تونی سطح کاربریت رو بالا ببری.",
-        reply_markup=level_confirmation_keyboard(),
-    )
+        return False
+    return user.resources.banana >= cost
 
 
 async def run_attack_resolver(bot: Bot) -> None:

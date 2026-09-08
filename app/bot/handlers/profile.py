@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from datetime import datetime
 
 from aiogram import F, Router
@@ -362,12 +363,8 @@ async def profile_callback_handler(
             )
             return
         await callback.answer("پیام اطلاعات حذف شد.")
-        try:
+        with suppress(TelegramAPIError):
             await callback.message.delete()
-        except TelegramAPIError:
-            # The message may already have been removed or the bot may lack
-            # delete permission; do not turn that into a polling error.
-            pass
         return
 
     if callback_data.action == "back":
@@ -428,7 +425,9 @@ async def level_confirmation_handler(
     try:
         user_id = await _user_id(session, callback)
         user = await level_service.upgrade(session, user_id)
-        await _show_profile(callback, session)
+        # Keep the post-upgrade view consistent with the compact profile
+        # details opened by the "اطلاعات پروفایل" button.
+        await _show_profile_section(callback, session, "profile")
         await callback.message.answer(f"سطح شما به {user.level} رسید.")
     except InsufficientCoins:
         await callback.message.answer("XP کافی ندارید.")

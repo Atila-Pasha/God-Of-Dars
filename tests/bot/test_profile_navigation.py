@@ -66,3 +66,29 @@ async def test_profile_handler_shows_rich_live_stats(monkeypatch) -> None:
     assert "حمله‌های موفق: ۶" in text
     assert "دقت: ۷۵٪" in text
     assert message.answer.await_args.kwargs["reply_markup"].inline_keyboard
+
+
+@pytest.mark.asyncio
+async def test_level_up_shows_compact_profile_details(monkeypatch) -> None:
+    message = SimpleNamespace(answer=AsyncMock())
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=900),
+        message=message,
+        answer=AsyncMock(),
+    )
+    monkeypatch.setattr(profile, "_user_id", AsyncMock(return_value=7))
+    monkeypatch.setattr(
+        profile.level_service,
+        "upgrade",
+        AsyncMock(return_value=SimpleNamespace(level=5)),
+    )
+    show_profile_section = AsyncMock()
+    monkeypatch.setattr(profile, "_show_profile_section", show_profile_section)
+    session = AsyncMock()
+
+    await profile.level_confirmation_handler(
+        callback, SimpleNamespace(decision="confirm"), session
+    )
+
+    show_profile_section.assert_awaited_once_with(callback, session, "profile")
+    assert message.answer.await_args.args == ("سطح شما به 5 رسید.",)
