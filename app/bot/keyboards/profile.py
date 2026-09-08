@@ -69,7 +69,7 @@ def level_confirmation_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ تأیید ارتقا",
+                    text="✅ افزایش سطح",
                     callback_data=LevelConfirmationCallback(decision="confirm").pack(),
                 ),
                 InlineKeyboardButton(

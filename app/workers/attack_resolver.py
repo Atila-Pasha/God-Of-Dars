@@ -9,13 +9,19 @@ from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.bot.keyboards.profile import level_confirmation_keyboard
 from app.bot.utils.attack import teacher_phrase
 from app.core.enums import AttackStatus
 from app.db.session import AsyncSessionLocal
 from app.models.attack import Attack
+from app.repositories.user import UserRepository
 from app.services.attack_service import AttackService
+from app.services.level_service import LevelService
+from app.services.school_errors import OperationNotConfigured
 
 logger = logging.getLogger(__name__)
+level_service = LevelService()
+user_repository = UserRepository()
 
 
 def _result_text(result) -> str:
@@ -60,6 +66,11 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                     continue
                 text = _result_text(result)
                 await bot.send_message(result.attacker_telegram_id, text)
+                await _notify_level_upgrade(
+                    bot,
+                    session,
+                    result.attacker_telegram_id,
+                )
                 try:
                     await bot.send_message(
                         result.target_telegram_id,
@@ -69,6 +80,30 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                     logger.info("Could not notify target for attack %s", attack_id)
             except SQLAlchemyError:
                 logger.exception("Could not resolve attack %s", attack_id)
+
+
+async def _notify_level_upgrade(
+    bot: Bot,
+    session,
+    telegram_user_id: int,
+) -> None:
+    user = await user_repository.get_by_telegram_user_id(session, telegram_user_id)
+    if user is None or user.resources is None:
+        return
+    if user.level >= level_service.config.level_progression.max_level:
+        return
+    try:
+        cost = level_service.upgrade_cost(user.level)
+    except OperationNotConfigured:
+        return
+    if user.resources.banana < cost:
+        return
+    await bot.send_message(
+        telegram_user_id,
+        "🎉 موز کافی داری!\n"
+        "الان می‌تونی سطح کاربریت رو بالا ببری.",
+        reply_markup=level_confirmation_keyboard(),
+    )
 
 
 async def run_attack_resolver(bot: Bot) -> None:

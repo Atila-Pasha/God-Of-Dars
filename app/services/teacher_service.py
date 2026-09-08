@@ -228,6 +228,8 @@ class TeacherService:
         )
         if owned_teacher is None:
             raise TeacherNotOwned
+        if owned_teacher.current_hp != owned_teacher.teacher.max_hp:
+            raise InvalidTeacherState
         try:
             sell_price = self.config.teacher_sell_price(
                 owned_teacher.teacher.id,
@@ -310,6 +312,8 @@ class TeacherService:
             return False
 
     def can_sell(self, owned_teacher: UserTeacher) -> bool:
+        if owned_teacher.current_hp != owned_teacher.teacher.max_hp:
+            return False
         try:
             self.sell_price(owned_teacher)
         except OperationNotConfigured:

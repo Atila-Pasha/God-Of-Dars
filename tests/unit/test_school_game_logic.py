@@ -16,6 +16,7 @@ from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
     InsufficientCoins,
+    InvalidTeacherState,
     TeacherLocked,
     TeacherSlotLocked,
 )
@@ -226,6 +227,64 @@ async def test_upgrade_rejects_insufficient_diamonds_without_changing_teacher() 
 
     assert owned.level == 1
     assert owned.current_hp == 73
+
+
+def test_injured_teacher_still_shows_sell_option() -> None:
+    model = teacher()
+    owned = owned_teacher(model)
+    service = TeacherService(
+        FakeTeacherRepository(
+            user=user(),
+            resources=SimpleNamespace(coin=0, diamond=0),
+            teacher=model,
+            owned=owned,
+        )
+    )
+
+    assert service.can_sell(owned) is False
+
+
+@pytest.mark.asyncio
+async def test_sell_rejects_teacher_with_missing_hp() -> None:
+    model = teacher()
+    owned = owned_teacher(model)
+    repository = FakeTeacherRepository(
+        user=user(),
+        resources=SimpleNamespace(coin=0, diamond=0),
+        teacher=model,
+        owned=owned,
+    )
+    session = SimpleNamespace(
+        add=lambda item: None, delete=AsyncMock(), flush=AsyncMock()
+    )
+    service = TeacherService(repository)
+
+    with pytest.raises(InvalidTeacherState):
+        await service.sell(session, 10, owned.id)
+
+    session.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fully_recovered_teacher_can_be_sold() -> None:
+    model = teacher()
+    owned = owned_teacher(model)
+    owned.current_hp = model.max_hp
+    repository = FakeTeacherRepository(
+        user=user(),
+        resources=SimpleNamespace(coin=0, diamond=0),
+        teacher=model,
+        owned=owned,
+    )
+    session = SimpleNamespace(
+        add=lambda item: None, delete=AsyncMock(), flush=AsyncMock()
+    )
+    service = TeacherService(repository)
+
+    price = await service.sell(session, 10, owned.id)
+
+    assert price == 20
+    session.delete.assert_awaited_once_with(owned)
 
 
 @pytest.mark.asyncio

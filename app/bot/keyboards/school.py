@@ -290,7 +290,7 @@ def teacher_detail_keyboard(
             )
         ]
     ]
-    if teacher.status is TeacherStatus.ACTIVE and (can_upgrade or can_sell):
+    if teacher.status is TeacherStatus.ACTIVE:
         action_buttons = []
         if can_upgrade:
             action_buttons.append(
@@ -301,15 +301,14 @@ def teacher_detail_keyboard(
                     ).pack(),
                 )
             )
-        if can_sell:
-            action_buttons.append(
-                InlineKeyboardButton(
-                    text="💰 فروش",
-                    callback_data=TeacherCallback(
-                        action="sell", teacher_id=teacher.id
-                    ).pack(),
-                )
+        action_buttons.append(
+            InlineKeyboardButton(
+                text="💰 فروش",
+                callback_data=TeacherCallback(
+                    action="sell", teacher_id=teacher.id
+                ).pack(),
             )
+        )
         rows.append(action_buttons)
     if (
         teacher.status is TeacherStatus.ACTIVE

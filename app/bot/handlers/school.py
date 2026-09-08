@@ -181,12 +181,7 @@ async def _school_view(
         f"({_progress_percent(capacity.owned, capacity.available)})"
     )
     await _send_or_edit(target, text, reply_markup=school_keyboard())
-    if isinstance(target, CallbackQuery) and target.message is not None:
-        await target.message.answer(
-            "مدرسه",
-            reply_markup=section_back_keyboard(),
-        )
-    elif isinstance(target, Message):
+    if isinstance(target, Message):
         await target.answer(
             "مدرسه",
             reply_markup=section_back_keyboard(),
@@ -553,6 +548,12 @@ async def teacher_callback_handler(
             owned = await teacher_service.get_owned(
                 session, user.id, callback_data.teacher_id
             )
+            if owned.current_hp < owned.teacher.max_hp:
+                await callback.answer(
+                    "جان دبیرت باید کامل بهبود پیدا کنه.",
+                    show_alert=True,
+                )
+                return
             price = teacher_service.sell_price(owned)
             await _send_or_edit(
                 callback,
