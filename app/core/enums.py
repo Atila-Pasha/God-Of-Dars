@@ -15,6 +15,13 @@ class AttackStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class NotificationStatus(str, Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
 class QuestionStatus(str, Enum):
     ACTIVE = "ACTIVE"
     ANSWERED = "ANSWERED"

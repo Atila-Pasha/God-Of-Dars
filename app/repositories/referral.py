@@ -5,11 +5,19 @@ from app.models.user import User
 
 
 class ReferralRepository:
+    async def get_by_id_for_update(
+        self, session: AsyncSession, user_id: int
+    ) -> User | None:
+        return await self.get_user_for_update(session, user_id)
+
     async def get_user_for_update(
         self, session: AsyncSession, user_id: int
     ) -> User | None:
         result = await session.execute(
-            select(User).where(User.id == user_id).with_for_update()
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 

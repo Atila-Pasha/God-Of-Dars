@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.models.attack import Attack
     from app.models.castle import Castle
     from app.models.mine import Mine
+    from app.models.notification import Notification
     from app.models.resource import Resource
     from app.models.reward import Reward
     from app.models.study_session import StudySession
@@ -130,4 +131,7 @@ class User(Base):
     referred_users: Mapped[list[User]] = relationship("User", back_populates="referrer")
     study_sessions: Mapped[list[StudySession]] = relationship(
         "StudySession", back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
+    notifications: Mapped[list[Notification]] = relationship(
+        "Notification", back_populates="recipient", passive_deletes=True
     )

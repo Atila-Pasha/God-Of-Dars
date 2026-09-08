@@ -89,6 +89,11 @@ class StudyService:
 
     async def settle(self, session: AsyncSession, user_id: int, *, now: datetime | None = None) -> tuple[StudySession | None, tuple[ResourceType, int] | None]:
         now = now or datetime.now(UTC)
+        user = await session.scalar(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        if user is None:
+            return None, None
         active = await self.active(session, user_id)
         if active is None or active.ends_at > now:
             return active, None

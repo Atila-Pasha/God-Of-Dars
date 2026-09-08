@@ -7,6 +7,7 @@ from aiogram import Bot
 
 from app.core.config import settings
 from app.workers.attack_resolver import resolve_due_attacks
+from app.workers.notification_worker import run_notification_worker
 
 logger = logging.getLogger(__name__)
 
@@ -27,3 +28,4 @@ async def run_workers(bot: Bot) -> None:
     async with asyncio.TaskGroup() as task_group:
         for worker_id in range(settings.WORKER_COUNT):
             task_group.create_task(_attack_worker(bot, worker_id))
+        task_group.create_task(run_notification_worker(bot))

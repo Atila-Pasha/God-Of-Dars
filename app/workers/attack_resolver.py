@@ -5,11 +5,9 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError, SQLAlchemyError
 
-from app.bot.keyboards.profile import level_confirmation_keyboard
 from app.bot.utils.attack import teacher_phrase
 from app.core.enums import AttackStatus
 from app.core.config import settings
@@ -18,12 +16,14 @@ from app.models.attack import Attack
 from app.repositories.user import UserRepository
 from app.services.attack_service import AttackService
 from app.services.level_service import LevelService
+from app.services.notification_service import NotificationService
 from app.services.school_errors import OperationNotConfigured
 from app.services.school_errors import SchoolError
 
 logger = logging.getLogger(__name__)
 level_service = LevelService()
 user_repository = UserRepository()
+notification_service = NotificationService()
 
 
 def _result_text(result) -> str:
@@ -98,29 +98,39 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                             session, result.attacker_telegram_id
                         )
                     )
+                    if result is not None:
+                        text = _result_text(result)
+                        await notification_service.enqueue(
+                            session,
+                            notification_type="ATTACK_RESULT",
+                            recipient_user_id=result.attack.attacker_id,
+                            idempotency_key=f"ATTACK_RESULT:{attack_id}:ATTACKER",
+                            payload={"chat_id": result.attacker_telegram_id, "text": text},
+                        )
+                        await notification_service.enqueue(
+                            session,
+                            notification_type="ATTACK_RESULT",
+                            recipient_user_id=result.attack.target_id,
+                            idempotency_key=f"ATTACK_RESULT:{attack_id}:TARGET",
+                            payload={
+                                "chat_id": result.target_telegram_id,
+                                "text": f"🎯 شما مورد حمله قرار گرفتید!\n\n{text}",
+                            },
+                        )
+                        if can_upgrade:
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="LEVEL_UP_AVAILABLE",
+                                recipient_user_id=result.attack.attacker_id,
+                                idempotency_key=f"ATTACK_LEVEL_UP:{attack_id}:ATTACKER",
+                                payload={
+                                    "chat_id": result.attacker_telegram_id,
+                                    "text": "🎉 موز کافی داری!\nالان می‌تونی سطح کاربریت رو بالا ببری.",
+                                    "level_confirmation": True,
+                                },
+                            )
                 if result is None:
                     continue
-                text = _result_text(result)
-                try:
-                    await bot.send_message(result.attacker_telegram_id, text)
-                    if can_upgrade:
-                        await bot.send_message(
-                            result.attacker_telegram_id,
-                            "🎉 موز کافی داری!\n"
-                            "الان می‌تونی سطح کاربریت رو بالا ببری.",
-                            reply_markup=level_confirmation_keyboard(),
-                        )
-                except TelegramAPIError:
-                    logger.info(
-                        "Could not notify attacker for attack %s", attack_id
-                    )
-                try:
-                    await bot.send_message(
-                        result.target_telegram_id,
-                        f"🎯 شما مورد حمله قرار گرفتید!\n\n{text}",
-                    )
-                except TelegramAPIError:
-                    logger.info("Could not notify target for attack %s", attack_id)
             except SQLAlchemyError as exc:
                 logger.exception("Could not resolve attack %s", attack_id)
                 await _record_failure(session, attack_id, exc)

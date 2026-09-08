@@ -25,6 +25,7 @@ class UserRepository:
             .where(User.id == user_id)
             .options(selectinload(User.resources))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 

@@ -10,6 +10,7 @@ from app.models.reward import Reward
 from app.models.user import User
 from app.repositories.referral import ReferralRepository
 from app.services.reward_service import RewardService, RewardSpec
+from app.services.lock_order import lock_users_ordered
 
 
 class ReferralError(RuntimeError):
@@ -102,19 +103,20 @@ class ReferralService:
 
         # Lock in deterministic ID order.  This prevents a deadlock when two
         # users attempt to refer one another at nearly the same time.
-        users: dict[int, User | None] = {}
-        for user_id in sorted({referred_user_id, referrer_id}):
-            users[user_id] = await self.repository.get_user_for_update(
-                session, user_id
-            )
+        ordered = await lock_users_ordered(
+            session,
+            user_ids=(referred_user_id, referrer_id),
+            repository=self.repository,
+        )
+        users = {user.id: user for user in ordered}
 
-        referred = users[referred_user_id]
+        referred = users.get(referred_user_id)
         if referred is None:
             raise ReferralUserInactive
         if referred.is_active is False:
             raise ReferralUserInactive
 
-        referrer = users[referrer_id]
+        referrer = users.get(referrer_id)
         if referrer is None:
             raise ReferrerNotFound
         if referrer.is_active is False:

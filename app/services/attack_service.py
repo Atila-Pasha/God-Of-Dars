@@ -13,13 +13,13 @@ from app.core.game_logic import GameConfig, game_config
 from app.models.attack import Attack
 from app.models.resource import Resource
 from app.models.transaction import Transaction
-from app.models.user import User
 from app.models.user_teacher import UserTeacher
 from app.repositories.castle import CastleRepository
 from app.repositories.teacher import TeacherRepository
 from app.repositories.user import UserRepository
 from app.services.castle_service import CastleService
 from app.services.daily_quest_service import DailyQuestService
+from app.services.lock_order import lock_users_ordered
 from app.services.school_errors import (
     AttackerNotRegistered,
     AttackInProgress,
@@ -88,17 +88,6 @@ class AttackService:
         self.teacher_service = TeacherService(self.teachers, config=self.config)
         self.castle_service = CastleService(self.castles, config=self.config)
 
-    async def _lock_users_in_order(
-        self, session: AsyncSession, *users
-    ) -> tuple[User, ...]:
-        """Lock every participant in ascending id order to avoid cross-attacks deadlocking."""
-        locked = {}
-        for user_id in sorted({user.id for user in users}):
-            user = await self.users.get_by_id_for_update(session, user_id)
-            if user is not None:
-                locked[user_id] = user
-        return tuple(locked[user.id] for user in users if user.id in locked)
-
     @staticmethod
     async def _claim_attack_xp(
         session: AsyncSession, *, attack_command_id: str | None, attack_id: int
@@ -143,7 +132,9 @@ class AttackService:
         target = await self.users.get_active_by_username(session, target_username)
         if target is None:
             raise AttackTargetNotRegistered
-        attacker, target = await self._lock_users_in_order(session, attacker, target)
+        attacker, target = await lock_users_ordered(
+            session, (attacker, target), repository=self.users
+        )
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_username(
@@ -172,7 +163,9 @@ class AttackService:
             raise AttackerNotRegistered
         if target is None or not target.is_active:
             raise AttackTargetNotRegistered
-        attacker, target = await self._lock_users_in_order(session, attacker, target)
+        attacker, target = await lock_users_ordered(
+            session, (attacker, target), repository=self.users
+        )
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_telegram_id(
@@ -231,7 +224,9 @@ class AttackService:
             raise AttackerNotRegistered
         if target is None or not target.is_active:
             raise AttackTargetNotRegistered
-        attacker, target = await self._lock_users_in_order(session, attacker, target)
+        attacker, target = await lock_users_ordered(
+            session, (attacker, target), repository=self.users
+        )
         if await self.castle_service.shield_service.has_active_shield(
             session, target.id
         ):
@@ -264,7 +259,9 @@ class AttackService:
             raise AttackerNotRegistered
         if target is None or not target.is_active:
             raise AttackTargetNotRegistered
-        attacker, target = await self._lock_users_in_order(session, attacker, target)
+        attacker, target = await lock_users_ordered(
+            session, (attacker, target), repository=self.users
+        )
         if await self.castle_service.shield_service.has_active_shield(
             session, target.id
         ):
