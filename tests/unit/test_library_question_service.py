@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.enums import QuestionScope, QuestionStatus
+from app.core.enums import QuestionScope, QuestionStatus, ResourceType
 from app.models.answer import Answer
 from app.models.group import Group
 from app.models.group_question import GroupQuestion
@@ -17,6 +17,7 @@ from app.services.library_errors import (
     WrongGroup,
 )
 from app.services.question_service import QuestionService
+from app.services.reward_service import RewardSpec
 
 
 class FakeQuestionRepository:
@@ -158,6 +159,41 @@ async def test_group_question_creation_builds_a_group_publication():
     assert result is publication
     repository.create_question.assert_awaited_once()
     repository.create_group_question.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_question_rewards_can_include_banana_xp():
+    question = daily_question(banana_reward=7)
+    rewards = AsyncMock()
+    rewards.grant.return_value = None
+    service = QuestionService(FakeQuestionRepository(question), reward_service=rewards)
+
+    await service._grant_question_rewards(
+        session(),
+        user_id=20,
+        question=question,
+        fallback=RewardSpec(ResourceType.COIN, 1),
+        source="DAILY_QUESTION",
+        reference_id=10,
+    )
+
+    assert rewards.grant.await_count == 1
+    assert rewards.grant.await_args.kwargs["spec"] == RewardSpec(ResourceType.BANANA, 7)
+
+
+@pytest.mark.asyncio
+async def test_banana_reward_is_saved_when_creating_a_question():
+    repository = AsyncMock()
+    repository.create_question.return_value = daily_question(banana_reward=7)
+
+    await QuestionService(repository).create_daily_question(
+        session(),
+        question_text="۲ + ۲ چند است؟",
+        correct_answer="4",
+        banana_reward=7,
+    )
+
+    assert repository.create_question.await_args.kwargs["banana_reward"] == 7
 
 
 def group_fixture():

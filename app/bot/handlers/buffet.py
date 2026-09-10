@@ -501,9 +501,10 @@ async def shield_purchase_callback(
     except ShieldAlreadyActive:
         await session.rollback()
         await callback.answer(
-            "در حال حاضر یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
+            "آقا شما همین حالا یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
             show_alert=True,
         )
+        await _delete_group_purchase_prompt(callback)
     except (ShieldNotFound, ShieldNotPurchasable, UserInactiveError):
         await session.rollback()
         await callback.answer("این سپر دیگر قابل خرید نیست.", show_alert=True)

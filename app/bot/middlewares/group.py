@@ -6,7 +6,7 @@ from time import monotonic
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove, TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,8 +48,8 @@ class GroupAccessMiddleware(BaseMiddleware):
         if isinstance(event, Message) and self._is_group_message(event):
             await self._register_group(event, data.get("session"))
             if not self._message_is_allowed(event):
-                if self._is_menu_input(event):
-                    await self._remove_menu_keyboard(event)
+                # Keep groups quiet for private-menu input and unsupported
+                # commands; a warning for each input only creates spam.
                 return None
             token = set_group_reply_context(event.chat.id, event.message_id)
             try:
@@ -112,30 +112,6 @@ class GroupAccessMiddleware(BaseMiddleware):
             command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
             return command.removeprefix("/").casefold() in ALLOWED_GROUP_COMMANDS
         return text not in MENU_SECTION_LABELS
-
-    @staticmethod
-    def _is_menu_input(message: Message) -> bool:
-        text = (message.text or "").strip()
-        if text in MENU_SECTION_LABELS:
-            return True
-        if text.startswith("/"):
-            command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
-            return command.removeprefix("/").casefold() == "start"
-        return False
-
-    @staticmethod
-    async def _remove_menu_keyboard(message: Message) -> None:
-        try:
-            await message.answer(
-                "منوی ربات در گروه غیرفعال است.",
-                reply_markup=ReplyKeyboardRemove(),
-            )
-        except Exception:  
-            logger.debug(
-                "Could not remove the bot menu keyboard in group %s",
-                message.chat.id,
-                exc_info=True,
-            )
 
     @staticmethod
     def _callback_is_allowed(callback: CallbackQuery) -> bool:

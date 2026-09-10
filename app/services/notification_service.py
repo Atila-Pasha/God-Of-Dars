@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.dialects.postgresql import insert

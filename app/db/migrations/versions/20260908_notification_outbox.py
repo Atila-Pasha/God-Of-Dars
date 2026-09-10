@@ -1,8 +1,8 @@
 """add durable idempotent Telegram notification outbox"""
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision = "20260908_notification_outbox"
 down_revision = "20260908_attack_retry_and_ledger"

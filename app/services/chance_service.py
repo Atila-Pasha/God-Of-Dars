@@ -49,11 +49,11 @@ def _png_captcha(answer: str) -> bytes:
     }
     scale, width, height = 8, len(answer) * 48 + 24, 80
     rows = []
-    for y in range(height):
+    for _y in range(height):
         # PNG scanline filter byte: 0 means "no filter". Values such as 255
         # make Telegram reject the generated image as an invalid PNG.
         row = bytearray([0])
-        for x in range(width):
+        for _x in range(width):
             row.extend((255, 255, 255))
         rows.append(row)
     for index, char in enumerate(answer):

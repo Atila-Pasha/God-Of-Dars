@@ -1,45 +1,45 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class TeacherStatus(str, Enum):
+class TeacherStatus(StrEnum):
     ACTIVE = "ACTIVE"
     INJURED = "INJURED"
     DISABLED = "DISABLED"
     RECOVERING = "RECOVERING"
 
 
-class AttackStatus(str, Enum):
+class AttackStatus(StrEnum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     RESOLVED = "RESOLVED"
     FAILED = "FAILED"
 
 
-class NotificationStatus(str, Enum):
+class NotificationStatus(StrEnum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     SENT = "SENT"
     FAILED = "FAILED"
 
 
-class QuestionStatus(str, Enum):
+class QuestionStatus(StrEnum):
     ACTIVE = "ACTIVE"
     ANSWERED = "ANSWERED"
     EXPIRED = "EXPIRED"
 
 
-class QuestionScope(str, Enum):
+class QuestionScope(StrEnum):
     DAILY = "DAILY"
     GROUP = "GROUP"
 
 
-class ResourceType(str, Enum):
+class ResourceType(StrEnum):
     COIN = "COIN"
     DIAMOND = "DIAMOND"
     BANANA = "BANANA"
 
 
-class DailyQuestType(str, Enum):
+class DailyQuestType(StrEnum):
     DAILY_LOGIN = "DAILY_LOGIN"
     ANSWER_DAILY_QUESTION = "ANSWER_DAILY_QUESTION"
     CORRECT_ANSWERS = "CORRECT_ANSWERS"

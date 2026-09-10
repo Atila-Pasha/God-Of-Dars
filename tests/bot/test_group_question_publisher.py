@@ -17,6 +17,7 @@ async def test_group_question_publisher_sends_to_every_publication() -> None:
         scope=QuestionScope.GROUP,
         question_text="پایتخت ایران؟",
         correct_answer="تهران",
+        banana_reward=3,
     )
     publications = [
         GroupQuestion(
@@ -53,3 +54,4 @@ async def test_group_question_publisher_sends_to_every_publication() -> None:
         call.kwargs["chat_id"] for call in bot.send_message.await_args_list
     ] == [-10, -11]
     assert "پایتخت ایران؟" in bot.send_message.await_args_list[0].kwargs["text"]
+    assert "3 XP" in bot.send_message.await_args_list[0].kwargs["text"]

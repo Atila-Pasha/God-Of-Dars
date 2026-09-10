@@ -11,7 +11,6 @@ from sqlalchemy.orm import selectinload
 from app.core.enums import AttackStatus, ResourceType, TeacherStatus
 from app.core.game_logic import GameConfig, game_config
 from app.models.attack import Attack
-from app.models.resource import Resource
 from app.models.transaction import Transaction
 from app.models.user_teacher import UserTeacher
 from app.repositories.castle import CastleRepository
@@ -613,6 +612,16 @@ class AttackService:
         target_castle = castles.get(target.id)
         if target_castle is None:
             raise AttackTargetNotRegistered
+        if target_castle.defense is None:
+            # Repair legacy/incomplete castle rows before deriving battle
+            # snapshots, rather than crashing an attack on a nullable ORM
+            # relationship.
+            from app.models.defense import Defense
+
+            target_castle.defense = Defense(
+                defense_power=self.config.initial_defense_power
+            )
+            await session.flush()
         total_damage = 0
         total_injury = 0
         teacher_results = []

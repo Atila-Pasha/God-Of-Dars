@@ -9,8 +9,8 @@ from app.core.game_logic import game_config
 from app.models.reward import Reward
 from app.models.user import User
 from app.repositories.referral import ReferralRepository
-from app.services.reward_service import RewardService, RewardSpec
 from app.services.lock_order import lock_users_ordered
+from app.services.reward_service import RewardService, RewardSpec
 
 
 class ReferralError(RuntimeError):

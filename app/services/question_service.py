@@ -440,19 +440,17 @@ class QuestionService:
     def _validate_rewards(
         *, coin_reward: int | None, diamond_reward: int | None, banana_reward: int | None
     ) -> dict[str, int]:
-        if banana_reward not in (None, 0):
-            raise InvalidQuestion
         values = {
             "coin_reward": coin_reward,
             "diamond_reward": diamond_reward,
-            "banana_reward": 0,
+            "banana_reward": banana_reward,
         }
         for name, amount in values.items():
             if amount is None:
                 values[name] = 0
             elif isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
                 raise InvalidQuestion
-        return values
+        return {name: 0 if amount is None else amount for name, amount in values.items()}
 
     async def _grant_question_rewards(
         self,
@@ -469,6 +467,7 @@ class QuestionService:
             for resource_type, amount in (
                 (ResourceType.COIN, getattr(question, "coin_reward", 0) or 0),
                 (ResourceType.DIAMOND, getattr(question, "diamond_reward", 0) or 0),
+                (ResourceType.BANANA, getattr(question, "banana_reward", 0) or 0),
             )
             if amount > 0
         )

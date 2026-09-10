@@ -43,7 +43,7 @@ async def test_group_reply_to_question_message_is_answered(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_late_group_reply_mentions_the_earlier_answerer(monkeypatch) -> None:
+async def test_late_group_reply_does_not_create_group_spam(monkeypatch) -> None:
     message = reply_message("مشهد")
     publication = SimpleNamespace(id=99, question_id=10, group_id=3)
     monkeypatch.setattr(
@@ -61,19 +61,6 @@ async def test_late_group_reply_mentions_the_earlier_answerer(monkeypatch) -> No
         "answer_group_question",
         AsyncMock(side_effect=QuestionAlreadyAnswered),
     )
-    monkeypatch.setattr(
-        library.question_service,
-        "first_group_answer",
-        AsyncMock(
-            return_value=SimpleNamespace(
-                user=SimpleNamespace(first_name="مهدی", last_name="دلیر")
-            )
-        ),
-    )
-
     await library.group_reply_answer_handler(message, AsyncMock())
 
-    response = message.answer.await_args.args[0]
-    assert "مهدی دلیر" in response
-    assert "دیر" in response
-    assert message.answer.await_args.kwargs["reply_to_message_id"] == 701
+    message.answer.assert_not_awaited()

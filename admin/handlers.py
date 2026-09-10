@@ -1350,7 +1350,7 @@ async def q_coin(message, state):
 
 
 @router.message(QuestionStates.diamond)
-async def q_diamond(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def q_diamond(message: Message, state: FSMContext) -> None:
     if not allowed(message) or not message.text:
         return
     try:
@@ -1358,15 +1358,20 @@ async def q_diamond(message: Message, state: FSMContext, session: AsyncSession) 
     except ValueError as exc:
         await message.answer(str(exc))
         return
-    await state.update_data(diamond=value, banana=0)
-    await q_banana(message, state, session)
+    await state.update_data(diamond=value)
+    await state.set_state(QuestionStates.banana)
+    await message.answer("پاداش XP را فقط به‌صورت عدد بفرستید (برای صفر: 0):")
 
 
 @router.message(QuestionStates.banana)
 async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message) or not message.text:
         return
-    banana = 0
+    try:
+        banana = 0 if message.text.strip() == "-" else number(message.text, "مقدار")
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
     data = await state.get_data()
     expires_at = datetime.now(UTC) + timedelta(hours=data["hours"])
     if data.get("scope") == "group":

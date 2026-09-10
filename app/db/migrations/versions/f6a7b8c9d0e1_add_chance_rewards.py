@@ -1,6 +1,7 @@
 """add first-claimer chance boxes and captcha-protected chance cards"""
 
 from collections.abc import Sequence
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import ENUM

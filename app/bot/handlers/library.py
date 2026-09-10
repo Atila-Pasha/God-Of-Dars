@@ -486,43 +486,22 @@ async def group_reply_answer_handler(
             message.text,
             now=_now(),
         )
-        response = _result_text(result)
         if result.correct:
             response = (
                 f"✅ درست جواب دادی! {_user_display_name(message.from_user)} "
                 f"زودتر از همه پاسخ داد و {_group_reward_text(result)} دریافت کرد."
             )
-        await _answer_group_reply(message, response)
-    except WrongGroup:
-        await _answer_group_reply(message, "این سؤال به گروه فعلی مربوط نیست.")
-    except DuplicateAnswer:
-        await _answer_group_reply(message, "پاسخ شما قبلاً برای این سؤال ثبت شده است.")
-    except QuestionExpired:
-        await _answer_group_reply(message, "مهلت پاسخ‌گویی به سؤال گروه تمام شده است.")
-    except QuestionAlreadyAnswered:
-        winner = await question_service.first_group_answer(session, publication.id)
-        winner_name = _answerer_name(winner)
-        await _answer_group_reply(
-            message,
-            f"⏰ دیر اومدی رفیق! {winner_name} زودتر پاسخ داده و جوابش ثبت شده.",
-        )
+            await _answer_group_reply(message, response)
+    # The service still persists wrong attempts and rejects invalid ones, but
+    # the group receives a message only for the winning correct answer.
+    except (WrongGroup, DuplicateAnswer, QuestionExpired, QuestionAlreadyAnswered):
+        return
     except (QuestionNotFound, UserInactiveError, LibraryError):
-        await _answer_group_reply(message, "پاسخ شما ثبت نشد؛ دوباره امتحان کن.")
+        logger.exception("Could not process group-question reply")
 
 
 async def _answer_group_reply(message: Message, text: str) -> None:
     await message.answer(
         text,
         reply_to_message_id=message.message_id,
-    )
-
-
-def _answerer_name(answer: Any) -> str:
-    if answer is None or answer.user is None:
-        return "یک نفر"
-    return (
-        " ".join(
-            part for part in (answer.user.first_name, answer.user.last_name) if part
-        )
-        or "یک نفر"
     )

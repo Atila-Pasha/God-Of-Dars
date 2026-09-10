@@ -1,6 +1,7 @@
 """add expiry timestamps to chance boxes"""
 
 from collections.abc import Sequence
+
 import sqlalchemy as sa
 from alembic import op
 

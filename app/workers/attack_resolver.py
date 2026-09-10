@@ -9,16 +9,15 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError, SQLAlchemyError
 
 from app.bot.utils.attack import teacher_phrase
-from app.core.enums import AttackStatus
 from app.core.config import settings
+from app.core.enums import AttackStatus
 from app.db.session import AsyncSessionLocal
 from app.models.attack import Attack
 from app.repositories.user import UserRepository
 from app.services.attack_service import AttackService
 from app.services.level_service import LevelService
 from app.services.notification_service import NotificationService
-from app.services.school_errors import OperationNotConfigured
-from app.services.school_errors import SchoolError
+from app.services.school_errors import OperationNotConfigured, SchoolError
 
 logger = logging.getLogger(__name__)
 level_service = LevelService()

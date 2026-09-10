@@ -130,7 +130,10 @@ class QuestionRepository:
     ) -> Answer | None:
         result = await session.execute(
             select(Answer)
-            .where(Answer.group_question_id == group_question_id)
+            .where(
+                Answer.group_question_id == group_question_id,
+                Answer.is_valid.is_(True),
+            )
             .options(selectinload(Answer.user))
             .order_by(Answer.created_at, Answer.id)
             .limit(1)
