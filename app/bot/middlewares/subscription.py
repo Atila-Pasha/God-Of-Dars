@@ -43,7 +43,9 @@ async def refresh_channels(session, *, force: bool = False) -> tuple[str, ...]:
                 str(item.telegram_id or item.username)
             )
         ]
-        if stored.is_active and (stored.required_channel_telegram_id or stored.required_channel_username):
+        if stored.is_active and (
+            stored.required_channel_telegram_id or stored.required_channel_username
+        ):
             required = str(
                 stored.required_channel_telegram_id or stored.required_channel_username
             )
@@ -55,6 +57,7 @@ async def refresh_channels(session, *, force: bool = False) -> tuple[str, ...]:
         subscription_service.set_channels(normalized)
         _channels_cache = (monotonic() + settings.CHANNELS_CACHE_TTL, normalized)
         return normalized
+
 
 JOIN_MESSAGE = (
     "برای استفاده از ربات، ابتدا باید عضو کانال‌های زیر شوید:\n\n"

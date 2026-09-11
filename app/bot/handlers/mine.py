@@ -62,6 +62,8 @@ def _upgrade_text(snapshot, next_level) -> str:
 
 
 async def _show(target: Message | CallbackQuery, session: AsyncSession) -> None:
+    if target.from_user is None:
+        raise UserInactiveError
     user = await user_service.get_active_by_telegram_user_id(
         session, target.from_user.id
     )

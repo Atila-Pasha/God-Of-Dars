@@ -77,9 +77,7 @@ class AttackConfirmationCallback(CallbackData, prefix="attack"):
 
 
 class LibraryCallback(CallbackData, prefix="library"):
-    action: Literal[
-        "daily", "group", "study", "teachers", "back", "cancel"
-    ]
+    action: Literal["daily", "group", "study", "teachers", "back", "cancel"]
 
 
 class LibraryTeacherCallback(CallbackData, prefix="library_teacher"):
@@ -136,6 +134,4 @@ class ShieldPurchaseCallback(CallbackData, prefix="shield_purchase"):
 
 
 class MineCallback(CallbackData, prefix="mine"):
-    action: Literal[
-        "collect", "upgrade", "confirm_upgrade", "cancel_upgrade", "back"
-    ]
+    action: Literal["collect", "upgrade", "confirm_upgrade", "cancel_upgrade", "back"]

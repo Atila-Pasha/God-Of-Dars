@@ -44,7 +44,9 @@ class Settings(BaseSettings):
                 try:
                     ids.add(int(value))
                 except ValueError as exc:
-                    raise ValueError("ADMIN_IDS must contain Telegram numeric IDs") from exc
+                    raise ValueError(
+                        "ADMIN_IDS must contain Telegram numeric IDs"
+                    ) from exc
         return frozenset(ids)
 
     model_config = SettingsConfigDict(
@@ -54,4 +56,6 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+# Values are supplied by pydantic-settings from the process environment/.env.
+# Static type checkers cannot infer those runtime-provided required fields.
+settings = Settings()  # type: ignore[call-arg]

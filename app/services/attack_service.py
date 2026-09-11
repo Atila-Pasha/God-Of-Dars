@@ -88,17 +88,12 @@ class AttackService:
         self.castle_service = CastleService(self.castles, config=self.config)
 
     @staticmethod
-    async def _ensure_no_active_attack(
-        session: AsyncSession, attacker_id: int
-    ) -> None:
+    async def _ensure_no_active_attack(session: AsyncSession, attacker_id: int) -> None:
         active = await session.scalar(
-            select(Attack)
-            .where(
+            select(Attack).where(
                 Attack.attacker_id == attacker_id,
                 (
-                    Attack.status.in_(
-                        (AttackStatus.PENDING, AttackStatus.PROCESSING)
-                    )
+                    Attack.status.in_((AttackStatus.PENDING, AttackStatus.PROCESSING))
                     | (
                         (Attack.status == AttackStatus.FAILED)
                         & Attack.next_retry_at.is_not(None)
@@ -137,7 +132,7 @@ class AttackService:
                 .values(attack_xp_awarded=True)
             )
         result = await session.execute(statement)
-        return result.rowcount == 1
+        return getattr(result, "rowcount", 0) == 1
 
     async def attack_by_username(
         self,
@@ -147,7 +142,9 @@ class AttackService:
         target_username: str,
         teacher_name: str,
     ) -> AttackResult:
-        attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
         target = await self.users.get_active_by_username(session, target_username)
@@ -161,10 +158,16 @@ class AttackService:
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_username(
-        self, session: AsyncSession, *, attacker_telegram_id: int,
-        target_username: str, teacher_name: str | list[str],
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        target_username: str,
+        teacher_name: str | list[str],
     ) -> AttackPreview:
-        attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
         target = await self.users.get_active_by_username(session, target_username)
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
@@ -180,7 +183,9 @@ class AttackService:
         target_telegram_id: int,
         teacher_name: str,
     ) -> AttackResult:
-        attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
         target = await self.users.get_by_telegram_user_id(session, target_telegram_id)
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
@@ -194,10 +199,16 @@ class AttackService:
         return await self._attack(session, attacker, target, teacher_name)
 
     async def preview_by_telegram_id(
-        self, session: AsyncSession, *, attacker_telegram_id: int,
-        target_telegram_id: int, teacher_name: str | list[str],
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        target_telegram_id: int,
+        teacher_name: str | list[str],
     ) -> AttackPreview:
-        attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
         target = await self.users.get_by_telegram_user_id(session, target_telegram_id)
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
@@ -240,10 +251,17 @@ class AttackService:
         raise RandomOpponentNotFound
 
     async def attack_by_ids(
-        self, session: AsyncSession, *, attacker_telegram_id: int,
-        target_id: int, teacher_id: int, teacher_ids: list[int] | None = None,
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        target_id: int,
+        teacher_id: int,
+        teacher_ids: list[int] | None = None,
     ) -> AttackResult:
-        attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
         target = await self.users.get_active_by_id(session, target_id)
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
@@ -280,7 +298,9 @@ class AttackService:
         teacher_ids: list[int],
         duration: timedelta = timedelta(minutes=2),
     ) -> AttackLaunch:
-        attacker = await self.users.get_by_telegram_user_id(session, attacker_telegram_id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
         target = await self.users.get_active_by_id(session, target_id)
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
@@ -309,9 +329,12 @@ class AttackService:
             )
             if teacher is None:
                 raise TeacherNotOwned
+            if teacher.current_hp <= 0:
+                await session.delete(teacher)
+                raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
-            if teacher.status is not TeacherStatus.ACTIVE or teacher.current_hp <= 0:
+            if teacher.status is not TeacherStatus.ACTIVE:
                 raise InvalidTeacherState
             teachers.append(teacher)
 
@@ -348,7 +371,8 @@ class AttackService:
         self, session: AsyncSession, attack_id: int
     ) -> AttackResult | None:
         attack = await session.scalar(
-            select(Attack).where(
+            select(Attack)
+            .where(
                 Attack.id == attack_id,
                 Attack.status.in_(
                     (
@@ -357,7 +381,8 @@ class AttackService:
                         AttackStatus.FAILED,
                     )
                 ),
-            ).with_for_update()
+            )
+            .with_for_update()
         )
         if attack is None:
             return None
@@ -392,9 +417,15 @@ class AttackService:
         target_castle = castles.get(target.id)
         if target_castle is None:
             raise AttackTargetNotRegistered
-        teacher = await self.teachers.get_owned_for_update(
-            session, attacker.id, attack.teacher_id
-        ) if attack.teacher_id is not None else None
+        teacher = (
+            await self.teachers.get_owned_for_update(
+                session, attacker.id, attack.teacher_id
+            )
+            if attack.teacher_id is not None
+            else None
+        )
+        teacher_name = teacher.teacher.name if teacher is not None else "دبیر"
+        teacher_ability = teacher.teacher.ability_text if teacher is not None else None
         castle_damage, injury = self.config.attack_rules.resolve(
             attack.teacher_damage_snapshot,
             attack.target_defense_power_snapshot,
@@ -403,15 +434,18 @@ class AttackService:
         castle_result = await self.castle_service.receive_attack_damage(
             session, target.id, castle_damage
         )
-        loot = self._loot(target, castle_result.applied_damage, attack.target_castle_strength_snapshot)
-        loot["loot_banana"] = 0
-        self._transfer_loot(
-            session, attacker, target, loot, attack_id=attack.id
+        loot = self._loot(
+            target,
+            castle_result.applied_damage,
+            attack.target_castle_strength_snapshot,
+            attack.teacher_damage_snapshot,
         )
+        loot["loot_banana"] = 0
+        self._transfer_loot(session, attacker, target, loot, attack_id=attack.id)
         if teacher is not None and injury:
             teacher.current_hp = max(0, teacher.current_hp - injury)
             if teacher.current_hp == 0:
-                teacher.status = TeacherStatus.DISABLED
+                await session.delete(teacher)
 
         now = datetime.now(UTC)
         attack.status = AttackStatus.RESOLVED
@@ -423,7 +457,9 @@ class AttackService:
         attack.is_successful = castle_result.applied_damage > 0
         quest_service = DailyQuestService()
         await quest_service.record_event(
-            session, user_id=attacker.id, event_type="COMPLETE_BATTLES",
+            session,
+            user_id=attacker.id,
+            event_type="COMPLETE_BATTLES",
             event_id=f"attack:{attack.id}",
         )
         xp_awarded = await self._claim_attack_xp(
@@ -434,36 +470,40 @@ class AttackService:
         if xp_awarded:
             attack.loot_banana = self.config.attack_rules.banana_reward
             self._transfer_loot(
-                session, attacker, target,
-                {"loot_coin": 0, "loot_diamond": 0,
-                 "loot_banana": attack.loot_banana},
+                session,
+                attacker,
+                target,
+                {"loot_coin": 0, "loot_diamond": 0, "loot_banana": attack.loot_banana},
                 attack_id=attack.id,
             )
         await session.flush()
-        command_records = await session.scalars(
-            select(Attack)
-            .where(
-                Attack.attack_command_id == attack.attack_command_id,
+        command_records = (
+            await session.scalars(
+                select(Attack)
+                .where(
+                    Attack.attack_command_id == attack.attack_command_id,
+                )
+                .options(selectinload(Attack.teacher).selectinload(UserTeacher.teacher))
+                .order_by(Attack.id)
             )
-            .options(
-                selectinload(Attack.teacher).selectinload(UserTeacher.teacher)
-            )
-            .order_by(Attack.id)
-        ) if attack.attack_command_id is not None else [attack]
+            if attack.attack_command_id is not None
+            else [attack]
+        )
         teacher_names = [
             item.teacher.teacher.name
             for item in command_records
             if item.teacher is not None
         ]
+        if teacher is not None and teacher_name not in teacher_names:
+            teacher_names.insert(0, teacher_name)
         return AttackResult(
             attack=attack,
             attacker_telegram_id=attacker.telegram_user_id,
             attacker_name=attacker.first_name,
             target_name=target.first_name,
             target_telegram_id=target.telegram_user_id,
-            teacher_name="، ".join(teacher_names)
-            or (teacher.teacher.name if teacher is not None else "دبیر"),
-            ability_text=teacher.teacher.ability_text if teacher is not None else None,
+            teacher_name="، ".join(teacher_names) or teacher_name,
+            ability_text=teacher_ability,
             castle_damage=castle_result.applied_damage,
             teacher_injury=injury,
             castle_strength_after=castle_result.castle_strength_after,
@@ -490,13 +530,12 @@ class AttackService:
             )
             if teacher is None:
                 raise TeacherNotOwned
+            if teacher.current_hp <= 0:
+                await session.delete(teacher)
+                raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
             if teacher.status is not TeacherStatus.ACTIVE:
-                raise InvalidTeacherState
-            if teacher.current_hp <= 0:
-                teacher.current_hp = 0
-                teacher.status = TeacherStatus.DISABLED
                 raise InvalidTeacherState
             teachers.append(teacher)
         castle = await self.castle_service.battle_snapshot(session, target.id)
@@ -511,25 +550,35 @@ class AttackService:
         raw_damages = [item[0] for item in resolved]
         damage = min(castle.strength, sum(raw_damages))
         injury = sum(item[1] for item in resolved)
-        loot = self._loot(target, damage, castle.strength)
+        loot = self._loot(
+            target,
+            damage,
+            castle.strength,
+            sum(self.teacher_service.damage(teacher) for teacher in teachers),
+        )
         return AttackPreview(
             # The confirmation callback is clicked by Telegram and therefore
             # must carry the Telegram id, not the database user id.
             attacker_id=attacker.telegram_user_id,
             target_id=target.id,
             teacher_id=teachers[0].id,
-            attacker_name=attacker.first_name, target_name=target.first_name,
+            attacker_name=attacker.first_name,
+            target_name=target.first_name,
             teacher_name="، ".join(teacher.teacher.name for teacher in teachers),
             ability_text="، ".join(
                 teacher.teacher.ability_text
                 for teacher in teachers
                 if teacher.teacher.ability_text
-            ) or None,
-            teacher_damage=sum(self.teacher_service.damage(teacher) for teacher in teachers),
-            defense_power=castle.defense_power, estimated_castle_damage=damage,
-            estimated_teacher_injury=injury, teacher_ids=",".join(
-                str(teacher.id) for teacher in teachers
-            ), **loot,
+            )
+            or None,
+            teacher_damage=sum(
+                self.teacher_service.damage(teacher) for teacher in teachers
+            ),
+            defense_power=castle.defense_power,
+            estimated_castle_damage=damage,
+            estimated_teacher_injury=injury,
+            teacher_ids=",".join(str(teacher.id) for teacher in teachers),
+            **loot,
         )
 
     async def _normalize_teacher_names(
@@ -549,21 +598,23 @@ class AttackService:
         # If names contain spaces, greedily match the longest owned name. This
         # also allows the compact form: /attack user teacher1 teacher2.
         owned = await self.teacher_service.owned(session, user_id)
-        normalized = {
-            item.teacher.name.casefold(): item.teacher.name for item in owned
-        }
+        normalized = {item.teacher.name.casefold(): item.teacher.name for item in owned}
         if text.casefold() in normalized:
             return [normalized[text.casefold()]]
         words = text.split()
         result: list[str] = []
         index = 0
-        candidates = sorted(normalized, key=lambda item: len(item.split()), reverse=True)
+        candidates = sorted(
+            normalized, key=lambda item: len(item.split()), reverse=True
+        )
         while index < len(words):
             match = next(
                 (
                     candidate
                     for candidate in candidates
-                    if " ".join(words[index : index + len(candidate.split())]).casefold()
+                    if " ".join(
+                        words[index : index + len(candidate.split())]
+                    ).casefold()
                     == candidate
                 ),
                 None,
@@ -576,7 +627,9 @@ class AttackService:
                 index += len(match.split())
         return result
 
-    async def _attack(self, session, attacker, target, teacher_name: str) -> AttackResult:
+    async def _attack(
+        self, session, attacker, target, teacher_name: str
+    ) -> AttackResult:
         if attacker.id == target.id:
             raise CannotAttackSelf
         teacher = await self.teachers.get_owned_by_name_for_update(
@@ -591,7 +644,9 @@ class AttackService:
 
         return await self._attack_with_teacher(session, attacker, target, teacher)
 
-    async def _attack_with_teacher(self, session, attacker, target, teacher) -> AttackResult:
+    async def _attack_with_teacher(
+        self, session, attacker, target, teacher
+    ) -> AttackResult:
         return await self._attack_with_teachers(session, attacker, target, [teacher])
 
     async def _attack_with_teachers(
@@ -600,13 +655,12 @@ class AttackService:
         if not teachers:
             raise TeacherNotOwned
         for teacher in teachers:
+            if teacher.current_hp <= 0:
+                await session.delete(teacher)
+                raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
             if teacher.status is not TeacherStatus.ACTIVE:
-                raise InvalidTeacherState
-            if teacher.current_hp <= 0:
-                teacher.current_hp = 0
-                teacher.status = TeacherStatus.DISABLED
                 raise InvalidTeacherState
         _, castles = await lock_attack_dependencies(session, (attacker, target))
         target_castle = castles.get(target.id)
@@ -640,8 +694,10 @@ class AttackService:
             if injury:
                 teacher.current_hp = max(0, teacher.current_hp - injury)
                 if teacher.current_hp == 0:
-                    teacher.status = TeacherStatus.DISABLED
-            loot = self._loot(target, applied_damage, target_castle.strength)
+                    await session.delete(teacher)
+            loot = self._loot(
+                target, applied_damage, target_castle.strength, teacher_damage
+            )
             # XP is awarded once per attack command, not once per selected
             # teacher. Resource loot remains per actual castle damage.
             loot["loot_banana"] = 0
@@ -665,10 +721,10 @@ class AttackService:
             )
             session.add(attack)
             await session.flush()
-            self._transfer_loot(
-                session, attacker, target, loot, attack_id=attack.id
+            self._transfer_loot(session, attacker, target, loot, attack_id=attack.id)
+            teacher_results.append(
+                (attack, applied_damage, injury, loot, castle_damage_result)
             )
-            teacher_results.append((attack, applied_damage, injury, loot, castle_damage_result))
             total_damage += applied_damage
             total_injury += injury
         await session.flush()
@@ -690,8 +746,11 @@ class AttackService:
                 session,
                 attacker,
                 target,
-                {"loot_coin": 0, "loot_diamond": 0,
-                 "loot_banana": total_loot["loot_banana"]},
+                {
+                    "loot_coin": 0,
+                    "loot_diamond": 0,
+                    "loot_banana": total_loot["loot_banana"],
+                },
                 attack_id=last_attack.id,
             )
         return AttackResult(
@@ -705,14 +764,21 @@ class AttackService:
                 teacher.teacher.ability_text
                 for teacher in teachers
                 if teacher.teacher.ability_text
-            ) or None,
+            )
+            or None,
             castle_damage=total_damage,
             teacher_injury=total_injury,
             castle_strength_after=last_castle.castle_strength_after,
             **total_loot,
         )
 
-    def _loot(self, target, castle_damage: int, castle_strength: int) -> dict[str, int]:
+    def _loot(
+        self,
+        target,
+        castle_damage: int,
+        castle_strength: int,
+        attack_power: int,
+    ) -> dict[str, int]:
         if castle_damage <= 0 or target.resources is None:
             return {
                 "loot_coin": 0,
@@ -733,14 +799,16 @@ class AttackService:
         )
         percent = damage_factor * loot_percent / 100
 
-        def amount(balance: int) -> int:
+        def amount(balance: int, resource_type: ResourceType) -> int:
             if balance <= 0 or percent <= 0:
                 return 0
-            return min(balance, max(1, int(balance * percent)))
+            percentage_amount = max(1, int(balance * percent))
+            power_cap = self.config.attack_rules.loot_cap(attack_power, resource_type)
+            return min(balance, percentage_amount, power_cap)
 
         return {
-            "loot_coin": amount(target.resources.coin),
-            "loot_diamond": amount(target.resources.diamond),
+            "loot_coin": amount(target.resources.coin, ResourceType.COIN),
+            "loot_diamond": amount(target.resources.diamond, ResourceType.DIAMOND),
             "loot_banana": self.config.attack_rules.banana_reward,
         }
 
@@ -762,24 +830,42 @@ class AttackService:
                 # Banana is attack XP: it is minted for the attacker and is
                 # never taken from the target or the attacker.
                 setattr(attacker.resources, field, attacker_before + amount)
-                session.add(Transaction(
-                    user_id=attacker.id, resource_type=resource_type, amount=amount,
-                    balance_before=attacker_before, balance_after=attacker_before + amount,
-                    reason="ATTACK_XP", reference_type="ATTACK",
-                    reference_id=attack_id,
-                ))
+                session.add(
+                    Transaction(
+                        user_id=attacker.id,
+                        resource_type=resource_type,
+                        amount=amount,
+                        balance_before=attacker_before,
+                        balance_after=attacker_before + amount,
+                        reason="ATTACK_XP",
+                        reference_type="ATTACK",
+                        reference_id=attack_id,
+                    )
+                )
                 continue
             setattr(target.resources, field, target_before - amount)
             setattr(attacker.resources, field, attacker_before + amount)
-            session.add(Transaction(
-                user_id=target.id, resource_type=resource_type, amount=-amount,
-                balance_before=target_before, balance_after=target_before - amount,
-                reason="ATTACK_LOOT", reference_type="ATTACK",
-                reference_id=attack_id,
-            ))
-            session.add(Transaction(
-                user_id=attacker.id, resource_type=resource_type, amount=amount,
-                balance_before=attacker_before, balance_after=attacker_before + amount,
-                reason="ATTACK_LOOT", reference_type="ATTACK",
-                reference_id=attack_id,
-            ))
+            session.add(
+                Transaction(
+                    user_id=target.id,
+                    resource_type=resource_type,
+                    amount=-amount,
+                    balance_before=target_before,
+                    balance_after=target_before - amount,
+                    reason="ATTACK_LOOT",
+                    reference_type="ATTACK",
+                    reference_id=attack_id,
+                )
+            )
+            session.add(
+                Transaction(
+                    user_id=attacker.id,
+                    resource_type=resource_type,
+                    amount=amount,
+                    balance_before=attacker_before,
+                    balance_after=attacker_before + amount,
+                    reason="ATTACK_LOOT",
+                    reference_type="ATTACK",
+                    reference_id=attack_id,
+                )
+            )

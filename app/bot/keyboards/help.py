@@ -1,8 +1,14 @@
+from typing import Literal
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.callbacks import HelpCallback
 
-HELP_SECTIONS = (
+HelpSection = Literal[
+    "attack", "school", "buffet", "library", "profile", "mine", "referral"
+]
+
+HELP_SECTIONS: tuple[tuple[str, HelpSection], ...] = (
     ("⚔️ راهنمای حمله", "attack"),
     ("🏫 راهنمای مدرسه", "school"),
     ("🍽 راهنمای بوفه", "buffet"),

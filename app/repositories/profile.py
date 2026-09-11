@@ -75,21 +75,15 @@ class ProfileRepository:
                     0,
                 ).label("damage_dealt"),
                 func.coalesce(
-                    func.sum(Attack.loot_coin).filter(
-                        Attack.attacker_id == user_id
-                    ),
+                    func.sum(Attack.loot_coin).filter(Attack.attacker_id == user_id),
                     0,
                 ).label("loot_coin"),
                 func.coalesce(
-                    func.sum(Attack.loot_diamond).filter(
-                        Attack.attacker_id == user_id
-                    ),
+                    func.sum(Attack.loot_diamond).filter(Attack.attacker_id == user_id),
                     0,
                 ).label("loot_diamond"),
                 func.coalesce(
-                    func.sum(Attack.loot_banana).filter(
-                        Attack.attacker_id == user_id
-                    ),
+                    func.sum(Attack.loot_banana).filter(Attack.attacker_id == user_id),
                     0,
                 ).label("loot_banana"),
             )

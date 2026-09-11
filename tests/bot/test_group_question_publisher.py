@@ -50,8 +50,9 @@ async def test_group_question_publisher_sends_to_every_publication() -> None:
     assert result.failed_chat_ids == ()
     assert session.flush.await_count == 2
     assert "reply_markup" not in bot.send_message.await_args_list[0].kwargs
-    assert [
-        call.kwargs["chat_id"] for call in bot.send_message.await_args_list
-    ] == [-10, -11]
+    assert [call.kwargs["chat_id"] for call in bot.send_message.await_args_list] == [
+        -10,
+        -11,
+    ]
     assert "پایتخت ایران؟" in bot.send_message.await_args_list[0].kwargs["text"]
     assert "3 XP" in bot.send_message.await_args_list[0].kwargs["text"]

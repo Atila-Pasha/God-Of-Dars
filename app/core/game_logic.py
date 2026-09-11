@@ -63,12 +63,20 @@ class AttackRules:
     counter_damage_ratio: float = 0.25
     loot_percent: int = 10
     banana_reward: int = 20
+    loot_coin_per_power: float = 10.0
+    loot_diamond_per_power: float = 0.1
+    minimum_coin_loot_cap: int = 10
+    minimum_diamond_loot_cap: int = 1
 
     def __post_init__(self) -> None:
         if self.defense_absorption_ratio < 0 or self.counter_damage_ratio < 0:
             raise ValueError("attack ratios cannot be negative")
         if not 0 <= self.loot_percent <= 100 or self.banana_reward < 0:
             raise ValueError("loot_percent must be between 0 and 100")
+        if min(self.loot_coin_per_power, self.loot_diamond_per_power) < 0:
+            raise ValueError("loot per power cannot be negative")
+        if min(self.minimum_coin_loot_cap, self.minimum_diamond_loot_cap) < 0:
+            raise ValueError("minimum loot caps cannot be negative")
 
     def resolve(
         self, attack_power: int, defense_power: int, defender_hp: int
@@ -82,6 +90,22 @@ class AttackRules:
             defender_hp, round(defense_power * self.counter_damage_ratio)
         )
         return castle_damage, counter_damage
+
+    def loot_cap(self, attack_power: int, resource: ResourceType) -> int:
+        """Maximum transferable loot for one teacher at a fixed power."""
+        if attack_power < 0:
+            raise ValueError("attack power cannot be negative")
+        if resource is ResourceType.COIN:
+            return max(
+                self.minimum_coin_loot_cap,
+                round(attack_power * self.loot_coin_per_power),
+            )
+        if resource is ResourceType.DIAMOND:
+            return max(
+                self.minimum_diamond_loot_cap,
+                round(attack_power * self.loot_diamond_per_power),
+            )
+        return 0
 
 
 @dataclass(frozen=True)
@@ -116,13 +140,14 @@ class LevelProgression:
             return configured
         configured_levels = dict(self.xp_by_level)
         if configured_levels:
-            anchor = max((item for item in configured_levels if item < level), default=0)
+            anchor = max(
+                (item for item in configured_levels if item < level), default=0
+            )
             if anchor:
                 return max(
                     1,
                     round(
-                        configured_levels[anchor]
-                        * self.xp_growth ** (level - anchor)
+                        configured_levels[anchor] * self.xp_growth ** (level - anchor)
                     ),
                 )
         return max(1, round(self.xp_base * self.xp_growth ** (level - 1)))
@@ -135,7 +160,9 @@ class LevelProgression:
             return configured
         configured_levels = dict(self.upgrade_cost_by_level)
         if configured_levels:
-            anchor = max((item for item in configured_levels if item < level), default=0)
+            anchor = max(
+                (item for item in configured_levels if item < level), default=0
+            )
             if anchor:
                 return max(
                     1,
@@ -201,6 +228,10 @@ class GameConfig:
     teacher_damage_multipliers_by_level: dict[int, float] = field(default_factory=dict)
     teacher_damage_growth: float = 1.08
     teacher_damage_max_multiplier: float = 8.0
+    teacher_upgrade_linear_growth: float = 0.18
+    teacher_upgrade_acceleration: float = 0.015
+    teacher_upgrade_round_to: int = 5
+    teacher_max_level: int = 500
     teacher_sell_ratio: float | None = None
     recovery_minutes_by_strength: tuple[tuple[int, int], ...] = ()
     initial_castle_strength: int = 0
@@ -237,19 +268,21 @@ class GameConfig:
             or self.upgrade_banana_maximum < self.upgrade_banana_minimum
         ):
             raise ValueError("upgrade banana reward is invalid")
-        if self.castle_max_level < 1 or min(
-            self.castle_cost_growth,
-            self.castle_strength_growth,
-            self.castle_defense_growth,
-        ) < 1:
+        if (
+            self.castle_max_level < 1
+            or min(
+                self.castle_cost_growth,
+                self.castle_strength_growth,
+                self.castle_defense_growth,
+            )
+            < 1
+        ):
             raise ValueError("castle progression is invalid")
         previous_level = 0
         for level, slots in self.teacher_slots_by_level:
             if level < 1 or level <= previous_level:
                 raise ValueError("teacher slot levels must be strictly increasing")
-            if slots < 0 or (
-                ownership_limit is not None and slots > ownership_limit
-            ):
+            if slots < 0 or (ownership_limit is not None and slots > ownership_limit):
                 raise ValueError("teacher slot capacity is outside the valid range")
             previous_level = level
         previous_strength = -1
@@ -269,6 +302,13 @@ class GameConfig:
             raise ValueError("teacher damage multipliers are invalid")
         if self.teacher_damage_growth < 1 or self.teacher_damage_max_multiplier < 1:
             raise ValueError("teacher damage progression is invalid")
+        if (
+            self.teacher_upgrade_linear_growth < 0
+            or self.teacher_upgrade_acceleration < 0
+            or self.teacher_upgrade_round_to < 1
+            or self.teacher_max_level < 2
+        ):
+            raise ValueError("teacher upgrade progression is invalid")
         if self.referral_reward_amount is not None and self.referral_reward_amount < 0:
             raise ValueError("referral_reward_amount cannot be negative")
         if not (
@@ -282,9 +322,13 @@ class GameConfig:
             raise ValueError("shield absorption limit cannot be negative")
         if self.mine_max_catchup_minutes < 1:
             raise ValueError("mine_max_catchup_minutes must be positive")
-        if self.mine_max_level < 1 or min(
-            self.mine_coin_growth, self.mine_diamond_growth, self.mine_cost_growth
-        ) < 1:
+        if (
+            self.mine_max_level < 1
+            or min(
+                self.mine_coin_growth, self.mine_diamond_growth, self.mine_cost_growth
+            )
+            < 1
+        ):
             raise ValueError("mine progression is invalid")
         if (
             self.castle_repair.diamond_cost_per_100_strength < 0
@@ -328,10 +372,15 @@ class GameConfig:
             capacity = max(
                 capacity,
                 self.teacher_slots_base
-                + max(0, player_level - 1) // self.teacher_slots_interval
+                + max(0, player_level - 1)
+                // self.teacher_slots_interval
                 * self.teacher_slots_growth,
             )
-        return capacity if self.ownership_limit is None else min(capacity, self.ownership_limit)
+        return (
+            capacity
+            if self.ownership_limit is None
+            else min(capacity, self.ownership_limit)
+        )
 
     @property
     def ownership_limit(self) -> int | None:
@@ -359,14 +408,22 @@ class GameConfig:
             if castle_level < 1 or castle_level > self.castle_max_level:
                 raise GameConfigurationError("Castle maximum level reached") from exc
             if not self.castle_upgrade_by_level:
-                raise GameConfigurationError("Castle upgrade balance is not configured") from exc
+                raise GameConfigurationError(
+                    "Castle upgrade balance is not configured"
+                ) from exc
             anchor_level = max(self.castle_upgrade_by_level)
             anchor = self.castle_upgrade_by_level[anchor_level]
             steps = castle_level - anchor_level
             upgrade = CastleUpgrade(
-                diamond_cost=max(1, round(anchor.diamond_cost * self.castle_cost_growth**steps)),
-                strength_delta=max(1, round(anchor.strength_delta * self.castle_strength_growth**steps)),
-                defense_delta=max(1, round(anchor.defense_delta * self.castle_defense_growth**steps)),
+                diamond_cost=max(
+                    1, round(anchor.diamond_cost * self.castle_cost_growth**steps)
+                ),
+                strength_delta=max(
+                    1, round(anchor.strength_delta * self.castle_strength_growth**steps)
+                ),
+                defense_delta=max(
+                    1, round(anchor.defense_delta * self.castle_defense_growth**steps)
+                ),
             )
         if (
             min(
@@ -391,9 +448,7 @@ class GameConfig:
         if castle_damage <= 0:
             return 0
         damage_ratio = (
-            1.0
-            if castle_strength <= 0
-            else min(1.0, castle_damage / castle_strength)
+            1.0 if castle_strength <= 0 else min(1.0, castle_damage / castle_strength)
         )
         boosted = base_percent * (
             1
@@ -434,6 +489,31 @@ class GameConfig:
         if damage < 0:
             raise GameConfigurationError("Teacher damage cannot be negative")
         return damage
+
+    def teacher_upgrade_cost(self, base_cost: int, current_level: int) -> int:
+        """Price of current_level -> current_level + 1.
+
+        ``base_cost`` is the catalog/admin price for level 1 -> 2.  A linear
+        term keeps early upgrades approachable and a small quadratic term
+        prevents high-level upgrades from becoming an unlimited cheap sink.
+        """
+        if base_cost < 0 or current_level < 1:
+            raise GameConfigurationError("Teacher upgrade values are invalid")
+        if current_level >= self.teacher_max_level:
+            raise GameConfigurationError("Teacher maximum level reached")
+        if base_cost == 0:
+            return 0
+        if current_level == 1:
+            return base_cost
+        steps = current_level - 1
+        multiplier = (
+            1
+            + self.teacher_upgrade_linear_growth * steps
+            + self.teacher_upgrade_acceleration * steps * steps
+        )
+        raw_cost = base_cost * multiplier
+        rounding = self.teacher_upgrade_round_to
+        return max(base_cost + steps, round(raw_cost / rounding) * rounding)
 
     def teacher_sell_price(
         self, teacher_id: int, purchase_price: int | None = None
@@ -510,10 +590,16 @@ class GameConfig:
             base = self.mine_levels[base_level]
             steps = level - base_level
             return MineLevel(
-                coin_per_minute=max(0, round(base.coin_per_minute * self.mine_coin_growth ** steps)),
-                diamond_per_minute=max(0, round(base.diamond_per_minute * self.mine_diamond_growth ** steps)),
+                coin_per_minute=max(
+                    0, round(base.coin_per_minute * self.mine_coin_growth**steps)
+                ),
+                diamond_per_minute=max(
+                    0, round(base.diamond_per_minute * self.mine_diamond_growth**steps)
+                ),
                 banana_per_minute=base.banana_per_minute,
-                diamond_cost=max(1, round((base.diamond_cost or 1) * self.mine_cost_growth ** steps)),
+                diamond_cost=max(
+                    1, round((base.diamond_cost or 1) * self.mine_cost_growth**steps)
+                ),
                 required_player_level=level,
             )
 
@@ -545,13 +631,16 @@ class GameConfig:
         # not migrated yet; fragment values override legacy values.
         if config_path.is_dir():
             legacy = config_path.with_name("game_balance.toml")
-            paths = ([legacy] if legacy.exists() else []) + sorted(config_path.glob("*.toml"))
+            paths = ([legacy] if legacy.exists() else []) + sorted(
+                config_path.glob("*.toml")
+            )
         else:
             paths = [config_path]
         data: dict = {}
         for fragment in paths:
             with fragment.open("rb") as config_file:
                 fragment_data = tomllib.load(config_file)
+
             def merge(left: dict, right: dict) -> dict:
                 result = deepcopy(left)
                 for key, value in right.items():
@@ -560,6 +649,7 @@ class GameConfig:
                     else:
                         result[key] = value
                 return result
+
             data = merge(data, fragment_data)
 
         castle_upgrades = {
@@ -610,6 +700,7 @@ class GameConfig:
         )
         shield_data = data.get("shield_rules", {})
         attack_data = data.get("attack", {})
+        teacher_upgrade_data = data.get("teacher_upgrade", {})
         hospital_data = data.get("hospital", {})
         mine_data = data.get("mine", {})
         progression = data.get("progression", {})
@@ -623,14 +714,18 @@ class GameConfig:
         }
         chance_box_data = data.get("chance_box", {})
         upgrade_rewards = data.get("upgrade_rewards", {})
-        xp_by_level = tuple(sorted(
-            (int(key.removeprefix("level_")), int(value))
-            for key, value in progression.get("xp_to_next_level", {}).items()
-        ))
-        upgrade_cost_by_level = tuple(sorted(
-            (int(key.removeprefix("level_")), int(value))
-            for key, value in progression.get("level_upgrade_cost", {}).items()
-        ))
+        xp_by_level = tuple(
+            sorted(
+                (int(key.removeprefix("level_")), int(value))
+                for key, value in progression.get("xp_to_next_level", {}).items()
+            )
+        )
+        upgrade_cost_by_level = tuple(
+            sorted(
+                (int(key.removeprefix("level_")), int(value))
+                for key, value in progression.get("level_upgrade_cost", {}).items()
+            )
+        )
         mine_levels = {
             int(level.removeprefix("level_")): MineLevel(
                 coin_per_minute=int(values.get("coin_per_minute", 0)),
@@ -663,7 +758,9 @@ class GameConfig:
                 data.get("teacher_slots_progression", {}).get("interval", 1)
             ),
             castle_upgrade_by_level=castle_upgrades,
-            castle_max_level=int(data.get("castle_progression", {}).get("max_level", 500)),
+            castle_max_level=int(
+                data.get("castle_progression", {}).get("max_level", 500)
+            ),
             castle_cost_growth=float(
                 data.get("castle_progression", {}).get("cost_growth", 1.08)
             ),
@@ -677,15 +774,11 @@ class GameConfig:
                 diamond_cost_per_100_strength=int(
                     repair_data.get("diamond_cost_per_100_strength", 1)
                 ),
-                minimum_diamond_cost=int(
-                    repair_data.get("minimum_diamond_cost", 1)
-                ),
+                minimum_diamond_cost=int(repair_data.get("minimum_diamond_cost", 1)),
                 loot_bonus_percent_at_zero_strength=int(
                     repair_data.get("loot_bonus_percent_at_zero_strength", 100)
                 ),
-                maximum_loot_percent=int(
-                    repair_data.get("maximum_loot_percent", 100)
-                ),
+                maximum_loot_percent=int(repair_data.get("maximum_loot_percent", 100)),
             ),
             teacher_sell_prices={
                 int(teacher_id): int(price)
@@ -704,6 +797,14 @@ class GameConfig:
             teacher_damage_max_multiplier=float(
                 data.get("teacher_damage_progression", {}).get("max_multiplier", 8.0)
             ),
+            teacher_upgrade_linear_growth=float(
+                teacher_upgrade_data.get("linear_growth", 0.18)
+            ),
+            teacher_upgrade_acceleration=float(
+                teacher_upgrade_data.get("acceleration", 0.015)
+            ),
+            teacher_upgrade_round_to=int(teacher_upgrade_data.get("round_to", 5)),
+            teacher_max_level=int(teacher_upgrade_data.get("max_level", 500)),
             teacher_sell_ratio=data.get("teacher_sell_ratio"),
             recovery_minutes_by_strength=recovery,
             initial_castle_strength=int(data.get("initial_castle_strength", 0)),
@@ -733,18 +834,20 @@ class GameConfig:
             level_progression=LevelProgression(
                 xp_by_level=xp_by_level,
                 upgrade_cost_by_level=upgrade_cost_by_level,
-                reset_xp_on_level_up=bool(progression.get("reset_xp_on_level_up", True)),
+                reset_xp_on_level_up=bool(
+                    progression.get("reset_xp_on_level_up", True)
+                ),
                 max_level=int(progression.get("max_level", 500)),
                 xp_base=int(progression.get("xp_base", 100)),
                 xp_growth=float(progression.get("xp_growth", 1.18)),
                 upgrade_cost_base=int(progression.get("upgrade_cost_base", 10)),
-                upgrade_cost_growth=float(
-                    progression.get("upgrade_cost_growth", 1.18)
-                ),
+                upgrade_cost_growth=float(progression.get("upgrade_cost_growth", 1.18)),
             ),
             buildings={
                 str(name): {
-                    int(level.removeprefix("level_")): {str(k): int(v) for k, v in values.items()}
+                    int(level.removeprefix("level_")): {
+                        str(k): int(v) for k, v in values.items()
+                    }
                     for level, values in levels.items()
                 }
                 for name, levels in data.get("buildings", {}).items()
@@ -762,6 +865,14 @@ class GameConfig:
                 ),
                 loot_percent=int(attack_data.get("loot_percent", 10)),
                 banana_reward=int(attack_data.get("banana_reward", 20)),
+                loot_coin_per_power=float(attack_data.get("loot_coin_per_power", 10.0)),
+                loot_diamond_per_power=float(
+                    attack_data.get("loot_diamond_per_power", 0.1)
+                ),
+                minimum_coin_loot_cap=int(attack_data.get("minimum_coin_loot_cap", 10)),
+                minimum_diamond_loot_cap=int(
+                    attack_data.get("minimum_diamond_loot_cap", 1)
+                ),
             ),
             instant_recovery_diamond_cost=(
                 None

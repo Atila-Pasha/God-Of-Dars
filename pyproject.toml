@@ -50,6 +50,11 @@ extend-exclude = [
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Keeping the session and its transaction on separate lines makes the
+# integration-test cleanup boundaries easier to audit.
+"tests/integration/test_postgres_concurrency.py" = ["SIM117"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

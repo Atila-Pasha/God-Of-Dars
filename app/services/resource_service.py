@@ -21,9 +21,7 @@ class ResourceService:
                 raise ResourceNotFound
             return resources
         result = await session.execute(
-            select(Resource)
-            .where(Resource.user_id == user_id)
-            .with_for_update()
+            select(Resource).where(Resource.user_id == user_id).with_for_update()
         )
         locked = result.scalar_one_or_none()
         if locked is None:
@@ -32,9 +30,15 @@ class ResourceService:
 
     @staticmethod
     async def debit(
-        session: AsyncSession, resources: Resource | None, *, user_id: int,
-        resource_type: ResourceType, amount: int, reason: str,
-        reference_type: str | None = None, reference_id: int | None = None,
+        session: AsyncSession,
+        resources: Resource | None,
+        *,
+        user_id: int,
+        resource_type: ResourceType,
+        amount: int,
+        reason: str,
+        reference_type: str | None = None,
+        reference_id: int | None = None,
     ) -> None:
         resources = await ResourceService._lock(session, resources, user_id)
         if amount < 0:
@@ -46,11 +50,18 @@ class ResourceService:
                 raise InsufficientDiamonds
             raise InsufficientCoins
         setattr(resources, field, before - amount)
-        session.add(Transaction(
-            user_id=user_id, resource_type=resource_type, amount=-amount,
-            balance_before=before, balance_after=before - amount, reason=reason,
-            reference_type=reference_type, reference_id=reference_id,
-        ))
+        session.add(
+            Transaction(
+                user_id=user_id,
+                resource_type=resource_type,
+                amount=-amount,
+                balance_before=before,
+                balance_after=before - amount,
+                reason=reason,
+                reference_type=reference_type,
+                reference_id=reference_id,
+            )
+        )
 
     @staticmethod
     async def debit_coin(

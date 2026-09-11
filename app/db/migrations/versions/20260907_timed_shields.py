@@ -12,7 +12,9 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "shields",
-        sa.Column("duration_minutes", sa.Integer(), nullable=False, server_default="60"),
+        sa.Column(
+            "duration_minutes", sa.Integer(), nullable=False, server_default="60"
+        ),
     )
     op.create_check_constraint(
         "ck_shields_duration_minutes_positive",
@@ -27,7 +29,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("user_shields", "active_until")
-    op.drop_constraint(
-        "ck_shields_duration_minutes_positive", "shields", type_="check"
-    )
+    op.drop_constraint("ck_shields_duration_minutes_positive", "shields", type_="check")
     op.drop_column("shields", "duration_minutes")

@@ -26,16 +26,26 @@ def parse_args() -> argparse.Namespace:
         help="How many hours the question stays available (default: 24)",
     )
     parser.add_argument(
-        "--coins", "--coin-reward", "--gold", "--gold-reward",
-        dest="coin_reward", type=int,
+        "--coins",
+        "--coin-reward",
+        "--gold",
+        "--gold-reward",
+        dest="coin_reward",
+        type=int,
         help="Coin reward (asks interactively when omitted)",
     )
     parser.add_argument(
-        "--diamonds", "--diamond-reward", dest="diamond_reward", type=int,
+        "--diamonds",
+        "--diamond-reward",
+        dest="diamond_reward",
+        type=int,
         help="Diamond reward (asks interactively when omitted)",
     )
     parser.add_argument(
-        "--bananas", "--banana-reward", dest="banana_reward", type=int,
+        "--bananas",
+        "--banana-reward",
+        dest="banana_reward",
+        type=int,
         help="Banana reward (asks interactively when omitted)",
     )
     return parser.parse_args()
@@ -72,9 +82,7 @@ async def main() -> None:
     diamond_reward = reward_input(
         args.diamond_reward, "تعداد الماس (خالی = بدون پاداش): "
     )
-    banana_reward = reward_input(
-        args.banana_reward, "تعداد موز (خالی = بدون پاداش): "
-    )
+    banana_reward = reward_input(args.banana_reward, "تعداد موز (خالی = بدون پاداش): ")
     expires_at = datetime.now(UTC) + timedelta(hours=args.hours)
     bot_session = (
         AiohttpSession(proxy=settings.TELEGRAM_PROXY)

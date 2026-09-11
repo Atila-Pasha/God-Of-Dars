@@ -41,9 +41,7 @@ class AdminService:
 
     async def list_broadcast_recipients(self, session: AsyncSession) -> list[int]:
         """Return every registered Telegram account, including inactive users."""
-        result = await session.execute(
-            select(User.telegram_user_id).order_by(User.id)
-        )
+        result = await session.execute(select(User.telegram_user_id).order_by(User.id))
         return [int(user_id) for user_id in result.scalars().all()]
 
     async def get_user(self, session: AsyncSession, user_id: int) -> User | None:
@@ -82,7 +80,9 @@ class AdminService:
         await session.flush()
         return user_teacher
 
-    async def set_user_active(self, session: AsyncSession, user_id: int, active: bool) -> User | None:
+    async def set_user_active(
+        self, session: AsyncSession, user_id: int, active: bool
+    ) -> User | None:
         user = await self.get_user(session, user_id)
         if user is None:
             return None
@@ -91,7 +91,13 @@ class AdminService:
         return user
 
     async def add_resources(
-        self, session: AsyncSession, user_id: int, *, coin: int, diamond: int, banana: int
+        self,
+        session: AsyncSession,
+        user_id: int,
+        *,
+        coin: int,
+        diamond: int,
+        banana: int,
     ) -> User | None:
         """Grant resources and record each grant as an auditable transaction."""
         if banana != 0:
@@ -120,14 +126,16 @@ class AdminService:
                 continue
             before = getattr(resources, field)
             setattr(resources, field, before + amount)
-            session.add(Transaction(
-                user_id=user.id,
-                resource_type=resource_type,
-                amount=amount,
-                balance_before=before,
-                balance_after=before + amount,
-                reason="ADMIN_GRANT",
-            ))
+            session.add(
+                Transaction(
+                    user_id=user.id,
+                    resource_type=resource_type,
+                    amount=amount,
+                    balance_before=before,
+                    balance_after=before + amount,
+                    reason="ADMIN_GRANT",
+                )
+            )
         await session.flush()
         return user
 
@@ -135,9 +143,13 @@ class AdminService:
         result = await session.execute(select(Teacher).order_by(Teacher.id))
         return list(result.scalars().all())
 
-    async def get_teacher(self, session: AsyncSession, teacher_id: int) -> Teacher | None:
+    async def get_teacher(
+        self, session: AsyncSession, teacher_id: int
+    ) -> Teacher | None:
         result = await session.execute(
-            select(Teacher).where(Teacher.id == teacher_id).options(selectinload(Teacher.owned_by_users))
+            select(Teacher)
+            .where(Teacher.id == teacher_id)
+            .options(selectinload(Teacher.owned_by_users))
         )
         return result.scalar_one_or_none()
 
@@ -146,9 +158,9 @@ class AdminService:
         if not name:
             raise ValueError("teacher name cannot be empty")
         for field in ("damage", "max_hp", "purchase_price", "upgrade_price"):
-            if int(values.get(field, -1)) < 0:
+            if int(str(values.get(field, -1))) < 0:
                 raise ValueError(f"{field} cannot be negative")
-        if int(values.get("unlock_level", 0)) < 1:
+        if int(str(values.get("unlock_level", 0))) < 1:
             raise ValueError("unlock_level must be positive")
         values.setdefault("purchase_resource", ResourceType.COIN)
         if values.get("purchase_resource") not in {
@@ -162,16 +174,18 @@ class AdminService:
         await session.flush()
         return teacher
 
-    async def update_teacher(self, session: AsyncSession, teacher_id: int, **values: object) -> Teacher | None:
+    async def update_teacher(
+        self, session: AsyncSession, teacher_id: int, **values: object
+    ) -> Teacher | None:
         teacher = await self.get_teacher(session, teacher_id)
         if teacher is None:
             return None
         if "name" in values and not str(values["name"]).strip():
             raise ValueError("teacher name cannot be empty")
         for field in ("damage", "max_hp", "purchase_price", "upgrade_price"):
-            if field in values and int(values[field]) < 0:
+            if field in values and int(str(values[field])) < 0:
                 raise ValueError(f"{field} cannot be negative")
-        if "unlock_level" in values and int(values["unlock_level"]) < 1:
+        if "unlock_level" in values and int(str(values["unlock_level"])) < 1:
             raise ValueError("unlock_level must be positive")
         if "purchase_resource" in values and values["purchase_resource"] not in {
             ResourceType.COIN,
@@ -185,7 +199,9 @@ class AdminService:
         await session.flush()
         return teacher
 
-    async def delete_teacher(self, session: AsyncSession, teacher_id: int) -> tuple[bool, Teacher | None]:
+    async def delete_teacher(
+        self, session: AsyncSession, teacher_id: int
+    ) -> tuple[bool, Teacher | None]:
         teacher = await self.get_teacher(session, teacher_id)
         if teacher is None:
             return False, None

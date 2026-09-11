@@ -57,9 +57,7 @@ class TeacherRepository:
 
     async def list_public(self, session: AsyncSession) -> list[Teacher]:
         result = await session.execute(
-            select(Teacher)
-            .where(Teacher.is_active.is_(True))
-            .order_by(Teacher.id)
+            select(Teacher).where(Teacher.is_active.is_(True)).order_by(Teacher.id)
         )
         return list(result.scalars().all())
 

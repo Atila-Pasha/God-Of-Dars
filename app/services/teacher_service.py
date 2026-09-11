@@ -27,7 +27,7 @@ from app.services.school_errors import (
 class TeacherCapacity:
     owned: int
     available: int
-    maximum: int
+    maximum: int | None
 
 
 @dataclass(frozen=True)
@@ -90,6 +90,15 @@ class TeacherService:
             return self.config.teacher_sell_price(
                 owned_teacher.teacher.id,
                 owned_teacher.teacher.purchase_price,
+            )
+        except GameConfigurationError as exc:
+            raise OperationNotConfigured from exc
+
+    def upgrade_cost(self, owned_teacher: UserTeacher) -> int:
+        try:
+            return self.config.teacher_upgrade_cost(
+                owned_teacher.teacher.upgrade_price,
+                owned_teacher.level,
             )
         except GameConfigurationError as exc:
             raise OperationNotConfigured from exc
@@ -187,16 +196,15 @@ class TeacherService:
             raise OperationNotConfigured from exc
         if next_damage <= current_damage:
             raise OperationNotConfigured
-        if owned_teacher.teacher.upgrade_price < 0:
-            raise OperationNotConfigured
-        if resources.diamond < owned_teacher.teacher.upgrade_price:
+        upgrade_cost = self.upgrade_cost(owned_teacher)
+        if resources.diamond < upgrade_cost:
             raise InsufficientCoins
 
         await ResourceService.debit_diamond(
             session,
             resources,
             user_id=user_id,
-            amount=owned_teacher.teacher.upgrade_price,
+            amount=upgrade_cost,
             reason="TEACHER_UPGRADE",
             reference_type="USER_TEACHER",
             reference_id=owned_teacher.id,
@@ -205,7 +213,7 @@ class TeacherService:
             session,
             resources,
             user_id=user_id,
-            amount=self.config.upgrade_banana_reward(owned_teacher.teacher.upgrade_price),
+            amount=self.config.upgrade_banana_reward(upgrade_cost),
             reason="TEACHER_UPGRADE_XP",
             reference_type="USER_TEACHER",
             reference_id=owned_teacher.id,
@@ -265,6 +273,10 @@ class TeacherService:
         )
         if owned_teacher is None:
             raise TeacherNotOwned
+        if owned_teacher.current_hp <= 0:
+            await session.delete(owned_teacher)
+            await session.flush()
+            raise InvalidTeacherState
         if owned_teacher.status is not TeacherStatus.DISABLED:
             raise InvalidTeacherState
         cost = self.config.instant_recovery_diamond_cost
@@ -302,6 +314,7 @@ class TeacherService:
         if owned_teacher.status is not TeacherStatus.ACTIVE:
             return False
         try:
+            self.upgrade_cost(owned_teacher)
             next_damage = self.config.teacher_damage(
                 owned_teacher.teacher.id,
                 owned_teacher.level + 1,

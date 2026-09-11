@@ -221,9 +221,7 @@ class QuestionService:
     async def get_active_daily_question(
         self, session: AsyncSession, *, now: datetime | None = None
     ) -> Question | None:
-        return await self.repository.get_active_daily(
-            session, now=self._now(now)
-        )
+        return await self.repository.get_active_daily(session, now=self._now(now))
 
     async def get_active_group_question_for_chat(
         self,
@@ -298,12 +296,16 @@ class QuestionService:
         session.add(answer)
         await session.flush()
         await self.daily_quest_service.record_event(
-            session, user_id=user_id, event_type="ANSWER_DAILY_QUESTION",
+            session,
+            user_id=user_id,
+            event_type="ANSWER_DAILY_QUESTION",
             event_id=f"answer:{answer.id}",
         )
         if correct:
             await self.daily_quest_service.record_event(
-                session, user_id=user_id, event_type="CORRECT_ANSWERS",
+                session,
+                user_id=user_id,
+                event_type="CORRECT_ANSWERS",
                 event_id=f"answer:{answer.id}",
             )
 
@@ -438,7 +440,10 @@ class QuestionService:
 
     @staticmethod
     def _validate_rewards(
-        *, coin_reward: int | None, diamond_reward: int | None, banana_reward: int | None
+        *,
+        coin_reward: int | None,
+        diamond_reward: int | None,
+        banana_reward: int | None,
     ) -> dict[str, int]:
         values = {
             "coin_reward": coin_reward,
@@ -450,7 +455,9 @@ class QuestionService:
                 values[name] = 0
             elif isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
                 raise InvalidQuestion
-        return {name: 0 if amount is None else amount for name, amount in values.items()}
+        return {
+            name: 0 if amount is None else amount for name, amount in values.items()
+        }
 
     async def _grant_question_rewards(
         self,

@@ -31,6 +31,13 @@ defense_absorption_ratio = 1.0
 counter_damage_ratio = 0.25
 loot_percent = 10
 banana_reward = 20
+# First calculate loot from the destroyed castle fraction, then cap it by the
+# attacking teacher's power. A rich target can therefore never make the same
+# teacher exceed its own carrying capacity.
+loot_coin_per_power = 10.0
+loot_diamond_per_power = 0.1
+minimum_coin_loot_cap = 10
+minimum_diamond_loot_cap = 1
 
 [hospital]
 instant_recovery_diamond_cost = 15
@@ -216,6 +223,14 @@ level_10 = 4.20
 [teacher_damage_progression]
 growth = 1.04
 max_multiplier = 8.0
+
+# upgrade_price in the admin panel is the base price for level 1 -> 2.
+# Later prices use: base * (1 + linear_growth*n + acceleration*n^2), n=level-1.
+[teacher_upgrade]
+linear_growth = 0.18
+acceleration = 0.015
+round_to = 5
+max_level = 500
 
 # ---------------------------------------------------------------------------
 

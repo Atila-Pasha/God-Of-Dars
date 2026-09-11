@@ -21,7 +21,10 @@ def upgrade() -> None:
         )
     status_type = (
         postgresql.ENUM(
-            "PENDING", "PROCESSING", "SENT", "FAILED",
+            "PENDING",
+            "PROCESSING",
+            "SENT",
+            "FAILED",
             name="notification_status",
             create_type=False,
         )
@@ -41,11 +44,20 @@ def upgrade() -> None:
         sa.Column("processing_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_error", sa.String(length=500), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["recipient_user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.ForeignKeyConstraint(
+            ["recipient_user_id"], ["users.id"], ondelete="CASCADE"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("idempotency_key"),
-        sa.CheckConstraint("attempts >= 0", name="ck_notifications_attempts_non_negative"),
+        sa.CheckConstraint(
+            "attempts >= 0", name="ck_notifications_attempts_non_negative"
+        ),
     )
     op.create_index(
         "ix_notifications_status_next_attempt",

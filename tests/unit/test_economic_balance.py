@@ -20,9 +20,7 @@ def test_buffet_conversion_has_a_loss_and_cannot_create_resources() -> None:
     forward = conversions[(ResourceType.COIN, ResourceType.DIAMOND)]
     reverse = conversions[(ResourceType.DIAMOND, ResourceType.COIN)]
     returned_coins = (
-        forward.target_amount
-        * reverse.target_amount
-        // reverse.source_amount
+        forward.target_amount * reverse.target_amount // reverse.source_amount
     )
     assert returned_coins < forward.source_amount
 

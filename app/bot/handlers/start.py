@@ -105,11 +105,14 @@ HELP_TEXTS = {
 
 async def _membership_status(
     user_id: int,
-    bot: Bot,
+    bot: Bot | None,
     session: AsyncSession | None = None,
     *,
     force_refresh: bool = False,
 ) -> bool | None:
+    if bot is None:
+        logger.error("Telegram bot context is missing for user %s", user_id)
+        return None
     try:
         # /start bypasses the subscription middleware by design, so refresh the
         # channel list only for real database sessions. This keeps the hot path

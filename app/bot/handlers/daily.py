@@ -69,9 +69,9 @@ async def _show(target, session: AsyncSession, user_id: int):
             markup = None
         else:
             lines = [
-            "🎯 فعالیت‌های روزانه",
-            "",
-            "فعالیت‌های امروز را کامل کن و جایزه بگیر:",
+                "🎯 فعالیت‌های روزانه",
+                "",
+                "فعالیت‌های امروز را کامل کن و جایزه بگیر:",
             ]
             for progress in progresses:
                 quest = progress.quest
@@ -84,12 +84,10 @@ async def _show(target, session: AsyncSession, user_id: int):
                         else f"▫️ پیشرفت: {progress.progress}/{quest.target}"
                     )
                 )
-                description = quest.description or "توضیحی برای این فعالیت ثبت نشده است."
-                lines.append(
-                    f"\n• {quest.title}\n"
-                    f" {status}\n"
-                    f" 📝 {description}"
+                description = (
+                    quest.description or "توضیحی برای این فعالیت ثبت نشده است."
                 )
+                lines.append(f"\n• {quest.title}\n {status}\n 📝 {description}")
             text = "\n".join(lines)
             markup = daily_keyboard(progresses)
     if isinstance(target, CallbackQuery):
@@ -113,12 +111,18 @@ async def daily_message(message: Message, session: AsyncSession):
 
 @router.callback_query(F.data.startswith("daily:"))
 async def daily_callback(callback: CallbackQuery, session: AsyncSession):
-    if callback.from_user is None or callback.message is None:
+    if (
+        callback.from_user is None
+        or callback.message is None
+        or callback.data is None
+        or callback.bot is None
+    ):
         await callback.answer()
         return
     user = await user_service.get_active_by_telegram_user_id(
         session, callback.from_user.id
     )
+    bot = callback.bot
     parts = callback.data.split(":")
     action = parts[1]
     value = parts[2] if len(parts) > 2 else ""
@@ -182,7 +186,7 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
             is_member = bool(
                 channel
                 and await subscription_service.is_member_in_channel(
-                    callback.bot, user.telegram_user_id, channel
+                    bot, user.telegram_user_id, channel
                 )
             )
         except MembershipCheckError:
@@ -205,8 +209,10 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
             session,
             user_id=user.id,
             progress_id=progress.id,
-            membership_checker=lambda checked_channel: subscription_service.is_member_in_channel(
-                callback.bot, user.telegram_user_id, checked_channel
+            membership_checker=lambda checked_channel: (
+                subscription_service.is_member_in_channel(
+                    bot, user.telegram_user_id, checked_channel
+                )
             ),
         )
         await callback.answer(
@@ -218,10 +224,12 @@ async def daily_callback(callback: CallbackQuery, session: AsyncSession):
         await _show(callback, session, user.id)
         return
     if action == "claim":
+
         async def membership_checker(channel):
             return await subscription_service.is_member_in_channel(
-                callback.bot, user.telegram_user_id, channel
+                bot, user.telegram_user_id, channel
             )
+
         try:
             result = await service.claim(
                 session,

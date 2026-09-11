@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Protocol, cast
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -8,7 +10,18 @@ from sqlalchemy.orm.attributes import set_committed_value
 from app.models.castle import Castle
 from app.models.resource import Resource
 from app.models.user import User
-from app.repositories.user import UserRepository
+
+
+class UserLockRepository(Protocol):
+    async def get_by_id_for_update(
+        self, session: AsyncSession, user_id: int
+    ) -> User | None: ...
+
+
+class LegacyUserLockRepository(Protocol):
+    async def get_user_for_update(
+        self, session: AsyncSession, user_id: int
+    ) -> User | None: ...
 
 
 async def lock_users_ordered(
@@ -16,20 +29,29 @@ async def lock_users_ordered(
     users: tuple[User, ...] = (),
     *,
     user_ids: tuple[int, ...] = (),
-    repository: UserRepository | None = None,
+    repository: UserLockRepository | None = None,
 ) -> tuple[User, ...]:
     """Lock User rows in one global order before dependent game entities."""
-    user_repository = repository or UserRepository()
+    if repository is None:
+        from app.repositories.user import UserRepository
+
+        repository = UserRepository()
     locked: dict[int, User] = {}
     ids = user_ids or tuple(user.id for user in users)
-    loader = getattr(user_repository, "get_by_id_for_update", None)
+    loader = getattr(repository, "get_by_id_for_update", None)
     if loader is None:
-        loader = user_repository.get_user_for_update
+        # Compatibility for older/custom repositories. Both repository
+        # methods have the same locking semantics and signature.
+        loader = cast(LegacyUserLockRepository, repository).get_user_for_update
     for user_id in sorted(set(ids)):
         user = await loader(session, user_id)
         if user is not None:
             locked[user_id] = user
-    return tuple(locked[user_id] for user_id in (ids or tuple(user.id for user in users)) if user_id in locked)
+    return tuple(
+        locked[user_id]
+        for user_id in (ids or tuple(user.id for user in users))
+        if user_id in locked
+    )
 
 
 async def lock_attack_dependencies(

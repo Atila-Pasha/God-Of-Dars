@@ -37,6 +37,49 @@ from app.models.teacher import Teacher
 from app.models.user import User
 from app.models.user_teacher import UserTeacher
 
+SCENARIOS = (
+    "start",
+    "callback",
+    "attack",
+    "purchase",
+    "upgrade",
+    "daily",
+    "notification",
+    "broadcast",
+)
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("value must be at least 1")
+    return parsed
+
+
+def nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value cannot be negative")
+    return parsed
+
+
+def nonnegative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value cannot be negative")
+    return parsed
+
+
+def scenario_list(value: str) -> tuple[str, ...]:
+    scenarios = tuple(item.strip() for item in value.split(",") if item.strip())
+    invalid = sorted(set(scenarios) - set(SCENARIOS))
+    if not scenarios or invalid:
+        choices = ", ".join(SCENARIOS)
+        detail = f"invalid scenarios: {', '.join(invalid)}; " if invalid else ""
+        raise argparse.ArgumentTypeError(f"{detail}choose from: {choices}")
+    return scenarios
+
+
 _dispatcher = None
 
 
@@ -211,7 +254,9 @@ async def run_level(
         one(
             _dispatcher,
             bot,
-            make_update(index, users[index % len(users)], scenarios[index % len(scenarios)]),
+            make_update(
+                index, users[index % len(users)], scenarios[index % len(scenarios)]
+            ),
             scenarios[index % len(scenarios)],
             semaphore,
         )
@@ -253,7 +298,7 @@ async def run_level(
 async def run_sustained(
     concurrency: int,
     duration_seconds: int,
-    interval_seconds: int,
+    interval_seconds: float,
     latency_ms: float,
 ) -> None:
     started = monotonic()
@@ -280,14 +325,15 @@ async def run_sustained(
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--concurrency", type=int, required=True)
-    parser.add_argument("--operations", type=int, default=1000)
-    parser.add_argument("--latency-ms", type=float, default=20)
-    parser.add_argument("--duration-seconds", type=int, default=0)
-    parser.add_argument("--interval-seconds", type=int, default=10)
+    parser.add_argument("--concurrency", type=positive_int, required=True)
+    parser.add_argument("--operations", type=positive_int, default=1000)
+    parser.add_argument("--latency-ms", type=nonnegative_float, default=20)
+    parser.add_argument("--duration-seconds", type=nonnegative_int, default=0)
+    parser.add_argument("--interval-seconds", type=nonnegative_float, default=10)
     parser.add_argument(
         "--scenarios",
-        default="start,callback,attack,purchase,upgrade,daily,notification,broadcast",
+        type=scenario_list,
+        default=SCENARIOS,
     )
     args = parser.parse_args()
     if args.duration_seconds:
@@ -301,7 +347,7 @@ async def main() -> None:
         await run_level(
             args.concurrency,
             args.operations,
-            tuple(args.scenarios.split(",")),
+            args.scenarios,
             args.latency_ms,
         )
 

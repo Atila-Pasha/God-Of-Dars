@@ -101,7 +101,9 @@ class MineService:
                 continue
             setattr(mine, f"today_{field}", getattr(mine, f"today_{field}") + amount)
         # Discard old backlog once the catch-up ceiling is reached.
-        mine.last_collected_at = now if capped else last + timedelta(minutes=elapsed_minutes)
+        mine.last_collected_at = (
+            now if capped else last + timedelta(minutes=elapsed_minutes)
+        )
         return elapsed_minutes
 
     async def collect(
@@ -129,20 +131,37 @@ class MineService:
         mine.collection_count += 1
         collection_event_id = f"mine:{mine.id}:collection:{mine.collection_count}"
         await ResourceService.credit_coin(
-            session, resources, user_id=user_id, amount=amounts[0],
-            reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
+            session,
+            resources,
+            user_id=user_id,
+            amount=amounts[0],
+            reason="MINE_COLLECTION",
+            reference_type="MINE",
+            reference_id=mine.id,
         )
         await ResourceService.credit_diamond(
-            session, resources, user_id=user_id, amount=amounts[1],
-            reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
+            session,
+            resources,
+            user_id=user_id,
+            amount=amounts[1],
+            reason="MINE_COLLECTION",
+            reference_type="MINE",
+            reference_id=mine.id,
         )
         await ResourceService.credit_banana(
-            session, resources, user_id=user_id, amount=amounts[2],
-            reason="MINE_COLLECTION", reference_type="MINE", reference_id=mine.id,
+            session,
+            resources,
+            user_id=user_id,
+            amount=amounts[2],
+            reason="MINE_COLLECTION",
+            reference_type="MINE",
+            reference_id=mine.id,
         )
         mine.today_coin = mine.today_diamond = mine.today_banana = 0
         await DailyQuestService().record_event(
-            session, user_id=user_id, event_type="COLLECT_MINE",
+            session,
+            user_id=user_id,
+            event_type="COLLECT_MINE",
             event_id=collection_event_id,
         )
         await session.flush()

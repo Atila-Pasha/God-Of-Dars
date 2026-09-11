@@ -33,7 +33,9 @@ class SubscriptionService:
         return ", ".join(self.channels)
 
     def set_channels(self, channels: Iterable[str] | None) -> None:
-        normalized = tuple(channel.strip() for channel in (channels or ()) if channel.strip())
+        normalized = tuple(
+            channel.strip() for channel in (channels or ()) if channel.strip()
+        )
         if normalized != self.channels:
             self.channels = normalized
             self._membership_cache.clear()
@@ -90,7 +92,9 @@ class SubscriptionService:
         identifier = SubscriptionService.normalize_channel_identifier(parts[0])
         if len(parts) == 2 and (
             re.fullmatch(r"-100\d{5,}", parts[0])
-            and re.fullmatch(r"https?://(?:t\.me|telegram\.me)/\+[A-Za-z0-9_-]+", parts[1])
+            and re.fullmatch(
+                r"https?://(?:t\.me|telegram\.me)/\+[A-Za-z0-9_-]+", parts[1]
+            )
         ):
             return parts[0], parts[1]
         if SubscriptionService.is_valid_channel_identifier(identifier):
@@ -138,7 +142,9 @@ class SubscriptionService:
         self._remember(cache_key, True)
         return True
 
-    async def is_member_in_channel(self, bot: Bot, telegram_user_id: int, channel: str) -> bool:
+    async def is_member_in_channel(
+        self, bot: Bot, telegram_user_id: int, channel: str
+    ) -> bool:
         try:
             member = await bot.get_chat_member(
                 chat_id=self.telegram_chat_id(channel), user_id=telegram_user_id
@@ -151,7 +157,9 @@ class SubscriptionService:
         if len(self._membership_cache) >= self.membership_cache_max_entries:
             now = monotonic()
             self._membership_cache = {
-                item: entry for item, entry in self._membership_cache.items() if entry[0] > now
+                item: entry
+                for item, entry in self._membership_cache.items()
+                if entry[0] > now
             }
             if len(self._membership_cache) >= self.membership_cache_max_entries:
                 self._membership_cache.clear()

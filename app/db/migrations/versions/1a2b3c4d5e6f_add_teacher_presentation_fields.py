@@ -12,7 +12,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("teachers", sa.Column("sticker", sa.String(length=255), nullable=True))
+    op.add_column(
+        "teachers", sa.Column("sticker", sa.String(length=255), nullable=True)
+    )
     op.add_column("teachers", sa.Column("emoji", sa.String(length=32), nullable=True))
 
 

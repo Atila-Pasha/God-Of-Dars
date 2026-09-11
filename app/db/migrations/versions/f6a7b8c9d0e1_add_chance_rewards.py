@@ -13,7 +13,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    resource_enum = ENUM("COIN", "DIAMOND", "BANANA", name="resource_type", create_type=False)
+    resource_enum = ENUM(
+        "COIN", "DIAMOND", "BANANA", name="resource_type", create_type=False
+    )
     op.create_table(
         "chance_boxes",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -23,12 +25,24 @@ def upgrade() -> None:
         sa.Column("amount", sa.BigInteger(), nullable=False),
         sa.Column("claimed_by_user_id", sa.BigInteger(), nullable=True),
         sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["group_id"], ["groups.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["claimed_by_user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["claimed_by_user_id"], ["users.id"], ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_chance_boxes_group_message", "chance_boxes", ["group_id", "telegram_message_id"], unique=True)
+    op.create_index(
+        "ix_chance_boxes_group_message",
+        "chance_boxes",
+        ["group_id", "telegram_message_id"],
+        unique=True,
+    )
     op.create_table(
         "chance_cards",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -39,11 +53,18 @@ def upgrade() -> None:
         sa.Column("captcha_answer", sa.String(length=16), nullable=False),
         sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_claimed", sa.Boolean(), server_default="false", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_chance_cards_user_claimed", "chance_cards", ["user_id", "is_claimed"])
+    op.create_index(
+        "ix_chance_cards_user_claimed", "chance_cards", ["user_id", "is_claimed"]
+    )
 
 
 def downgrade() -> None:

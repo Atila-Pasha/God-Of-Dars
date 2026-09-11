@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-engine_options = {"echo": settings.ENVIRONMENT == "development"}
+engine_options: dict[str, Any] = {"echo": settings.ENVIRONMENT == "development"}
 if settings.DATABASE_URL.startswith(("postgresql+asyncpg://", "postgres://")):
     engine_options.update(
         pool_size=settings.DB_POOL_SIZE,

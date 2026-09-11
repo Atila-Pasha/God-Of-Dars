@@ -31,9 +31,7 @@ class ReferralRepository:
         self, session: AsyncSession, referrer_id: int
     ) -> list[User]:
         result = await session.execute(
-            select(User)
-            .where(User.referrer_id == referrer_id)
-            .order_by(User.id)
+            select(User).where(User.referrer_id == referrer_id).order_by(User.id)
         )
         return list(result.scalars().all())
 
@@ -45,15 +43,19 @@ class ReferralRepository:
         descendant_id: int,
     ) -> bool:
         """Return whether descendant_id is anywhere below ancestor_id."""
-        descendants = select(User.id).where(User.referrer_id == ancestor_id).cte(
-            "referral_descendants", recursive=True
+        descendants = (
+            select(User.id)
+            .where(User.referrer_id == ancestor_id)
+            .cte("referral_descendants", recursive=True)
         )
         descendants = descendants.union_all(
-            select(User.id).join(
-                descendants, User.referrer_id == descendants.c.id
-            )
+            select(User.id).join(descendants, User.referrer_id == descendants.c.id)
         )
         result = await session.execute(
-            select(exists(select(descendants.c.id).where(descendants.c.id == descendant_id)))
+            select(
+                exists(
+                    select(descendants.c.id).where(descendants.c.id == descendant_id)
+                )
+            )
         )
         return bool(result.scalar_one())

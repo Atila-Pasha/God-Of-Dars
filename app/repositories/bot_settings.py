@@ -22,7 +22,9 @@ class BotSettingsRepository:
     ) -> BotSettings:
         settings = await self.get(session)
         settings.required_channel_telegram_id = telegram_id
-        settings.required_channel_username = username.strip().lstrip("@") if username else None
+        settings.required_channel_username = (
+            username.strip().lstrip("@") if username else None
+        )
         settings.is_active = bool(telegram_id or username)
         await session.flush()
         return settings
@@ -32,7 +34,9 @@ class BotSettingsRepository:
 
     async def list_channels(self, session: AsyncSession) -> list[RequiredChannel]:
         result = await session.execute(
-            select(RequiredChannel).where(RequiredChannel.is_active.is_(True)).order_by(RequiredChannel.id)
+            select(RequiredChannel)
+            .where(RequiredChannel.is_active.is_(True))
+            .order_by(RequiredChannel.id)
         )
         return list(result.scalars().all())
 
@@ -42,13 +46,17 @@ class BotSettingsRepository:
         username = None if telegram_id is not None else value.lstrip("@").strip()
         if not username and telegram_id is None:
             raise ValueError("channel identifier is empty")
-        channel = RequiredChannel(telegram_id=telegram_id, username=username, is_active=True)
+        channel = RequiredChannel(
+            telegram_id=telegram_id, username=username, is_active=True
+        )
         session.add(channel)
         await session.flush()
         return channel
 
     async def remove_channel(self, session: AsyncSession, channel_id: int) -> bool:
-        result = await session.execute(select(RequiredChannel).where(RequiredChannel.id == channel_id))
+        result = await session.execute(
+            select(RequiredChannel).where(RequiredChannel.id == channel_id)
+        )
         channel = result.scalar_one_or_none()
         if channel is None:
             return False

@@ -8,6 +8,7 @@ from admin.handlers import router
 from app.bot.custom_emojis import install as install_custom_emojis
 from app.bot.middlewares.database import DatabaseSessionMiddleware
 from app.core.config import settings
+from app.core.logging import configure_logging
 
 install_custom_emojis()
 
@@ -23,7 +24,9 @@ async def run_admin_bot(stop_event: asyncio.Event | None = None) -> None:
     if not settings.ADMIN_BOT_TOKEN:
         raise RuntimeError("ADMIN_BOT_TOKEN is not configured")
     if not settings.admin_id_set:
-        raise RuntimeError("ADMIN_IDS is empty; refusing to start an unprotected admin bot")
+        raise RuntimeError(
+            "ADMIN_IDS is empty; refusing to start an unprotected admin bot"
+        )
     session = AiohttpSession(
         proxy=settings.TELEGRAM_PROXY,
         limit=settings.TELEGRAM_HTTP_LIMIT,
@@ -75,5 +78,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    configure_logging(settings.ENVIRONMENT)
     with suppress(KeyboardInterrupt):
         asyncio.run(main())

@@ -56,9 +56,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["question_id"], ["questions.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["question_id"], ["questions.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["group_id"], ["groups.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -73,9 +71,7 @@ def upgrade() -> None:
         "group_questions",
         ["group_id", "status"],
     )
-    op.create_index(
-        "ix_group_questions_expires_at", "group_questions", ["expires_at"]
-    )
+    op.create_index("ix_group_questions_expires_at", "group_questions", ["expires_at"])
 
     op.add_column(
         "answers",
@@ -89,9 +85,7 @@ def upgrade() -> None:
         ["id"],
         ondelete="RESTRICT",
     )
-    op.create_index(
-        "ix_answers_group_question_id", "answers", ["group_question_id"]
-    )
+    op.create_index("ix_answers_group_question_id", "answers", ["group_question_id"])
     op.create_index(
         "uq_daily_answer_per_user",
         "answers",
@@ -136,13 +130,9 @@ def downgrade() -> None:
     op.drop_index("uq_group_answer_per_user", table_name="answers")
     op.drop_index("uq_daily_answer_per_user", table_name="answers")
     op.drop_index("ix_answers_group_question_id", table_name="answers")
-    op.drop_constraint(
-        "fk_answers_group_question_id", "answers", type_="foreignkey"
-    )
+    op.drop_constraint("fk_answers_group_question_id", "answers", type_="foreignkey")
     op.drop_column("answers", "group_question_id")
     op.drop_index("ix_group_questions_expires_at", table_name="group_questions")
-    op.drop_index(
-        "ix_group_questions_group_status", table_name="group_questions"
-    )
+    op.drop_index("ix_group_questions_group_status", table_name="group_questions")
     op.drop_index("uq_group_question_publication", table_name="group_questions")
     op.drop_table("group_questions")

@@ -210,15 +210,15 @@ class ShieldAdminService:
         name = str(values.get("name", "")).strip()
         if not name:
             raise ValueError("shield name cannot be empty")
-        if not 0 <= int(values.get("reduction_percent", -1)) <= 100:
+        if not 0 <= int(str(values.get("reduction_percent", -1))) <= 100:
             raise ValueError("reduction_percent must be between 0 and 100")
-        if int(values.get("flat_absorption", -1)) < 0:
+        if int(str(values.get("flat_absorption", -1))) < 0:
             raise ValueError("flat_absorption cannot be negative")
-        if int(values.get("purchase_price", -1)) < 0:
+        if int(str(values.get("purchase_price", -1))) < 0:
             raise ValueError("purchase_price cannot be negative")
-        if int(values.get("unlock_level", 0)) < 1:
+        if int(str(values.get("unlock_level", 0))) < 1:
             raise ValueError("unlock_level must be positive")
-        if int(values.get("duration_minutes", 0)) < 1:
+        if int(str(values.get("duration_minutes", 0))) < 1:
             raise ValueError("duration_minutes must be positive")
         if values.get("purchase_resource") not in (
             ResourceType.COIN,
@@ -251,9 +251,7 @@ class ShieldAdminService:
             "flat_absorption": values.get("flat_absorption", shield.flat_absorption),
             "purchase_price": values.get("purchase_price", shield.purchase_price),
             "unlock_level": values.get("unlock_level", shield.unlock_level),
-            "duration_minutes": values.get(
-                "duration_minutes", shield.duration_minutes
-            ),
+            "duration_minutes": values.get("duration_minutes", shield.duration_minutes),
             "purchase_resource": values.get(
                 "purchase_resource", shield.purchase_resource
             ),

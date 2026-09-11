@@ -47,19 +47,14 @@ async def test_start_non_member_shows_join_keyboard(monkeypatch) -> None:
     monkeypatch.setattr(
         start.subscription_service, "is_member", AsyncMock(return_value=False)
     )
-    monkeypatch.setattr(
-        start.subscription_service, "channels", ("example_channel",)
-    )
+    monkeypatch.setattr(start.subscription_service, "channels", ("example_channel",))
 
     await start.start_handler(message, AsyncMock())
 
     assert "عضو کانال" in message.answer.await_args.args[0]
     keyboard = message.answer.await_args.kwargs["reply_markup"]
-    assert (
-        keyboard.inline_keyboard[0][0].url
-        == start.subscription_service.channel_url(
-            start.subscription_service.channels[0]
-        )
+    assert keyboard.inline_keyboard[0][0].url == start.subscription_service.channel_url(
+        start.subscription_service.channels[0]
     )
     assert keyboard.inline_keyboard[1][0].callback_data == "channel:check"
 

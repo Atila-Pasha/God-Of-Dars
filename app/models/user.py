@@ -132,7 +132,10 @@ class User(Base):
     )
     referred_users: Mapped[list[User]] = relationship("User", back_populates="referrer")
     study_sessions: Mapped[list[StudySession]] = relationship(
-        "StudySession", back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+        "StudySession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     notifications: Mapped[list[Notification]] = relationship(
         "Notification", back_populates="recipient", passive_deletes=True

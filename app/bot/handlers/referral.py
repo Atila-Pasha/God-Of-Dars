@@ -15,6 +15,7 @@ router = Router(name="referral")
 referral_service = ReferralService()
 user_service = UserService()
 
+
 async def _invite_link(message: Message, user_id: int) -> str | None:
     if message.bot is None:
         return None
@@ -49,6 +50,4 @@ async def referral_handler(message: Message, session: AsyncSession) -> None:
             reply_markup=referral_keyboard(invite_link),
         )
     except UserInactiveError:
-        await message.answer(
-            "حساب شما فعال نیست.", reply_markup=main_menu_keyboard()
-        )
+        await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())

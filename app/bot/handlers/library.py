@@ -201,7 +201,7 @@ def _teacher_detail_content(teacher) -> tuple[str, list]:
         f"❤️ حداکثر جان: {teacher.max_hp}\n"
         f"🪙 قیمت خرید: {teacher.purchase_price} "
         f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
-        f"💎 قیمت ارتقا: {teacher.upgrade_price} الماس\n"
+        f"💎 هزینه پایه ارتقا (سطح ۱ به ۲): {teacher.upgrade_price} الماس\n"
         f"🎖 سطح بازشدن: {teacher.unlock_level}\n\n"
         f"✨ توانایی: {teacher.ability_text or 'تنظیم نشده'}\n"
         f"📝 توضیحات: {teacher.description or 'توضیحی ثبت نشده است.'}"
@@ -463,7 +463,11 @@ async def group_reply_answer_handler(
     message: Message,
     session: AsyncSession,
 ) -> None:
-    if message.from_user is None or message.text is None:
+    if (
+        message.from_user is None
+        or message.text is None
+        or message.reply_to_message is None
+    ):
         return
 
     publication = await question_service.get_group_question_by_message(

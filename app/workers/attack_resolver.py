@@ -76,9 +76,7 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                     update(Attack)
                     .where(
                         Attack.id.in_(attack_ids),
-                        Attack.status.in_(
-                            (AttackStatus.PENDING, AttackStatus.FAILED)
-                        ),
+                        Attack.status.in_((AttackStatus.PENDING, AttackStatus.FAILED)),
                     )
                     .values(
                         status=AttackStatus.PROCESSING,
@@ -91,11 +89,8 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                     result = await AttackService().resolve_pending_attack(
                         session, attack_id
                     )
-                    can_upgrade = (
-                        result is not None
-                        and await _can_upgrade_level(
-                            session, result.attacker_telegram_id
-                        )
+                    can_upgrade = result is not None and await _can_upgrade_level(
+                        session, result.attacker_telegram_id
                     )
                     if result is not None:
                         text = _result_text(result)
@@ -104,7 +99,10 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                             notification_type="ATTACK_RESULT",
                             recipient_user_id=result.attack.attacker_id,
                             idempotency_key=f"ATTACK_RESULT:{attack_id}:ATTACKER",
-                            payload={"chat_id": result.attacker_telegram_id, "text": text},
+                            payload={
+                                "chat_id": result.attacker_telegram_id,
+                                "text": text,
+                            },
                         )
                         await notification_service.enqueue(
                             session,
@@ -138,7 +136,7 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                 await _record_failure(session, attack_id, exc)
 
 
-def _is_retryable(exc: SQLAlchemyError) -> bool:
+def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, IntegrityError):
         return False
     if not isinstance(exc, (OperationalError, DBAPIError)):
@@ -147,9 +145,7 @@ def _is_retryable(exc: SQLAlchemyError) -> bool:
     return code in {"40001", "40P01"} or isinstance(exc, OperationalError)
 
 
-async def _record_failure(
-    session, attack_id: int, exc: Exception
-) -> None:
+async def _record_failure(session, attack_id: int, exc: Exception) -> None:
     async with session.begin():
         attack = await session.scalar(
             select(Attack).where(Attack.id == attack_id).with_for_update()
@@ -160,9 +156,7 @@ async def _record_failure(
         attack.failed_at = datetime.now(UTC)
         attack.last_error = str(exc)[:500]
         if _is_retryable(exc) and attack.retry_count <= settings.ATTACK_MAX_RETRIES:
-            delay = settings.ATTACK_RETRY_BASE_SECONDS * (
-                2 ** (attack.retry_count - 1)
-            )
+            delay = settings.ATTACK_RETRY_BASE_SECONDS * (2 ** (attack.retry_count - 1))
             attack.status = AttackStatus.FAILED
             attack.next_retry_at = datetime.now(UTC) + timedelta(seconds=delay)
         else:

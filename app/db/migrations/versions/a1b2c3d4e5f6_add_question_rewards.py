@@ -30,9 +30,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "questions",
-        sa.Column(
-            "banana_reward", sa.BigInteger(), server_default="0", nullable=False
-        ),
+        sa.Column("banana_reward", sa.BigInteger(), server_default="0", nullable=False),
     )
     op.create_check_constraint(
         "ck_questions_coin_reward_non_negative",

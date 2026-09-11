@@ -21,8 +21,12 @@ def upgrade() -> None:
         sa.Column("reward_resource", sa.String(length=16), nullable=False),
         sa.Column("reward_amount", sa.Integer(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.CheckConstraint("duration_minutes > 0", name="ck_study_packs_duration_positive"),
-        sa.CheckConstraint("reward_amount >= 0", name="ck_study_packs_reward_non_negative"),
+        sa.CheckConstraint(
+            "duration_minutes > 0", name="ck_study_packs_duration_positive"
+        ),
+        sa.CheckConstraint(
+            "reward_amount >= 0", name="ck_study_packs_reward_non_negative"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("key"),
     )
@@ -37,10 +41,38 @@ def upgrade() -> None:
             sa.column("is_active", sa.Boolean),
         ),
         [
-            {"key": "half_hour", "name": "نیم‌ساعته", "duration_minutes": 30, "reward_resource": "COIN", "reward_amount": 100, "is_active": True},
-            {"key": "one_hour", "name": "یک‌ساعته", "duration_minutes": 60, "reward_resource": "COIN", "reward_amount": 250, "is_active": True},
-            {"key": "one_half_hour", "name": "یک‌ونیم‌ساعته", "duration_minutes": 90, "reward_resource": "DIAMOND", "reward_amount": 3, "is_active": True},
-            {"key": "two_hours", "name": "دوساعته", "duration_minutes": 120, "reward_resource": "DIAMOND", "reward_amount": 5, "is_active": True},
+            {
+                "key": "half_hour",
+                "name": "نیم‌ساعته",
+                "duration_minutes": 30,
+                "reward_resource": "COIN",
+                "reward_amount": 100,
+                "is_active": True,
+            },
+            {
+                "key": "one_hour",
+                "name": "یک‌ساعته",
+                "duration_minutes": 60,
+                "reward_resource": "COIN",
+                "reward_amount": 250,
+                "is_active": True,
+            },
+            {
+                "key": "one_half_hour",
+                "name": "یک‌ونیم‌ساعته",
+                "duration_minutes": 90,
+                "reward_resource": "DIAMOND",
+                "reward_amount": 3,
+                "is_active": True,
+            },
+            {
+                "key": "two_hours",
+                "name": "دوساعته",
+                "duration_minutes": 120,
+                "reward_resource": "DIAMOND",
+                "reward_amount": 5,
+                "is_active": True,
+            },
         ],
     )
 

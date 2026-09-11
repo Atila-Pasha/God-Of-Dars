@@ -63,9 +63,7 @@ class QuestionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_group(
-        self, session: AsyncSession, group_id: int
-    ) -> Group | None:
+    async def get_group(self, session: AsyncSession, group_id: int) -> Group | None:
         result = await session.execute(select(Group).where(Group.id == group_id))
         return result.scalar_one_or_none()
 

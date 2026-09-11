@@ -69,14 +69,18 @@ async def _user(coin: int = 0) -> int:
 async def _cleanup(user_ids: list[int], *, pack_key: str | None = None) -> None:
     async with AsyncSessionLocal() as session:
         async with session.begin():
-            await session.execute(delete(Transaction).where(Transaction.user_id.in_(user_ids)))
+            await session.execute(
+                delete(Transaction).where(Transaction.user_id.in_(user_ids))
+            )
             await session.execute(delete(Reward).where(Reward.user_id.in_(user_ids)))
             await session.execute(
                 delete(Notification).where(Notification.recipient_user_id.in_(user_ids))
             )
             await session.execute(delete(User).where(User.id.in_(user_ids)))
             if pack_key is not None:
-                await session.execute(delete(StudyPack).where(StudyPack.key == pack_key))
+                await session.execute(
+                    delete(StudyPack).where(StudyPack.key == pack_key)
+                )
 
 
 @pytest.mark.asyncio
@@ -127,9 +131,12 @@ async def test_concurrent_reward_same_reference_is_idempotent() -> None:
     try:
         assert sorted(await asyncio.gather(grant(), grant())) == [False, True]
         async with AsyncSessionLocal() as session:
-            assert await session.scalar(
-                select(Resource.coin).where(Resource.user_id == user_id)
-            ) == 7
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == user_id)
+                )
+                == 7
+            )
     finally:
         await _cleanup([user_id])
 
@@ -187,8 +194,7 @@ async def test_concurrent_study_start_has_one_active_session() -> None:
         assert sorted(await asyncio.gather(start(), start())) == ["active", "ok"]
         async with AsyncSessionLocal() as session:
             count = await session.scalar(
-                select(func.count(StudySession.id))
-                .where(
+                select(func.count(StudySession.id)).where(
                     StudySession.user_id == user_id,
                     StudySession.completed_at.is_(None),
                 )
@@ -217,9 +223,12 @@ async def test_concurrent_referral_reward_is_one_time() -> None:
     try:
         assert sorted(await asyncio.gather(apply(), apply())) == [False, True]
         async with AsyncSessionLocal() as session:
-            assert await session.scalar(
-                select(Resource.coin).where(Resource.user_id == referrer_id)
-            ) == 3
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == referrer_id)
+                )
+                == 3
+            )
     finally:
         await _cleanup([referrer_id, referred_id])
 
@@ -272,9 +281,7 @@ async def test_concurrent_daily_quest_event_and_claim_are_idempotent() -> None:
         assert sorted(await asyncio.gather(claim(), claim())) == [False, True]
     finally:
         async with AsyncSessionLocal() as session, session.begin():
-            await session.execute(
-                delete(DailyQuest).where(DailyQuest.id == quest_id)
-            )
+            await session.execute(delete(DailyQuest).where(DailyQuest.id == quest_id))
         await _cleanup([user_id])
 
 
@@ -335,20 +342,31 @@ async def test_two_postgres_workers_resolve_one_attack() -> None:
         async with AsyncSessionLocal() as session:
             row = await session.get(Attack, attack_id)
             assert row.status is AttackStatus.RESOLVED
-            assert await session.scalar(
-                select(func.count(Transaction.id)).where(
-                    Transaction.reference_type == "ATTACK",
-                    Transaction.reference_id == attack_id,
+            assert (
+                await session.scalar(
+                    select(func.count(Transaction.id)).where(
+                        Transaction.reference_type == "ATTACK",
+                        Transaction.reference_id == attack_id,
+                    )
                 )
-            ) == 3
+                == 3
+            )
     finally:
         async with AsyncSessionLocal() as session:
             async with session.begin():
                 await session.execute(delete(Attack).where(Attack.id == attack_id))
-                await session.execute(delete(Transaction).where(Transaction.user_id.in_([attacker_id, target_id])))
-                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(
+                    delete(Transaction).where(
+                        Transaction.user_id.in_([attacker_id, target_id])
+                    )
+                )
+                await session.execute(
+                    delete(User).where(User.id.in_([attacker_id, target_id]))
+                )
                 if teacher_id is not None:
-                    await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+                    await session.execute(
+                        delete(Teacher).where(Teacher.id == teacher_id)
+                    )
 
 
 async def _attack_fixture() -> tuple[int, int, int, int]:
@@ -399,8 +417,12 @@ async def test_active_attack_states_control_new_attack(
                     target_id=target_id,
                     teacher_id=owned_id,
                     status=status,
-                    processing_at=datetime.now(UTC) if status is AttackStatus.PROCESSING else None,
-                    failed_at=datetime.now(UTC) if status is AttackStatus.FAILED else None,
+                    processing_at=datetime.now(UTC)
+                    if status is AttackStatus.PROCESSING
+                    else None,
+                    failed_at=datetime.now(UTC)
+                    if status is AttackStatus.FAILED
+                    else None,
                     next_retry_at=(
                         datetime.now(UTC) + timedelta(minutes=1)
                         if retryable and status is AttackStatus.FAILED
@@ -422,7 +444,9 @@ async def test_active_attack_states_control_new_attack(
                             session,
                             attacker_telegram_id=(
                                 await session.scalar(
-                                    select(User.telegram_user_id).where(User.id == attacker_id)
+                                    select(User.telegram_user_id).where(
+                                        User.id == attacker_id
+                                    )
                                 )
                             ),
                             target_id=target_id,
@@ -433,7 +457,9 @@ async def test_active_attack_states_control_new_attack(
                         session,
                         attacker_telegram_id=(
                             await session.scalar(
-                                select(User.telegram_user_id).where(User.id == attacker_id)
+                                select(User.telegram_user_id).where(
+                                    User.id == attacker_id
+                                )
                             )
                         ),
                         target_id=target_id,
@@ -454,7 +480,9 @@ async def test_active_attack_states_control_new_attack(
                         Transaction.user_id.in_([attacker_id, target_id])
                     )
                 )
-                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(
+                    delete(User).where(User.id.in_([attacker_id, target_id]))
+                )
                 await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
 
 
@@ -494,9 +522,17 @@ async def test_concurrent_attack_starts_are_serialized_by_user_lock() -> None:
     finally:
         async with AsyncSessionLocal() as session:
             async with session.begin():
-                await session.execute(delete(Attack).where(Attack.attacker_id == attacker_id))
-                await session.execute(delete(Transaction).where(Transaction.user_id.in_([attacker_id, target_id])))
-                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(
+                    delete(Attack).where(Attack.attacker_id == attacker_id)
+                )
+                await session.execute(
+                    delete(Transaction).where(
+                        Transaction.user_id.in_([attacker_id, target_id])
+                    )
+                )
+                await session.execute(
+                    delete(User).where(User.id.in_([attacker_id, target_id]))
+                )
                 await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
 
 
@@ -548,16 +584,16 @@ async def test_opposing_direct_attacks_follow_shared_lock_order() -> None:
         async with AsyncSessionLocal() as session:
             async with session.begin():
                 await session.execute(
-                    delete(Attack).where(
-                        Attack.attacker_id.in_([first_id, second_id])
-                    )
+                    delete(Attack).where(Attack.attacker_id.in_([first_id, second_id]))
                 )
                 await session.execute(
                     delete(Transaction).where(
                         Transaction.user_id.in_([first_id, second_id])
                     )
                 )
-                await session.execute(delete(User).where(User.id.in_([first_id, second_id])))
+                await session.execute(
+                    delete(User).where(User.id.in_([first_id, second_id]))
+                )
                 await session.execute(
                     delete(Teacher).where(Teacher.id == first_catalog_id)
                 )
@@ -634,9 +670,17 @@ async def test_attack_resource_lock_prevents_stale_reward_overwrite() -> None:
         async with AsyncSessionLocal() as session:
             async with session.begin():
                 await session.execute(delete(Attack).where(Attack.id == attack_id))
-                await session.execute(delete(Transaction).where(Transaction.user_id.in_([attacker_id, target_id])))
-                await session.execute(delete(Reward).where(Reward.user_id.in_([attacker_id, target_id])))
-                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(
+                    delete(Transaction).where(
+                        Transaction.user_id.in_([attacker_id, target_id])
+                    )
+                )
+                await session.execute(
+                    delete(Reward).where(Reward.user_id.in_([attacker_id, target_id]))
+                )
+                await session.execute(
+                    delete(User).where(User.id.in_([attacker_id, target_id]))
+                )
                 await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
 
 
@@ -727,8 +771,7 @@ async def test_postgres_serialization_failure_is_transient() -> None:
                 await barrier.wait()
                 await session.execute(
                     text(
-                        "UPDATE resources SET coin = coin + 1 "
-                        "WHERE user_id = :user_id"
+                        "UPDATE resources SET coin = coin + 1 WHERE user_id = :user_id"
                     ),
                     {"user_id": user_id},
                 )
@@ -796,23 +839,37 @@ async def test_stale_processing_attack_recovers_without_duplicate_ledger() -> No
         async with AsyncSessionLocal() as session:
             row = await session.get(Attack, attack_id)
             assert row.status is AttackStatus.RESOLVED
-            assert await session.scalar(
-                select(func.count(Transaction.id)).where(
-                    Transaction.reference_type == "ATTACK",
-                    Transaction.reference_id == attack_id,
+            assert (
+                await session.scalar(
+                    select(func.count(Transaction.id)).where(
+                        Transaction.reference_type == "ATTACK",
+                        Transaction.reference_id == attack_id,
+                    )
                 )
-            ) == 3
-            assert await session.scalar(
-                select(func.count(Notification.id)).where(
-                    Notification.idempotency_key.like(f"ATTACK_RESULT:{attack_id}:%")
+                == 3
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(Notification.id)).where(
+                        Notification.idempotency_key.like(
+                            f"ATTACK_RESULT:{attack_id}:%"
+                        )
+                    )
                 )
-            ) == 2
+                == 2
+            )
     finally:
         async with AsyncSessionLocal() as session:
             async with session.begin():
                 await session.execute(delete(Attack).where(Attack.id == attack_id))
-                await session.execute(delete(Transaction).where(Transaction.user_id.in_([attacker_id, target_id])))
-                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(
+                    delete(Transaction).where(
+                        Transaction.user_id.in_([attacker_id, target_id])
+                    )
+                )
+                await session.execute(
+                    delete(User).where(User.id.in_([attacker_id, target_id]))
+                )
                 await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
 
 
@@ -820,6 +877,7 @@ async def test_stale_processing_attack_recovers_without_duplicate_ledger() -> No
 async def test_notification_outbox_is_idempotent_and_two_workers_send_once() -> None:
     user_id = await _user()
     bot = AsyncMock()
+
     async def enqueue() -> None:
         async with AsyncSessionLocal() as session, session.begin():
             await NotificationService().enqueue(
@@ -909,10 +967,7 @@ async def test_notification_crash_window_is_at_least_once() -> None:
         async with AsyncSessionLocal() as session, session.begin():
             row = await session.scalar(
                 select(Notification)
-                .where(
-                    Notification.idempotency_key
-                    == "TEST:notification:crash-window"
-                )
+                .where(Notification.idempotency_key == "TEST:notification:crash-window")
                 .with_for_update()
             )
             row.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -923,7 +978,9 @@ async def test_notification_crash_window_is_at_least_once() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stale_processing_notification_is_recovered_after_worker_restart() -> None:
+async def test_stale_processing_notification_is_recovered_after_worker_restart() -> (
+    None
+):
     user_id = await _user()
     bot = AsyncMock()
     try:
@@ -1027,7 +1084,13 @@ async def test_shield_activation_and_attack_resolution_are_serializable() -> Non
         async with AsyncSessionLocal() as session:
             async with session.begin():
                 await session.execute(delete(Attack).where(Attack.id == attack_id))
-                await session.execute(delete(Transaction).where(Transaction.user_id.in_([attacker_id, target_id])))
-                await session.execute(delete(User).where(User.id.in_([attacker_id, target_id])))
+                await session.execute(
+                    delete(Transaction).where(
+                        Transaction.user_id.in_([attacker_id, target_id])
+                    )
+                )
+                await session.execute(
+                    delete(User).where(User.id.in_([attacker_id, target_id]))
+                )
                 await session.execute(delete(Shield).where(Shield.id == shield_id))
                 await session.execute(delete(Teacher).where(Teacher.id == teacher_id))

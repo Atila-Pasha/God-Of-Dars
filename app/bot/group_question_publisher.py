@@ -66,7 +66,9 @@ class GroupQuestionPublisher:
             try:
                 for attempt in range(2):
                     try:
-                        sent_message = await bot.send_message(chat_id=chat_id, text=text)
+                        sent_message = await bot.send_message(
+                            chat_id=chat_id, text=text
+                        )
                         break
                     except TelegramRetryAfter as exc:
                         if attempt == 1:

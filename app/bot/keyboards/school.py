@@ -1,3 +1,5 @@
+from typing import Literal
+
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -76,8 +78,35 @@ def castle_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
 
+ConfirmationAction = Literal[
+    "castle_upgrade",
+    "castle_repair",
+    "teacher_buy",
+    "teacher_upgrade",
+    "teacher_sell",
+    "teacher_activate",
+    "hospital_instant_recover",
+]
+TeacherAction = Literal[
+    "view",
+    "buy",
+    "page",
+    "upgrade",
+    "sell",
+    "activate",
+    "send_to_hospital",
+    "back_school",
+    "back_teachers",
+    "back_buffet",
+]
+TeacherOrigin = Literal["school", "buffet"]
+
+
 def confirmation_keyboard(
-    *, action: str, target_id: int, origin: str = "school"
+    *,
+    action: ConfirmationAction,
+    target_id: int,
+    origin: TeacherOrigin = "school",
 ) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -110,7 +139,7 @@ def teachers_keyboard(
     catalog: list[Teacher],
     *,
     can_buy: bool,
-    back_action: str = "back_school",
+    back_action: Literal["back_school", "back_buffet"] = "back_school",
 ) -> InlineKeyboardMarkup:
     rows = [
         [
@@ -138,7 +167,7 @@ def teachers_keyboard(
     rows.append(
         [
             InlineKeyboardButton(
-                    text="🔙 بوفه" if back_action == "back_buffet" else "🔙 مدرسه من",
+                text="🔙 بوفه" if back_action == "back_buffet" else "🔙 مدرسه من",
                 callback_data=TeacherCallback(
                     action=back_action,
                     teacher_id=0,
@@ -154,8 +183,8 @@ def teacher_catalog_keyboard(
     teachers: list[Teacher],
     *,
     player_level: int,
-    back_action: str = "back_teachers",
-    origin: str = "school",
+    back_action: TeacherAction = "back_teachers",
+    origin: TeacherOrigin = "school",
 ) -> InlineKeyboardMarkup:
     visible = [teacher for teacher in teachers if teacher.unlock_level <= player_level]
     page_size = 5
@@ -169,9 +198,7 @@ def teacher_catalog_keyboard(
                     f"{teacher.name} — {teacher.purchase_price} "
                     f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}"
                 ),
-                icon_custom_emoji_id=premium_emoji_id(
-                    teacher.emoji, fallback="👨‍🏫"
-                ),
+                icon_custom_emoji_id=premium_emoji_id(teacher.emoji, fallback="👨‍🏫"),
                 callback_data=TeacherCallback(
                     action="buy", teacher_id=teacher.id, origin=origin, page=page
                 ).pack(),
@@ -208,8 +235,8 @@ def teacher_catalog_page_keyboard(
     *,
     player_level: int,
     page: int,
-    back_action: str = "back_teachers",
-    origin: str = "school",
+    back_action: TeacherAction = "back_teachers",
+    origin: TeacherOrigin = "school",
 ) -> InlineKeyboardMarkup:
     visible = [teacher for teacher in teachers if teacher.unlock_level <= player_level]
     page_size = 5
@@ -223,9 +250,7 @@ def teacher_catalog_page_keyboard(
                     f"{teacher.name} — {teacher.purchase_price} "
                     f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}"
                 ),
-                icon_custom_emoji_id=premium_emoji_id(
-                    teacher.emoji, fallback="👨‍🏫"
-                ),
+                icon_custom_emoji_id=premium_emoji_id(teacher.emoji, fallback="👨‍🏫"),
                 callback_data=TeacherCallback(
                     action="buy", teacher_id=teacher.id, origin=origin, page=page
                 ).pack(),
@@ -349,8 +374,11 @@ def teacher_detail_keyboard(
 
 
 def hospital_keyboard(
-    teachers: list[UserTeacher], *, can_activate: bool, can_recover: bool,
-    instant_recovery_cost: int | None = None
+    teachers: list[UserTeacher],
+    *,
+    can_activate: bool,
+    can_recover: bool,
+    instant_recovery_cost: int | None = None,
 ) -> InlineKeyboardMarkup:
     rows = []
     for teacher in teachers:

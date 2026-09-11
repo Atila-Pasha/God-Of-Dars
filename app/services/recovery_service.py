@@ -45,6 +45,10 @@ class HospitalService:
         )
         if teacher is None:
             raise TeacherNotOwned
+        if teacher.current_hp <= 0:
+            await session.delete(teacher)
+            await session.flush()
+            raise InvalidTeacherState
         if teacher.status not in {TeacherStatus.INJURED, TeacherStatus.RECOVERING}:
             raise InvalidTeacherState
         cost = self.config.instant_recovery_diamond_cost
@@ -52,9 +56,14 @@ class HospitalService:
             raise OperationNotConfigured
         resources = await self.repository.get_resources_for_update(session, user_id)
         await ResourceService.debit(
-            session, resources, user_id=user_id, resource_type=ResourceType.DIAMOND,
-            amount=cost, reason="TEACHER_INSTANT_RECOVERY",
-            reference_type="USER_TEACHER", reference_id=teacher.id,
+            session,
+            resources,
+            user_id=user_id,
+            resource_type=ResourceType.DIAMOND,
+            amount=cost,
+            reason="TEACHER_INSTANT_RECOVERY",
+            reference_type="USER_TEACHER",
+            reference_id=teacher.id,
         )
         now = datetime.now(UTC)
         for recovery in teacher.recoveries:
@@ -69,13 +78,15 @@ class HospitalService:
         teachers = await self.repository.list_owned(session, user_id)
         now = datetime.now(UTC)
         changed = False
+        living_teachers: list[UserTeacher] = []
         for teacher in teachers:
-            # Repair legacy rows created before zero HP was automatically
-            # marked as disabled, so they appear in the hospital immediately.
-            if teacher.current_hp <= 0 and teacher.status is TeacherStatus.ACTIVE:
-                teacher.current_hp = 0
-                teacher.status = TeacherStatus.DISABLED
+            # Zero HP is permanent death. Clean up legacy zero-HP rows instead
+            # of exposing a path that can resurrect them.
+            if teacher.current_hp <= 0:
+                await session.delete(teacher)
                 changed = True
+                continue
+            living_teachers.append(teacher)
             active_recovery = next(
                 (
                     recovery
@@ -97,7 +108,7 @@ class HospitalService:
             await session.flush()
         return [
             teacher
-            for teacher in teachers
+            for teacher in living_teachers
             if teacher.status
             in {
                 TeacherStatus.INJURED,
@@ -114,6 +125,10 @@ class HospitalService:
         )
         if teacher is None:
             raise TeacherNotOwned
+        if teacher.current_hp <= 0:
+            await session.delete(teacher)
+            await session.flush()
+            raise InvalidTeacherState
         if teacher.status not in {TeacherStatus.INJURED, TeacherStatus.ACTIVE}:
             raise InvalidTeacherState
         if (

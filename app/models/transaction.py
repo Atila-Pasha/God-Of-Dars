@@ -39,9 +39,7 @@ class Transaction(Base):
             postgresql_where=text(
                 "reference_type = 'ATTACK' AND reference_id IS NOT NULL"
             ),
-            sqlite_where=text(
-                "reference_type = 'ATTACK' AND reference_id IS NOT NULL"
-            ),
+            sqlite_where=text("reference_type = 'ATTACK' AND reference_id IS NOT NULL"),
         ),
         CheckConstraint(
             "balance_before IS NULL OR balance_before >= 0",

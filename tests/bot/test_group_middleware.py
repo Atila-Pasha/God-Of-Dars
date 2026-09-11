@@ -1,4 +1,7 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from app.bot import create_dispatcher
 from app.bot.middlewares.group import GroupAccessMiddleware
@@ -6,9 +9,7 @@ from app.bot.middlewares.subscription import SubscriptionMiddleware
 
 
 def test_group_policy_allows_only_stat_and_attack_commands() -> None:
-    assert GroupAccessMiddleware._message_is_allowed(
-        SimpleNamespace(text="/stat")
-    )
+    assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="/stat"))
     assert GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/attack@my_bot")
     )
@@ -21,9 +22,7 @@ def test_group_policy_allows_only_stat_and_attack_commands() -> None:
 
 
 def test_group_policy_allows_plain_text_for_question_answers() -> None:
-    assert GroupAccessMiddleware._message_is_allowed(
-        SimpleNamespace(text="تهران")
-    )
+    assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="تهران"))
 
 
 def test_group_policy_runs_before_subscription_middleware() -> None:
@@ -32,3 +31,16 @@ def test_group_policy_runs_before_subscription_middleware() -> None:
     middlewares = list(dispatcher.message.outer_middleware)
     assert isinstance(middlewares[0], GroupAccessMiddleware)
     assert isinstance(middlewares[1], SubscriptionMiddleware)
+
+
+@pytest.mark.asyncio
+async def test_group_members_are_auto_registered_once_and_bots_are_skipped() -> None:
+    user_service = SimpleNamespace(get_or_create_from_telegram=AsyncMock())
+    middleware = GroupAccessMiddleware(user_service=user_service)
+    member = SimpleNamespace(id=42, is_bot=False)
+    bot = SimpleNamespace(id=7, is_bot=True)
+    session = SimpleNamespace()
+
+    await middleware._register_users(session, member, member, bot, None)
+
+    user_service.get_or_create_from_telegram.assert_awaited_once_with(session, member)

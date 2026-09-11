@@ -29,7 +29,7 @@ from app.bot.keyboards.school import (
     teacher_detail_keyboard,
     teachers_keyboard,
 )
-from app.bot.utils.telegram import safe_edit_text
+from app.bot.utils.telegram import group_user_request, safe_edit_text
 from app.core.enums import TeacherStatus
 from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
@@ -110,7 +110,10 @@ def _teacher_purchase_error(error: Exception) -> str:
 
 async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
     message = callback.message
-    if message is None or message.chat.type not in {"group", "supergroup"}:
+    if not isinstance(message, Message) or message.chat.type not in {
+        "group",
+        "supergroup",
+    }:
         return
     with suppress(TelegramAPIError):
         await message.delete()
@@ -175,6 +178,8 @@ async def _school_view(
     target: Message | CallbackQuery,
     session: AsyncSession,
 ) -> None:
+    if target.from_user is None:
+        raise UserInactiveError
     user = await _user(session, target.from_user.id)
     castle = await castle_service.snapshot(session, user.id)
     capacity = await teacher_service.capacity(session, user.id)
@@ -234,6 +239,8 @@ async def _teachers_view(
     *,
     from_buffet: bool = False,
 ) -> None:
+    if target.from_user is None:
+        raise UserInactiveError
     user = await _user(session, target.from_user.id)
     capacity = await teacher_service.capacity(session, user.id)
     teachers = await teacher_service.owned(session, user.id)
@@ -263,7 +270,7 @@ async def _teachers_view(
             can_buy=from_buffet
             and (
                 capacity.owned < capacity.available
-                and capacity.owned < capacity.maximum
+                and (capacity.maximum is None or capacity.owned < capacity.maximum)
                 and any(teacher.unlock_level <= user.level for teacher in catalog)
             ),
             back_action="back_buffet" if from_buffet else "back_school",
@@ -441,9 +448,7 @@ async def castle_callback_handler(
                 f"مقدار آسیب: {_number(quote.missing_strength)} واحد\n"
                 f"هزینه تعمیر: {_number(quote.diamond_cost)} الماس\n"
                 "آیا می‌خواهی دژ را تعمیر کنم؟",
-                reply_markup=confirmation_keyboard(
-                    action="castle_repair", target_id=0
-                ),
+                reply_markup=confirmation_keyboard(action="castle_repair", target_id=0),
             )
             await callback.answer()
             return
@@ -542,10 +547,12 @@ async def teacher_callback_handler(
             owned = await teacher_service.get_owned(
                 session, user.id, callback_data.teacher_id
             )
+            upgrade_cost = teacher_service.upgrade_cost(owned)
             await _send_or_edit(
                 callback,
                 f"⬆️ ارتقای دبیر {owned.teacher.name}\n\n"
-                f"هزینه: {_number(owned.teacher.upgrade_price)} الماس\n"
+                f"ارتقا از سطح {_number(owned.level)} به {_number(owned.level + 1)}\n"
+                f"هزینه: {_number(upgrade_cost)} الماس\n"
                 "آیا می‌خواهی دبیر را ارتقا بدهم؟",
                 reply_markup=confirmation_keyboard(
                     action="teacher_upgrade", target_id=owned.id
@@ -611,12 +618,28 @@ async def confirmation_callback_handler(
     if callback.from_user is None:
         await callback.answer()
         return
+    purchase_source = (
+        group_user_request(callback.message)
+        if callback_data.action == "teacher_buy"
+        and isinstance(callback.message, Message)
+        else None
+    )
+    if (
+        purchase_source is not None
+        and purchase_source.from_user is not None
+        and purchase_source.from_user.id != callback.from_user.id
+    ):
+        await callback.answer(
+            "فقط کاربری که درخواست خرید داده می‌تواند آن را تأیید کند.",
+            show_alert=True,
+        )
+        return
     try:
         user = await _user(session, callback.from_user.id)
         if callback_data.decision == "cancel":
             if (
                 callback_data.action == "teacher_buy"
-                and callback.message is not None
+                and isinstance(callback.message, Message)
                 and callback.message.chat.type in {"group", "supergroup"}
             ):
                 with suppress(TelegramAPIError):
@@ -665,7 +688,12 @@ async def confirmation_callback_handler(
                 await _delete_group_purchase_prompt(callback)
                 await callback.message.answer(
                     f"✅ دبیر «{purchased_teacher.teacher.name}» با موفقیت خریداری شد.",
-                    disable_group_reply=True,
+                    reply_to_message_id=(
+                        purchase_source.message_id
+                        if purchase_source is not None
+                        else None
+                    ),
+                    disable_group_reply=purchase_source is None,
                 )
             notice = "دبیر با موفقیت خریداری شد."
         elif callback_data.action == "teacher_upgrade":

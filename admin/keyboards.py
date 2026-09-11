@@ -10,7 +10,9 @@ def daily_quest_dates() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="امروز", callback_data="admin_daily:date:today"),
+                InlineKeyboardButton(
+                    text="امروز", callback_data="admin_daily:date:today"
+                ),
                 InlineKeyboardButton(
                     text="فردا", callback_data="admin_daily:date:tomorrow"
                 ),
@@ -52,7 +54,9 @@ def daily_quest_rewards() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🪙 سکه", callback_data="admin_daily:reward:COIN"),
+                InlineKeyboardButton(
+                    text="🪙 سکه", callback_data="admin_daily:reward:COIN"
+                ),
                 InlineKeyboardButton(
                     text="💎 الماس", callback_data="admin_daily:reward:DIAMOND"
                 ),
@@ -133,7 +137,10 @@ def main() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="📊 آمار کاربران ربات")],
             [KeyboardButton(text="🛡 مدیریت سپرها")],
             [KeyboardButton(text="📢 مدیریت قفل کانال")],
-            [KeyboardButton(text="🎁 ارسال جعبه شانس"), KeyboardButton(text="🃏 ارسال کارت شانس")],
+            [
+                KeyboardButton(text="🎁 ارسال جعبه شانس"),
+                KeyboardButton(text="🃏 ارسال کارت شانس"),
+            ],
             [
                 KeyboardButton(text="❓ ساخت سؤال روزانه"),
                 KeyboardButton(text="👥 ساخت سؤال گروهی"),
@@ -150,8 +157,14 @@ def main() -> ReplyKeyboardMarkup:
 def chance_box_sections() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📦 ارسال به بخش ۱"), KeyboardButton(text="📦 ارسال به بخش ۲")],
-            [KeyboardButton(text="📦 ارسال به بخش ۳"), KeyboardButton(text="📦 ارسال به بخش ۴")],
+            [
+                KeyboardButton(text="📦 ارسال به بخش ۱"),
+                KeyboardButton(text="📦 ارسال به بخش ۲"),
+            ],
+            [
+                KeyboardButton(text="📦 ارسال به بخش ۳"),
+                KeyboardButton(text="📦 ارسال به بخش ۴"),
+            ],
             [KeyboardButton(text="❌ لغو")],
         ],
         resize_keyboard=True,
@@ -231,18 +244,33 @@ def teacher_actions(teacher_id: int) -> InlineKeyboardMarkup:
 
 def teacher_edit_fields(teacher_id: int) -> InlineKeyboardMarkup:
     fields = (
-        ("نام", "name"), ("آسیب", "damage"), ("جان", "max_hp"),
-        ("قیمت خرید", "purchase_price"), ("ارز خرید", "purchase_resource"),
-        ("قیمت ارتقا", "upgrade_price"),
-        ("سطح بازشدن", "unlock_level"), ("توانایی", "ability_text"),
+        ("نام", "name"),
+        ("آسیب", "damage"),
+        ("جان", "max_hp"),
+        ("قیمت خرید", "purchase_price"),
+        ("ارز خرید", "purchase_resource"),
+        ("قیمت پایه ارتقای ۱←۲", "upgrade_price"),
+        ("سطح بازشدن", "unlock_level"),
+        ("توانایی", "ability_text"),
         ("توضیحات", "description"),
-        ("استیکر", "sticker"), ("اموجی", "emoji"),
+        ("استیکر", "sticker"),
+        ("اموجی", "emoji"),
     )
     rows = [
-        [InlineKeyboardButton(text=label, callback_data=f"teacher:field:{teacher_id}:{field}")]
+        [
+            InlineKeyboardButton(
+                text=label, callback_data=f"teacher:field:{teacher_id}:{field}"
+            )
+        ]
         for label, field in fields
     ]
-    rows.append([InlineKeyboardButton(text="✅ پایان", callback_data=f"teacher:done:{teacher_id}")])
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="✅ پایان", callback_data=f"teacher:done:{teacher_id}"
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -263,16 +291,28 @@ def shield_actions(shield_id: int) -> InlineKeyboardMarkup:
 
 def shield_edit_fields(shield_id: int) -> InlineKeyboardMarkup:
     fields = (
-        ("نام", "name"), ("قیمت خرید", "purchase_price"),
+        ("نام", "name"),
+        ("قیمت خرید", "purchase_price"),
         ("ارز خرید", "purchase_resource"),
-        ("سطح بازشدن", "unlock_level"), ("مدت (دقیقه)", "duration_minutes"),
+        ("سطح بازشدن", "unlock_level"),
+        ("مدت (دقیقه)", "duration_minutes"),
         ("توضیح", "description"),
     )
     rows = [
-        [InlineKeyboardButton(text=label, callback_data=f"shield:field:{shield_id}:{field}")]
+        [
+            InlineKeyboardButton(
+                text=label, callback_data=f"shield:field:{shield_id}:{field}"
+            )
+        ]
         for label, field in fields
     ]
-    rows.append([InlineKeyboardButton(text="✅ پایان", callback_data=f"shield:done:{shield_id}")])
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="✅ پایان", callback_data=f"shield:done:{shield_id}"
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -320,6 +360,10 @@ def study_pack_edit_fields(pack_id: int) -> InlineKeyboardMarkup:
         for label, field in fields
     ]
     rows.append(
-        [InlineKeyboardButton(text="✅ پایان", callback_data=f"study_pack:done:{pack_id}")]
+        [
+            InlineKeyboardButton(
+                text="✅ پایان", callback_data=f"study_pack:done:{pack_id}"
+            )
+        ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)

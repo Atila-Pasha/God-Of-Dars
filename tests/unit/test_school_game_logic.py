@@ -389,3 +389,79 @@ async def test_hospital_completes_due_recovery_without_teacher_death() -> None:
     assert owned.status is TeacherStatus.ACTIVE
     assert owned.current_hp == model.max_hp
     session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_damaged_active_teacher_can_enter_hospital_before_zero_hp() -> None:
+    model = teacher()
+    owned = owned_teacher(model)
+    owned.recoveries = []
+    repository = FakeTeacherRepository(
+        user=user(),
+        resources=SimpleNamespace(coin=0),
+        teacher=model,
+        owned=owned,
+    )
+    castle_service = SimpleNamespace(
+        snapshot=AsyncMock(return_value=SimpleNamespace(strength=100))
+    )
+    session = SimpleNamespace(add=lambda item: None, flush=AsyncMock())
+    service = HospitalService(
+        repository,
+        castle_service,
+        config=GameConfig(recovery_minutes_by_strength=((0, 5),)),
+    )
+
+    result = await service.begin_recovery(session, 10, owned.id)
+
+    assert result is owned
+    assert owned.status is TeacherStatus.RECOVERING
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_zero_hp_teacher_is_removed_from_hospital_list() -> None:
+    model = teacher()
+    owned = owned_teacher(model)
+    owned.current_hp = 0
+    owned.recoveries = []
+    repository = FakeTeacherRepository(
+        user=user(),
+        resources=SimpleNamespace(coin=0),
+        teacher=model,
+        owned=owned,
+    )
+    session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
+    service = HospitalService(repository)
+
+    patients = await service.patients(session, 10)
+
+    assert patients == []
+    session.delete.assert_awaited_once_with(owned)
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_zero_hp_teacher_cannot_be_instantly_resurrected() -> None:
+    model = teacher()
+    owned = owned_teacher(model)
+    owned.current_hp = 0
+    owned.status = TeacherStatus.RECOVERING
+    owned.recoveries = []
+    repository = FakeTeacherRepository(
+        user=user(),
+        resources=SimpleNamespace(diamond=100),
+        teacher=model,
+        owned=owned,
+    )
+    session = SimpleNamespace(delete=AsyncMock(), flush=AsyncMock())
+    service = HospitalService(
+        repository,
+        config=GameConfig(instant_recovery_diamond_cost=1),
+    )
+
+    with pytest.raises(InvalidTeacherState):
+        await service.instant_recover(session, 10, owned.id)
+
+    session.delete.assert_awaited_once_with(owned)
+    assert owned.current_hp == 0

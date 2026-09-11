@@ -29,7 +29,7 @@ from app.bot.keyboards.school import (
     teacher_catalog_page_keyboard,
 )
 from app.bot.states import BuffetStates
-from app.bot.utils.telegram import safe_edit_text
+from app.bot.utils.telegram import group_user_request, safe_edit_text
 from app.core.enums import ResourceType
 from app.services.buffet_service import (
     BuffetService,
@@ -72,7 +72,10 @@ RESOURCE_LABELS = {
 
 async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
     message = callback.message
-    if message is None or message.chat.type not in {"group", "supergroup"}:
+    if not isinstance(message, Message) or message.chat.type not in {
+        "group",
+        "supergroup",
+    }:
         return
     with suppress(TelegramAPIError):
         await message.delete()
@@ -93,11 +96,7 @@ async def group_purchase_message(
         return
     parts = message.text.strip().split(maxsplit=2)
     if len(parts) < 2 or (parts[1] == "سپر" and len(parts) < 3):
-        await message.answer(
-            "فرمت خرید:\n"
-            "خرید {اسم دبیر}\n"
-            "خرید سپر {اسم سپر}"
-        )
+        await message.answer("فرمت خرید:\nخرید {اسم دبیر}\nخرید سپر {اسم سپر}")
         return
     is_shield = parts[1] == "سپر"
     name = parts[2].strip() if is_shield else message.text.strip().split(maxsplit=1)[1]
@@ -107,7 +106,11 @@ async def group_purchase_message(
         )
         teacher_catalog = await teacher_service.public_teachers(session)
         teacher = next(
-            (item for item in teacher_catalog if item.name.casefold() == name.casefold()),
+            (
+                item
+                for item in teacher_catalog
+                if item.name.casefold() == name.casefold()
+            ),
             None,
         )
         if teacher is not None:
@@ -120,6 +123,7 @@ async def group_purchase_message(
                 reply_markup=confirmation_keyboard(
                     action="teacher_buy", target_id=teacher.id, origin="buffet"
                 ),
+                reply_to_message_id=message.message_id,
             )
             return
 
@@ -130,7 +134,11 @@ async def group_purchase_message(
         else:
             shield_catalog = []
         shield = next(
-            (item for item in shield_catalog if item.name.casefold() == name.casefold()),
+            (
+                item
+                for item in shield_catalog
+                if item.name.casefold() == name.casefold()
+            ),
             None,
         )
         if shield is not None:
@@ -142,11 +150,10 @@ async def group_purchase_message(
                 "به شما اثر نمی‌کند.\n\n"
                 "آیا خرید را تأیید می‌کنید؟",
                 reply_markup=shield_purchase_confirmation(shield),
+                reply_to_message_id=message.message_id,
             )
             return
-        await message.answer(
-            "دبیر یا سپری با این نام برای سطح شما پیدا نشد."
-        )
+        await message.answer("دبیر یا سپری با این نام برای سطح شما پیدا نشد.")
     except TeacherSlotLocked:
         await message.answer(
             "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید یا سطح فرمانده را افزایش دهید."
@@ -170,10 +177,7 @@ async def group_purchase_message(
 
 
 def _resource_text(resources) -> str:
-    return (
-        f"🪙 طلا: {resources.coin}\n"
-        f"💎 الماس: {resources.diamond}"
-    )
+    return f"🪙 طلا: {resources.coin}\n💎 الماس: {resources.diamond}"
 
 
 @router.message(F.text == BUFFET_LABEL)
@@ -263,6 +267,8 @@ async def buffet_teachers_message(
 async def _teacher_shop_view(
     target: Message | CallbackQuery, session: AsyncSession, page: int = 0
 ) -> None:
+    if target.from_user is None:
+        raise UserInactiveError
     user = await user_service.get_active_by_telegram_user_id(
         session, target.from_user.id
     )
@@ -288,6 +294,8 @@ async def buffet_back_to_main(message: Message, state: FSMContext) -> None:
 
 
 async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None:
+    if target.from_user is None or not isinstance(target.message, Message):
+        raise UserInactiveError
     user = await user_service.get_active_by_telegram_user_id(
         session, target.from_user.id
     )
@@ -305,6 +313,8 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
 
 
 async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) -> None:
+    if target.from_user is None:
+        raise UserInactiveError
     user = await user_service.get_active_by_telegram_user_id(
         session, target.from_user.id
     )
@@ -314,13 +324,14 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     if owned:
         lines.append("\n📦 موجودی شما:")
         for item in owned:
+            if item.active_until is None:
+                continue
             remaining = max(
                 0, int((item.active_until - datetime.now(UTC)).total_seconds())
             )
             minutes = (remaining + 59) // 60
             lines.append(
-                f"\n✅ سپر فعال — {item.shield.name}"
-                f"\nزمان باقی‌مانده: {minutes} دقیقه"
+                f"\n✅ سپر فعال — {item.shield.name}\nزمان باقی‌مانده: {minutes} دقیقه"
             )
     else:
         lines.append("\nهنوز سپری ندارید.")
@@ -352,7 +363,7 @@ async def buffet_callback(
     session: AsyncSession,
     state: FSMContext,
 ) -> None:
-    if callback.from_user is None or callback.message is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         await callback.answer()
         return
     try:
@@ -384,7 +395,7 @@ async def buffet_menu_callback(
     session: AsyncSession,
     state: FSMContext,
 ) -> None:
-    if callback.from_user is None or callback.message is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         await callback.answer()
         return
     try:
@@ -410,7 +421,7 @@ async def shield_callback(
     callback_data: ShieldCallback,
     session: AsyncSession,
 ) -> None:
-    if callback.from_user is None or callback.message is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         await callback.answer()
         return
     try:
@@ -467,8 +478,19 @@ async def shield_purchase_callback(
     callback_data: ShieldPurchaseCallback,
     session: AsyncSession,
 ) -> None:
-    if callback.from_user is None or callback.message is None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
         await callback.answer()
+        return
+    source_message = group_user_request(callback.message)
+    if (
+        source_message is not None
+        and source_message.from_user is not None
+        and source_message.from_user.id != callback.from_user.id
+    ):
+        await callback.answer(
+            "فقط کاربری که درخواست خرید داده می‌تواند آن را تأیید کند.",
+            show_alert=True,
+        )
         return
     try:
         user = await user_service.get_active_by_telegram_user_id(
@@ -492,7 +514,10 @@ async def shield_purchase_callback(
             f"✅ سپر «{purchase.shield.name}» خریداری شد.\n"
             f"🛡 مدت محافظت: {purchase.shield.duration_minutes} دقیقه\n"
             "سپر شما همین حالا فعال شد.",
-            disable_group_reply=True,
+            reply_to_message_id=(
+                source_message.message_id if source_message is not None else None
+            ),
+            disable_group_reply=source_message is None,
         )
         await callback.answer("خرید با موفقیت انجام شد.")
     except InsufficientCoins:

@@ -128,7 +128,11 @@ def _add_group_reply(kwargs: dict[str, Any]) -> None:
         kwargs.get("reply_markup"), ReplyKeyboardMarkup
     ):
         kwargs["reply_markup"] = ReplyKeyboardRemove()
-    if context is None or kwargs.get("reply_to_message_id") is not None:
+    if (
+        context is None
+        or kwargs.get("reply_to_message_id") is not None
+        or kwargs.get("reply_parameters") is not None
+    ):
         return
     chat_id = kwargs.get("chat_id")
     if chat_id == context[0]:
@@ -214,6 +218,7 @@ def _decorate_method(method: Any) -> None:
         context is not None
         and getattr(method, "chat_id", None) == context[0]
         and getattr(method, "reply_to_message_id", None) is None
+        and getattr(method, "reply_parameters", None) is None
         and hasattr(method, "reply_to_message_id")
     ):
         method.reply_to_message_id = context[1]
@@ -240,7 +245,14 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
             text = getattr(button, "text", None)
             if not isinstance(text, str):
                 continue
-            source = next((item for item in sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True) if item in text), None)
+            source = next(
+                (
+                    item
+                    for item in sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True)
+                    if item in text
+                ),
+                None,
+            )
             if source is not None and hasattr(button, "icon_custom_emoji_id"):
                 if not getattr(button, "icon_custom_emoji_id", None):
                     button.icon_custom_emoji_id = CUSTOM_EMOJI_IDS[source]
@@ -332,12 +344,9 @@ def install() -> None:
                     continue
                 # Callback queries expire quickly. A late acknowledgement must
                 # not crash polling after the database operation completed.
-                if (
-                    method.__class__.__name__ == "AnswerCallbackQuery"
-                    and (
-                        "query is too old" in description
-                        or "query id is invalid" in description
-                    )
+                if method.__class__.__name__ == "AnswerCallbackQuery" and (
+                    "query is too old" in description
+                    or "query id is invalid" in description
                 ):
                     return None
                 raise
@@ -347,4 +356,4 @@ def install() -> None:
     Bot.send_photo = send_photo  # type: ignore[method-assign]
     Bot.edit_message_caption = edit_message_caption  # type: ignore[method-assign]
     Bot.__call__ = call  # type: ignore[method-assign]
-    Bot._godofdars_custom_emoji_installed = True
+    Bot._godofdars_custom_emoji_installed = True  # type: ignore[attr-defined]

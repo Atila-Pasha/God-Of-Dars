@@ -78,10 +78,13 @@ async def daily_quests_admin(message: Message, session: AsyncSession) -> None:
     parts = (message.text or "").split()
     if len(parts) == 1:
         quests = await daily_quest_service.list(session, today)
-        await message.answer("\n".join(
-            f"{q.id}: {'فعال' if q.is_active else 'خاموش'} {q.quest_type} {q.target} — {q.title}"
-            for q in quests
-        ) or "امروز فعالیتی ثبت نشده است.")
+        await message.answer(
+            "\n".join(
+                f"{q.id}: {'فعال' if q.is_active else 'خاموش'} {q.quest_type} {q.target} — {q.title}"
+                for q in quests
+            )
+            or "امروز فعالیتی ثبت نشده است."
+        )
         return
     action = parts[1].lower()
     try:
@@ -94,8 +97,12 @@ async def daily_quests_admin(message: Message, session: AsyncSession) -> None:
                 resource, amount = value.split(":", 1)
                 rewards[resource.upper()] = number(amount, "جایزه")
             quest = await daily_quest_service.create(
-                session, activity_date=today, quest_type=quest_type,
-                title=" ".join(parts[5:]), target=target, rewards=rewards,
+                session,
+                activity_date=today,
+                quest_type=quest_type,
+                title=" ".join(parts[5:]),
+                target=target,
+                rewards=rewards,
             )
             await message.answer(f"فعالیت {quest.id} ساخته شد.")
         elif action == "stats" and len(parts) == 3:
@@ -111,7 +118,7 @@ async def daily_quests_admin(message: Message, session: AsyncSession) -> None:
             quest_id = number(parts[2], "شناسه", minimum=1)
             field, value = parts[3].split("=", 1)
             if field == "title":
-                values = {"title": value}
+                values: dict[str, object] = {"title": value}
             elif field == "target":
                 values = {"target": number(value, "هدف", minimum=1)}
             elif field == "type":
@@ -141,13 +148,14 @@ async def daily_quests_admin(message: Message, session: AsyncSession) -> None:
     except (ValueError, KeyError) as exc:
         await message.answer(str(exc))
 
+
 TEACHER_EDIT_PROMPTS = {
     "name": "نام جدید دبیر را بفرستید:",
     "damage": "میزان آسیب جدید را بفرستید:",
     "max_hp": "حداکثر جان جدید را بفرستید:",
     "purchase_price": "قیمت خرید جدید را بفرستید:",
     "purchase_resource": "نوع ارز خرید را بفرستید: طلا یا الماس",
-    "upgrade_price": "قیمت ارتقای جدید را بفرستید:",
+    "upgrade_price": "قیمت پایه ارتقا (سطح ۱ به ۲) را بفرستید:",
     "unlock_level": "سطح بازشدن جدید را بفرستید:",
     "ability_text": "متن توانایی جدید را بفرستید؛ برای حذف، - بفرستید:",
     "description": "توضیحات جدید دبیر را بفرستید؛ برای حذف، - بفرستید:",
@@ -192,7 +200,11 @@ def _chance_values(value: str) -> tuple[ResourceType, int]:
     parts = value.replace("،", " ").split()
     if len(parts) != 2:
         raise ValueError("فرمت صحیح: طلا 100 یا الماس 5")
-    resource = {"طلا": ResourceType.COIN, "سکه": ResourceType.COIN, "الماس": ResourceType.DIAMOND}.get(parts[0].casefold())
+    resource = {
+        "طلا": ResourceType.COIN,
+        "سکه": ResourceType.COIN,
+        "الماس": ResourceType.DIAMOND,
+    }.get(parts[0].casefold())
     if resource is None:
         raise ValueError("نوع جایزه فقط طلا یا الماس است.")
     return resource, number(parts[1], "مقدار", minimum=0)
@@ -229,7 +241,9 @@ async def _main_bot() -> Bot:
     )
 
 
-async def _expire_box_later(chat_id: int, message_id: int, box_id: int, expires_at: datetime) -> None:
+async def _expire_box_later(
+    chat_id: int, message_id: int, box_id: int, expires_at: datetime
+) -> None:
     delay = max(0, (expires_at - datetime.now(UTC)).total_seconds())
     await asyncio.sleep(delay)
     async with AsyncSessionLocal() as cleanup_session:
@@ -240,7 +254,9 @@ async def _expire_box_later(chat_id: int, message_id: int, box_id: int, expires_
             try:
                 await bot.delete_message(chat_id=chat_id, message_id=message_id)
             except TelegramAPIError:
-                logger.info("Could not delete expired chance box message %s", message_id)
+                logger.info(
+                    "Could not delete expired chance box message %s", message_id
+                )
         await cleanup_session.delete(box)
         await cleanup_session.commit()
 
@@ -249,7 +265,10 @@ async def _expire_box_later(chat_id: int, message_id: int, box_id: int, expires_
 async def chance_box_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceBoxStates.section)
-        await message.answer("جعبه برای کدام بخش ارسال شود؟", reply_markup=keyboards.chance_box_sections())
+        await message.answer(
+            "جعبه برای کدام بخش ارسال شود؟",
+            reply_markup=keyboards.chance_box_sections(),
+        )
 
 
 @router.message(ChanceBoxStates.section, F.text.regexp(r"^(?:📦\s*)?ارسال به بخش "))
@@ -266,7 +285,9 @@ async def chance_box_section(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ChanceBoxStates.value)
-async def chance_box_send(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def chance_box_send(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     try:
@@ -301,16 +322,25 @@ async def chance_box_publish(
     # Telegram chat IDs provide a stable partition: removing/registering a
     # different group does not move existing groups between sections.
     groups = [
-        group for group in groups
-        if abs(group.telegram_chat_id) % 4 == section - 1
+        group for group in groups if abs(group.telegram_chat_id) % 4 == section - 1
     ]
     sent = 0
+    failed = 0
     async with await _main_bot() as bot:
         for group in groups:
             # Persist first so the callback ID can be embedded in the message
             # itself; sending without a keyboard and editing afterwards is
             # racy and can leave a visible box with no button.
-            box = await chance_service.create_box(group_id=group.id, session=session, message_id=0, resource=resource, amount=amount)
+            box = await chance_service.create_box(
+                group_id=group.id,
+                session=session,
+                message_id=0,
+                resource=resource,
+                amount=amount,
+            )
+            # Make the callback target visible before Telegram can deliver a
+            # button that references it. Failed sends remove the orphan row.
+            await session.commit()
             if sticker is not None:
                 try:
                     await bot.send_sticker(group.telegram_chat_id, sticker)
@@ -319,16 +349,35 @@ async def chance_box_publish(
                         "Could not send chance box sticker to group %s",
                         group.telegram_chat_id,
                     )
-            sent_message = await bot.send_message(
-                group.telegram_chat_id,
-                "🎁 جعبه شانس\n\n"
-                "اولین نفری که جعبه را باز کند، برنده جایزه می‌شود!",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="🎁 باز کردن جعبه", callback_data=ChanceBoxCallback(box_id=box.id).pack())
-                ]]),
-            )
+            try:
+                sent_message = await bot.send_message(
+                    group.telegram_chat_id,
+                    "🎁 جعبه شانس\n\nاولین نفری که جعبه را باز کند، برنده جایزه می‌شود!",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text="🎁 باز کردن جعبه",
+                                    callback_data=ChanceBoxCallback(
+                                        box_id=box.id
+                                    ).pack(),
+                                )
+                            ]
+                        ]
+                    ),
+                )
+            except TelegramAPIError as exc:
+                await session.delete(box)
+                await session.commit()
+                failed += 1
+                logger.warning(
+                    "Could not send chance box to group %s: %s",
+                    group.telegram_chat_id,
+                    exc,
+                )
+                continue
             box.telegram_message_id = sent_message.message_id
-            await session.flush()
+            await session.commit()
             asyncio.create_task(
                 _expire_box_later(
                     group.telegram_chat_id,
@@ -339,14 +388,19 @@ async def chance_box_publish(
             )
             sent += 1
     await state.clear()
-    await message.answer(f"✅ جعبه به {sent} گروه فعال ارسال شد.", reply_markup=keyboards.main())
+    await message.answer(
+        f"✅ ارسال جعبه‌ها تمام شد.\nموفق: {sent}\nناموفق: {failed}",
+        reply_markup=keyboards.main(),
+    )
 
 
 @router.message(F.text.in_({"ارسال کارت شانس", "🃏 ارسال کارت شانس"}))
 async def chance_card_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceCardStates.value)
-        await message.answer("پاداش کارت همگانی را وارد کنید؛ نمونه: طلا 100 یا الماس 5")
+        await message.answer(
+            "پاداش کارت همگانی را وارد کنید؛ نمونه: طلا 100 یا الماس 5"
+        )
 
 
 @router.message(ChanceCardStates.target)
@@ -364,7 +418,9 @@ async def chance_card_target(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ChanceCardStates.value)
-async def chance_card_send(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def chance_card_send(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     try:
@@ -389,16 +445,28 @@ async def chance_card_send(message: Message, state: FSMContext, session: AsyncSe
                     card = await chance_service.create_card(
                         session, user_id, resource, amount, answer
                     )
+                    await session.commit()
                     try:
                         for attempt in range(2):
                             try:
                                 await bot.send_photo(
                                     telegram_user_id,
-                                    BufferedInputFile(image, filename="chance-captcha.png"),
+                                    BufferedInputFile(
+                                        image, filename="chance-captcha.png"
+                                    ),
                                     caption="🃏 کارت شانس\n\nکپچا را حل کن تا جایزه‌ات را دریافت کنی.",
-                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                                        InlineKeyboardButton(text="✅ وارد کردن کپچا", callback_data=ChanceCardCallback(card_id=card.id).pack())
-                                    ]]),
+                                    reply_markup=InlineKeyboardMarkup(
+                                        inline_keyboard=[
+                                            [
+                                                InlineKeyboardButton(
+                                                    text="✅ وارد کردن کپچا",
+                                                    callback_data=ChanceCardCallback(
+                                                        card_id=card.id
+                                                    ).pack(),
+                                                )
+                                            ]
+                                        ]
+                                    ),
                                 )
                                 break
                             except TelegramRetryAfter as exc:
@@ -408,7 +476,7 @@ async def chance_card_send(message: Message, state: FSMContext, session: AsyncSe
                         sent += 1
                     except TelegramAPIError as exc:
                         await session.delete(card)
-                        await session.flush()
+                        await session.commit()
                         logger.warning(
                             "Could not send chance card %s to Telegram user %s: %s",
                             card.id,
@@ -426,18 +494,26 @@ async def chance_card_send(message: Message, state: FSMContext, session: AsyncSe
         return
     await session.commit()
     await state.clear()
-    await message.answer(f"✅ کارت شانس همگانی ارسال شد.\nموفق: {sent}\nناموفق: {failed}", reply_markup=keyboards.main())
+    await message.answer(
+        f"✅ کارت شانس همگانی ارسال شد.\nموفق: {sent}\nناموفق: {failed}",
+        reply_markup=keyboards.main(),
+    )
 
 
 @router.message(F.text.in_({"مدیریت قفل کانال", "📢 مدیریت قفل کانال"}))
-async def channel_settings(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def channel_settings(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message):
         return
     await state.clear()
     channels = await bot_settings_repository.list_channels(session)
-    channel = "\n".join(
-        f"{item.id}) {item.username or item.telegram_id}" for item in channels
-    ) or "خاموش"
+    channel = (
+        "\n".join(
+            f"{item.id}) {item.username or item.telegram_id}" for item in channels
+        )
+        or "خاموش"
+    )
     await message.answer(
         f"📢 قفل کانال\n\nکانال فعلی: {channel}\n"
         "برای افزودن کانال، یوزرنیم (مثلاً @mychannel) یا شناسه عددی را بفرستید.\n"
@@ -455,7 +531,9 @@ async def channel_add_command(message: Message, state: FSMContext) -> None:
 
 
 @router.message(Command("channel_remove"))
-async def channel_remove_command(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def channel_remove_command(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if allowed(message):
         await bot_settings_repository.clear_channel(session)
         await session.commit()
@@ -465,7 +543,9 @@ async def channel_remove_command(message: Message, state: FSMContext, session: A
 
 
 @router.message(ChannelStates.value)
-async def channel_value(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def channel_value(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     value = message.text.strip()
@@ -583,6 +663,8 @@ async def broadcast_send(
         photo_file: BufferedInputFile | None = None
         if message.photo:
             buffer = BytesIO()
+            if message.bot is None:
+                raise RuntimeError("Telegram bot context is missing")
             await message.bot.download(message.photo[-1].file_id, destination=buffer)
             photo_file = BufferedInputFile(buffer.getvalue(), filename="broadcast.jpg")
 
@@ -615,6 +697,8 @@ async def broadcast_send(
                                     caption=message.caption,
                                 )
                             else:
+                                if message.text is None:
+                                    raise RuntimeError("Broadcast text is missing")
                                 await main_bot.send_message(
                                     chat_id=telegram_user_id,
                                     text=message.text,
@@ -654,13 +738,19 @@ async def bot_user_stats(
         return
     await state.clear()
     total = await session.scalar(select(func.count(User.id))) or 0
-    active = await session.scalar(
-        select(func.count(User.id)).where(User.is_active.is_(True))
-    ) or 0
+    active = (
+        await session.scalar(
+            select(func.count(User.id)).where(User.is_active.is_(True))
+        )
+        or 0
+    )
     today = datetime.now(UTC).date()
-    new_today = await session.scalar(
-        select(func.count(User.id)).where(func.date(User.created_at) == today)
-    ) or 0
+    new_today = (
+        await session.scalar(
+            select(func.count(User.id)).where(func.date(User.created_at) == today)
+        )
+        or 0
+    )
     await message.answer(
         "📊 آمار کاربران ربات\n\n"
         f"👥 کل کاربران: {total}\n"
@@ -693,16 +783,31 @@ async def user_search(
 async def user_callback(
     callback: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    if not allowed(callback) or not callback.data:
+    if (
+        not allowed(callback)
+        or not callback.data
+        or not isinstance(callback.message, Message)
+    ):
         return
-    _, action, raw_id = callback.data.split(":")
-    user_id = int(raw_id)
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("عملیات نامعتبر است.", show_alert=True)
+        return
+    _, action, raw_id = parts
+    try:
+        user_id = int(raw_id)
+    except ValueError:
+        await callback.answer("شناسه کاربر نامعتبر است.", show_alert=True)
+        return
     user = await service.get_user(session, user_id)
     if user is None:
         await callback.answer("کاربر پیدا نشد.", show_alert=True)
         return
     if action == "toggle":
         user = await service.set_user_active(session, user_id, not user.is_active)
+        if user is None:
+            await callback.answer("کاربر پیدا نشد.", show_alert=True)
+            return
         await safe_edit_text(
             callback.message,
             user_text(user),
@@ -725,16 +830,18 @@ async def user_callback(
 
 
 @router.callback_query(F.data.startswith("user_teacher:"))
-async def user_teacher_callback(
-    callback: CallbackQuery, session: AsyncSession
-) -> None:
-    if not allowed(callback) or not callback.data:
+async def user_teacher_callback(callback: CallbackQuery, session: AsyncSession) -> None:
+    if (
+        not allowed(callback)
+        or not callback.data
+        or not isinstance(callback.message, Message)
+    ):
         return
     parts = callback.data.split(":")
-    if (
-        parts[1] == "close"
-        and len(parts) == 3
-    ):
+    if len(parts) < 2:
+        await callback.answer("عملیات نامعتبر است.", show_alert=True)
+        return
+    if parts[1] == "close" and len(parts) == 3:
         await callback.message.delete()
         await callback.answer()
         return
@@ -743,9 +850,7 @@ async def user_teacher_callback(
         return
     user_id = int(parts[2])
     user_teacher_id = int(parts[3])
-    user_teacher = await service.delete_user_teacher(
-        session, user_teacher_id, user_id
-    )
+    user_teacher = await service.delete_user_teacher(session, user_teacher_id, user_id)
     if user_teacher is None:
         await callback.answer("این دبیر برای کاربر پیدا نشد.", show_alert=True)
         return
@@ -814,11 +919,9 @@ async def save_resources(
         "منابع با موفقیت اضافه شد.\n" + user_text(user), reply_markup=keyboards.main()
     )
     try:
-        main_session = (
-            AiohttpSession(
-                proxy=settings.TELEGRAM_PROXY,
-                limit=settings.TELEGRAM_HTTP_LIMIT,
-            )
+        main_session = AiohttpSession(
+            proxy=settings.TELEGRAM_PROXY,
+            limit=settings.TELEGRAM_HTTP_LIMIT,
         )
         async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
             await main_bot.send_message(
@@ -850,7 +953,9 @@ async def group_question_start(message: Message, state: FSMContext) -> None:
 
 
 @router.message(F.text.in_({"مدیریت فعالیت‌های روزانه", "🎯 مدیریت فعالیت‌های روزانه"}))
-async def daily_quest_start(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def daily_quest_start(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message):
         return
     await state.clear()
@@ -865,7 +970,11 @@ async def daily_quest_start(message: Message, state: FSMContext, session: AsyncS
 async def daily_quest_callback(
     callback: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    if callback.from_user is None or callback.message is None or not allowed(callback):
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or not allowed(callback)
+    ):
         await callback.answer()
         return
     parts = (callback.data or "").split(":")
@@ -932,7 +1041,11 @@ async def daily_quest_callback(
         quest = await daily_quest_service.repository.get(session, quest_id)
         field = parts[3]
         if quest is None or field not in {
-            "title", "description", "target", "rewards", "channel"
+            "title",
+            "description",
+            "target",
+            "rewards",
+            "channel",
         }:
             await callback.answer("این گزینه معتبر نیست.", show_alert=True)
             return
@@ -958,13 +1071,14 @@ async def daily_quest_callback(
         await state.clear()
         await callback.answer("لغو شد.")
         if callback.message:
-            await callback.message.answer("عملیات فعالیت روزانه لغو شد.", reply_markup=keyboards.main())
+            await callback.message.answer(
+                "عملیات فعالیت روزانه لغو شد.", reply_markup=keyboards.main()
+            )
         return
     if action == "date":
         if value == "custom":
             await state.set_state(DailyQuestStates.activity_date)
             await callback.answer()
-
 
             await callback.message.answer("تاریخ را به صورت YYYY-MM-DD بفرستید:")
             return
@@ -1003,8 +1117,7 @@ async def daily_quest_callback(
             await state.set_state(DailyQuestStates.rewards)
             await callback.answer()
             await callback.message.answer(
-                "هدف عضویت کانال به‌صورت خودکار ۱ است.\n"
-                "منابع پاداش را انتخاب کنید:",
+                "هدف عضویت کانال به‌صورت خودکار ۱ است.\nمنابع پاداش را انتخاب کنید:",
                 reply_markup=keyboards.daily_quest_rewards(),
             )
             return
@@ -1043,21 +1156,30 @@ async def daily_quest_edit_value(
     quest = await daily_quest_service.repository.get(session, int(data["edit_id"]))
     field = data.get("edit_field")
     if quest is None or field not in {
-        "title", "description", "target", "rewards", "channel"
+        "title",
+        "description",
+        "target",
+        "rewards",
+        "channel",
     }:
         await state.clear()
         await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
         return
     try:
         raw = message.text.strip()
+        edit_value: object
         if field == "title":
             if not raw:
                 raise ValueError("عنوان نمی‌تواند خالی باشد.")
-            value = raw
+            edit_value = raw
         elif field == "description":
-            value = None if raw == "-" else raw
+            edit_value = None if raw == "-" else raw
         elif field == "target":
-            value = 1 if quest.quest_type == "JOIN_CHANNEL" else number(raw, "هدف", minimum=1)
+            edit_value = (
+                1
+                if quest.quest_type == "JOIN_CHANNEL"
+                else number(raw, "هدف", minimum=1)
+            )
         elif field == "channel":
             identifier, invite_link = subscription_service.parse_daily_channel(raw)
             metadata = dict(quest.quest_metadata or {})
@@ -1066,7 +1188,7 @@ async def daily_quest_edit_value(
                 metadata["invite_link"] = invite_link
             else:
                 metadata.pop("invite_link", None)
-            value = metadata
+            edit_value = metadata
             field = "quest_metadata"
         else:
             rewards: dict[str, int] = {}
@@ -1076,8 +1198,8 @@ async def daily_quest_edit_value(
                 if resource not in {"COIN", "DIAMOND", "BANANA"}:
                     raise ValueError("نوع پاداش نامعتبر است.")
                 rewards[resource] = number(amount.strip(), "مقدار پاداش", minimum=1)
-            value = rewards
-        await daily_quest_service.update(session, quest.id, **{field: value})
+            edit_value = rewards
+        await daily_quest_service.update(session, quest.id, **{field: edit_value})
     except (ValueError, IndexError) as exc:
         await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
         return
@@ -1090,7 +1212,9 @@ async def daily_quest_edit_value(
 
 
 @router.message(DailyQuestStates.activity_date)
-async def daily_quest_date(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def daily_quest_date(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     try:
@@ -1106,9 +1230,7 @@ async def daily_quest_date(message: Message, state: FSMContext, session: AsyncSe
                 f"#{quest.id} {'✅ فعال' if quest.is_active else '⛔ غیرفعال'}\n"
                 f"{quest.title}\n{quest.description or 'بدون توضیحات'}\n"
                 f"هدف: {quest.target} | پاداش: {quest.rewards or 'بدون پاداش'}",
-                reply_markup=keyboards.daily_quest_actions(
-                    quest.id, quest.is_active
-                ),
+                reply_markup=keyboards.daily_quest_actions(quest.id, quest.is_active),
             )
     else:
         await message.answer("برای این روز فعالیتی ثبت نشده است.")
@@ -1133,8 +1255,7 @@ async def daily_quest_type(message: Message, state: FSMContext) -> None:
         await state.update_data(target=1)
         await state.set_state(DailyQuestStates.rewards)
         await message.answer(
-            "هدف عضویت کانال به‌صورت خودکار ۱ است.\n"
-            "منابع پاداش را انتخاب کنید:",
+            "هدف عضویت کانال به‌صورت خودکار ۱ است.\nمنابع پاداش را انتخاب کنید:",
             reply_markup=keyboards.daily_quest_rewards(),
         )
         return
@@ -1190,7 +1311,9 @@ async def daily_quest_title(message: Message, state: FSMContext) -> None:
 
 
 @router.message(DailyQuestStates.description)
-async def daily_quest_description(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def daily_quest_description(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message) or not message.text:
         return
     description = None if message.text.strip() == "-" else message.text.strip()
@@ -1229,9 +1352,7 @@ async def daily_quest_create(
     raw_date = data.get("activity_date")
     try:
         activity_date = (
-            date.fromisoformat(raw_date)
-            if raw_date
-            else daily_quest_service.today()
+            date.fromisoformat(raw_date) if raw_date else daily_quest_service.today()
         )
         quest = await daily_quest_service.create(
             session,
@@ -1268,9 +1389,7 @@ async def daily_quest_channel(
     try:
         identifier, invite_link = subscription_service.parse_daily_channel(channel)
     except ValueError as exc:
-        await message.answer(
-            str(exc)
-        )
+        await message.answer(str(exc))
         return
     metadata = {"channel": identifier}
     if invite_link:
@@ -1283,7 +1402,7 @@ async def question_step(
 ) -> None:
     if not allowed(message) or not message.text:
         return
-    await state.update_data(**{key: message.text.strip()})
+    await state.update_data({key: message.text.strip()})
     await state.set_state(next_state)
     await message.answer(prompt)
 
@@ -1319,7 +1438,7 @@ async def q_number(
     except ValueError as exc:
         await message.answer(str(exc))
         return
-    await state.update_data(**{key: value})
+    await state.update_data({key: value})
     await state.set_state(next_state)
     await message.answer(prompt)
 
@@ -1375,11 +1494,9 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
     data = await state.get_data()
     expires_at = datetime.now(UTC) + timedelta(hours=data["hours"])
     if data.get("scope") == "group":
-        main_session = (
-            AiohttpSession(
-                proxy=settings.TELEGRAM_PROXY,
-                limit=settings.TELEGRAM_HTTP_LIMIT,
-            )
+        main_session = AiohttpSession(
+            proxy=settings.TELEGRAM_PROXY,
+            limit=settings.TELEGRAM_HTTP_LIMIT,
         )
         try:
             async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
@@ -1436,7 +1553,7 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
             f"👨‍🏫 {teacher.name}\nشناسه: {teacher.id}\nآسیب: {teacher.damage} | جان: {teacher.max_hp}\n"
             f"خرید: {teacher.purchase_price} "
             f"{'الماس' if teacher.purchase_resource is ResourceType.DIAMOND else 'طلا'}"
-            f" | ارتقا: {teacher.upgrade_price} الماس\n"
+            f" | پایه ارتقای ۱←۲: {teacher.upgrade_price} الماس\n"
             f"بازشدن در سطح: {teacher.unlock_level}\n"
             f"توانایی: {teacher.ability_text or '—'}\n"
             f"توضیحات: {teacher.description or '—'}\n"
@@ -1469,14 +1586,15 @@ async def teacher_value(
 ) -> None:
     if not allowed(message) or not message.text:
         return
-    value = message.text.strip()
+    raw_value = message.text.strip()
+    value: object = raw_value
     if numeric:
         try:
-            value = number(value, key)
+            value = number(raw_value, key)
         except ValueError as exc:
             await message.answer(str(exc))
             return
-    await state.update_data(**{key: value})
+    await state.update_data({key: value})
     await state.set_state(next_state)
     await message.answer(prompt)
 
@@ -1604,6 +1722,10 @@ async def t_emoji(message: Message, state: FSMContext, session: AsyncSession) ->
         if mode == "edit"
         else await service.create_teacher(session, **data)
     )
+    if teacher is None:
+        await state.clear()
+        await message.answer("دبیر پیدا نشد.", reply_markup=keyboards.main())
+        return
     await state.clear()
     await message.answer(
         f"✅ دبیر «{teacher.name}» با شناسه {teacher.id} {'ویرایش شد' if mode == 'edit' else 'ساخته شد'}.",
@@ -1615,7 +1737,11 @@ async def t_emoji(message: Message, state: FSMContext, session: AsyncSession) ->
 async def teacher_callback(
     callback: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    if not allowed(callback) or not callback.data:
+    if (
+        not allowed(callback)
+        or not callback.data
+        or not isinstance(callback.message, Message)
+    ):
         return
     parts = callback.data.split(":")
     if len(parts) < 3 or parts[0] != "teacher":
@@ -1682,39 +1808,46 @@ async def teacher_edit_value(
         await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
         return
     try:
+        edit_value: object
         if field in {"name"}:
             if not message.text:
                 raise ValueError("نام دبیر نمی‌تواند خالی باشد.")
-            value = message.text.strip()
-            if not value:
+            edit_value = message.text.strip()
+            if not edit_value:
                 raise ValueError("نام دبیر نمی‌تواند خالی باشد.")
         elif field == "sticker":
-            value = _sticker_value(message)
+            edit_value = _sticker_value(message)
         elif field == "emoji":
-            value = _custom_emoji_value(message)
+            edit_value = _custom_emoji_value(message)
         elif field == "purchase_resource":
-            value = {
+            raw_value = (message.text or "").strip()
+            edit_value = {
                 "طلا": ResourceType.COIN,
                 "سکه": ResourceType.COIN,
                 "coin": ResourceType.COIN,
                 "الماس": ResourceType.DIAMOND,
                 "diamond": ResourceType.DIAMOND,
-            }.get(value.casefold())
-            if value is None:
+            }.get(raw_value.casefold())
+            if edit_value is None:
                 raise ValueError("نوع ارز نامعتبر است؛ فقط «طلا» یا «الماس» وارد کنید.")
         elif field in {"ability_text", "description"}:
             if not message.text:
                 raise ValueError("متن توانایی نمی‌تواند خالی باشد.")
-            value = message.text.strip()
-            value = None if value == "-" else value
+            raw_value = message.text.strip()
+            edit_value = None if raw_value == "-" else raw_value
         else:
             if not message.text:
                 raise ValueError("مقدار نامعتبر است.")
-            value = message.text.strip()
-            value = number(value, field, minimum=1 if field == "unlock_level" else 0)
-            if field == "reduction_percent" and value > 100:
+            raw_value = message.text.strip()
+            numeric_value = number(
+                raw_value, field, minimum=1 if field == "unlock_level" else 0
+            )
+            if field == "reduction_percent" and numeric_value > 100:
                 raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
-        teacher = await service.update_teacher(session, int(teacher_id), **{field: value})
+            edit_value = numeric_value
+        teacher = await service.update_teacher(
+            session, int(teacher_id), **{field: edit_value}
+        )
         if teacher is None:
             raise ValueError("دبیر پیدا نشد.")
     except ValueError as exc:
@@ -1784,7 +1917,7 @@ async def shield_value(
     except ValueError as exc:
         await message.answer(str(exc))
         return
-    await state.update_data(**{key: value})
+    await state.update_data({key: value})
     await state.set_state(next_state)
     await message.answer(prompt)
 
@@ -1898,6 +2031,10 @@ async def s_description(
         await state.clear()
         await message.answer(f"خطا در ذخیره سپر: {exc}", reply_markup=keyboards.main())
         return
+    if shield is None:
+        await state.clear()
+        await message.answer("سپر پیدا نشد.", reply_markup=keyboards.main())
+        return
     await state.clear()
     await message.answer(
         f"✅ سپر «{shield.name}» با شناسه {shield.id} ذخیره شد.",
@@ -1909,7 +2046,11 @@ async def s_description(
 async def shield_callback(
     callback: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    if not allowed(callback) or not callback.data:
+    if (
+        not allowed(callback)
+        or not callback.data
+        or not isinstance(callback.message, Message)
+    ):
         return
     parts = callback.data.split(":")
     if len(parts) < 3 or parts[0] != "shield":
@@ -1975,35 +2116,36 @@ async def shield_edit_value(
         await state.clear()
         await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
         return
-    value = message.text.strip()
+    raw_value = message.text.strip()
     try:
+        edit_value: object
         if field == "name":
-            if not value:
+            if not raw_value:
                 raise ValueError("نام سپر نمی‌تواند خالی باشد.")
+            edit_value = raw_value
         elif field == "description":
-            value = None if value == "-" else value
+            edit_value = None if raw_value == "-" else raw_value
         elif field == "purchase_resource":
-            value = {
+            edit_value = {
                 "طلا": ResourceType.COIN,
                 "سکه": ResourceType.COIN,
                 "coin": ResourceType.COIN,
                 "الماس": ResourceType.DIAMOND,
                 "diamond": ResourceType.DIAMOND,
-            }.get(value.casefold())
-            if value is None:
+            }.get(raw_value.casefold())
+            if edit_value is None:
                 raise ValueError("نوع ارز نامعتبر است؛ فقط «طلا» یا «الماس» وارد کنید.")
         else:
-            value = number(
-                value,
+            numeric_value = number(
+                raw_value,
                 field,
-                minimum=1
-                if field in {"unlock_level", "duration_minutes"}
-                else 0,
+                minimum=1 if field in {"unlock_level", "duration_minutes"} else 0,
             )
-            if field == "reduction_percent" and value > 100:
+            if field == "reduction_percent" and numeric_value > 100:
                 raise ValueError("درصد کاهش آسیب نمی‌تواند بیشتر از 100 باشد.")
+            edit_value = numeric_value
         shield = await shield_service.update_shield(
-            session, int(shield_id), **{field: value}
+            session, int(shield_id), **{field: edit_value}
         )
         if shield is None:
             raise ValueError("سپر پیدا نشد.")
@@ -2026,7 +2168,9 @@ async def study_packs_admin(
         return
     await state.clear()
     all_packs = list(
-        (await session.execute(select(StudyPack).order_by(StudyPack.id))).scalars().all()
+        (await session.execute(select(StudyPack).order_by(StudyPack.id)))
+        .scalars()
+        .all()
     )
     if not all_packs:
         await message.answer("هنوز پک مطالعه‌ای ثبت نشده است.")
@@ -2128,7 +2272,9 @@ async def study_pack_save(
         return
     data = await state.get_data()
     data.pop("mode", None)
-    existing = await session.scalar(select(StudyPack).where(StudyPack.key == data["key"]))
+    existing = await session.scalar(
+        select(StudyPack).where(StudyPack.key == data["key"])
+    )
     if existing is not None:
         await message.answer("این کلید قبلاً استفاده شده است.")
         return
@@ -2145,7 +2291,11 @@ async def study_pack_save(
 async def study_pack_callback(
     callback: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    if not allowed(callback) or not callback.data:
+    if (
+        not allowed(callback)
+        or not callback.data
+        or not isinstance(callback.message, Message)
+    ):
         return
     parts = callback.data.split(":")
     if len(parts) < 3:
@@ -2177,7 +2327,13 @@ async def study_pack_callback(
         )
     elif action == "field" and len(parts) == 4:
         field = parts[3]
-        if field not in {"key", "name", "duration_minutes", "reward_resource", "reward_amount"}:
+        if field not in {
+            "key",
+            "name",
+            "duration_minutes",
+            "reward_resource",
+            "reward_amount",
+        }:
             await callback.answer("این گزینه معتبر نیست.", show_alert=True)
             return
         await state.clear()
@@ -2195,7 +2351,9 @@ async def study_pack_callback(
         )
     elif action == "done":
         await state.clear()
-        await callback.message.answer("ویرایش پک تمام شد.", reply_markup=keyboards.main())
+        await callback.message.answer(
+            "ویرایش پک تمام شد.", reply_markup=keyboards.main()
+        )
     else:
         await callback.answer("عملیات معتبر نیست.", show_alert=True)
         return
@@ -2212,34 +2370,51 @@ async def study_pack_edit_value(
     pack = await session.get(StudyPack, int(data["edit_id"]))
     field = data.get("edit_field")
     if pack is None or field not in {
-        "key", "name", "duration_minutes", "reward_resource", "reward_amount"
+        "key",
+        "name",
+        "duration_minutes",
+        "reward_resource",
+        "reward_amount",
     }:
         await state.clear()
         await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
         return
-    value = message.text.strip()
+    raw_value = message.text.strip()
     try:
+        edit_value: object
         if field == "key":
-            if not value or any(char.isspace() for char in value) or len(value) > 64:
+            if (
+                not raw_value
+                or any(char.isspace() for char in raw_value)
+                or len(raw_value) > 64
+            ):
                 raise ValueError("کلید نامعتبر است.")
             duplicate = await session.scalar(
-                select(StudyPack).where(StudyPack.key == value, StudyPack.id != pack.id)
+                select(StudyPack).where(
+                    StudyPack.key == raw_value, StudyPack.id != pack.id
+                )
             )
             if duplicate is not None:
                 raise ValueError("این کلید قبلاً استفاده شده است.")
+            edit_value = raw_value
         elif field == "name":
-            if not value:
+            if not raw_value:
                 raise ValueError("نام پک نمی‌تواند خالی باشد.")
+            edit_value = raw_value
         elif field == "reward_resource":
-            value = _study_resource(value)
-            if value is None:
+            edit_value = _study_resource(raw_value)
+            if edit_value is None:
                 raise ValueError("نوع پاداش نامعتبر است؛ فقط «طلا» یا «الماس».")
         else:
-            value = number(value, field, minimum=1 if field == "duration_minutes" else 0)
+            edit_value = number(
+                raw_value,
+                field,
+                minimum=1 if field == "duration_minutes" else 0,
+            )
     except ValueError as exc:
         await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
         return
-    setattr(pack, field, value)
+    setattr(pack, field, edit_value)
     await session.flush()
     await state.clear()
     await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())

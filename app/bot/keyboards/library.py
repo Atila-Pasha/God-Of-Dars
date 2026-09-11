@@ -1,7 +1,11 @@
+from collections.abc import Sequence
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.callbacks import LibraryCallback, LibraryTeacherCallback, StudyCallback
 from app.bot.custom_emojis import premium_emoji_id
+from app.models.study_pack import StudyPack
+from app.models.teacher import Teacher
 
 
 def library_keyboard() -> InlineKeyboardMarkup:
@@ -27,15 +31,25 @@ def library_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def study_keyboard(packs: list[object]) -> InlineKeyboardMarkup:
+def study_keyboard(packs: Sequence[StudyPack]) -> InlineKeyboardMarkup:
     rows = []
     for pack in packs:
-        rows.append([InlineKeyboardButton(
-            text=f"⏱ {pack.name} ({pack.duration_minutes} دقیقه) — "
-            f"{pack.reward_amount} {('طلا' if pack.reward_resource == 'COIN' else 'الماس')}",
-            callback_data=StudyCallback(pack_key=pack.key).pack(),
-        )])
-    rows.append([InlineKeyboardButton(text="🔙 کتابخانه", callback_data=LibraryCallback(action="back").pack())])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"⏱ {pack.name} ({pack.duration_minutes} دقیقه) — "
+                    f"{pack.reward_amount} {('طلا' if pack.reward_resource == 'COIN' else 'الماس')}",
+                    callback_data=StudyCallback(pack_key=pack.key).pack(),
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🔙 کتابخانه", callback_data=LibraryCallback(action="back").pack()
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -57,15 +71,13 @@ def answer_keyboard() -> InlineKeyboardMarkup:
 
 
 def teacher_library_keyboard(
-    teachers: list[object], *, page: int, page_count: int
+    teachers: Sequence[Teacher], *, page: int, page_count: int
 ) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
                 text=f"👨‍🏫 {teacher.name}",
-                icon_custom_emoji_id=premium_emoji_id(
-                    teacher.emoji, fallback="👨‍🏫"
-                ),
+                icon_custom_emoji_id=premium_emoji_id(teacher.emoji, fallback="👨‍🏫"),
                 callback_data=LibraryTeacherCallback(
                     action="view", teacher_id=teacher.id, page=page
                 ).pack(),

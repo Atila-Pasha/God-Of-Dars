@@ -16,7 +16,10 @@ def test_progression_is_defined_and_bounded_through_level_500() -> None:
         assert mine.coin_per_minute >= 0
         assert mine.diamond_per_minute >= 0
         assert mine.diamond_cost > 0
-        assert game_config.castle_max_strength(level) >= game_config.initial_castle_strength
+        assert (
+            game_config.castle_max_strength(level)
+            >= game_config.initial_castle_strength
+        )
         assert game_config.castle_upgrade(level).diamond_cost > 0
 
         if level < game_config.level_progression.max_level:
@@ -56,3 +59,20 @@ def test_upgrade_banana_reward_scales_with_diamond_cost() -> None:
     assert game_config.upgrade_banana_reward(100) == 10
     assert game_config.upgrade_banana_reward(500) == 50
     assert game_config.upgrade_banana_reward(10_000) == 500
+
+
+def test_teacher_upgrade_cost_grows_for_each_level_transition() -> None:
+    costs = [game_config.teacher_upgrade_cost(1_000, level) for level in range(1, 21)]
+
+    assert costs[0] == 1_000
+    assert costs[1] == 1_195
+    assert costs[2] == 1_420
+    assert costs == sorted(costs)
+    assert len(costs) == len(set(costs))
+
+
+def test_small_teacher_base_price_still_changes_at_every_level() -> None:
+    costs = [game_config.teacher_upgrade_cost(1, level) for level in range(1, 8)]
+
+    assert costs[0] == 1
+    assert all(after > before for before, after in zip(costs, costs[1:], strict=False))

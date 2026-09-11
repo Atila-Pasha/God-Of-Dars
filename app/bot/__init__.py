@@ -21,10 +21,13 @@ def create_dispatcher() -> Dispatcher:
     dispatcher = Dispatcher()
     dispatcher.update.outer_middleware(DatabaseSessionMiddleware())
     subscription_middleware = SubscriptionMiddleware()
+    group_middleware = GroupAccessMiddleware()
     # Group policy must wrap subscription checks so blocked group commands are
     # ignored before private-only handlers or membership prompts can run.
-    dispatcher.message.outer_middleware(GroupAccessMiddleware())
-    dispatcher.callback_query.outer_middleware(GroupAccessMiddleware())
+    dispatcher.message.outer_middleware(group_middleware)
+    dispatcher.callback_query.outer_middleware(group_middleware)
+    dispatcher.chat_member.outer_middleware(group_middleware)
+    dispatcher.my_chat_member.outer_middleware(group_middleware)
     dispatcher.message.outer_middleware(subscription_middleware)
     dispatcher.callback_query.outer_middleware(subscription_middleware)
     dispatcher.include_router(school_router)

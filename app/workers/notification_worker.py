@@ -78,9 +78,7 @@ async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> None:
 async def run_notification_worker(bot: Bot) -> None:
     while True:
         try:
-            await process_due_notifications(
-                bot, batch_size=settings.WORKER_BATCH_SIZE
-            )
+            await process_due_notifications(bot, batch_size=settings.WORKER_BATCH_SIZE)
         except asyncio.CancelledError:
             raise
         except Exception:

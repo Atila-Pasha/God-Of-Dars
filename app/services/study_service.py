@@ -36,6 +36,7 @@ class StudyStartResult:
 class StudyService:
     def __init__(self, reward_service: RewardService | None = None) -> None:
         self.reward_service = reward_service or RewardService()
+
     async def packs(self, session: AsyncSession) -> list[StudyPack]:
         result = await session.execute(
             select(StudyPack)
@@ -60,7 +61,14 @@ class StudyService:
         )
         return result.scalar_one_or_none()
 
-    async def start(self, session: AsyncSession, user_id: int, pack_key: str, *, now: datetime | None = None) -> StudyStartResult:
+    async def start(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        pack_key: str,
+        *,
+        now: datetime | None = None,
+    ) -> StudyStartResult:
         user = await session.scalar(
             select(User).where(User.id == user_id).with_for_update()
         )
@@ -87,7 +95,9 @@ class StudyService:
         await session.flush()
         return StudyStartResult(study=study, completed_reward=completed_reward)
 
-    async def settle(self, session: AsyncSession, user_id: int, *, now: datetime | None = None) -> tuple[StudySession | None, tuple[ResourceType, int] | None]:
+    async def settle(
+        self, session: AsyncSession, user_id: int, *, now: datetime | None = None
+    ) -> tuple[StudySession | None, tuple[ResourceType, int] | None]:
         now = now or datetime.now(UTC)
         user = await session.scalar(
             select(User).where(User.id == user_id).with_for_update()
@@ -100,7 +110,9 @@ class StudyService:
         reward = await self._complete(session, active, now)
         return active, reward
 
-    async def _complete(self, session: AsyncSession, study: StudySession, now: datetime) -> tuple[ResourceType, int]:
+    async def _complete(
+        self, session: AsyncSession, study: StudySession, now: datetime
+    ) -> tuple[ResourceType, int]:
         pack = await self.get_pack(session, study.pack_key, active_only=False)
         if pack is None:
             raise StudyPackNotFound
@@ -114,4 +126,6 @@ class StudyService:
         )
         study.completed_at = now
         await session.flush()
-        return ResourceType(pack.reward_resource), result.reward.amount if result else pack.reward_amount
+        return ResourceType(
+            pack.reward_resource
+        ), result.reward.amount if result else pack.reward_amount

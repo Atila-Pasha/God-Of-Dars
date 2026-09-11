@@ -96,8 +96,16 @@ class DailyQuestService:
         quest = await self.repository.get(session, quest_id, for_update=True)
         if quest is None:
             return None
-        allowed = {"activity_date", "quest_type", "title", "description", "target",
-                   "rewards", "quest_metadata", "is_active"}
+        allowed = {
+            "activity_date",
+            "quest_type",
+            "title",
+            "description",
+            "target",
+            "rewards",
+            "quest_metadata",
+            "is_active",
+        }
         unknown = set(values) - allowed
         if unknown:
             raise ValueError(f"unsupported quest fields: {', '.join(sorted(unknown))}")
@@ -125,7 +133,9 @@ class DailyQuestService:
             quest.quest_metadata = self._validate_metadata(values["quest_metadata"])
         if "is_active" in values and values["is_active"] is not None:
             quest.is_active = bool(values["is_active"])
-        if quest.quest_type == "JOIN_CHANNEL" and not (quest.quest_metadata or {}).get("channel"):
+        if quest.quest_type == "JOIN_CHANNEL" and not (quest.quest_metadata or {}).get(
+            "channel"
+        ):
             raise ValueError("JOIN_CHANNEL requires metadata.channel")
         await session.flush()
         return quest
@@ -177,7 +187,9 @@ class DailyQuestService:
                 continue
             if event_type == "JOIN_CHANNEL":
                 configured_channel = (quest.quest_metadata or {}).get("channel")
-                if configured_channel and configured_channel != (event_metadata or {}).get("channel"):
+                if configured_channel and configured_channel != (
+                    event_metadata or {}
+                ).get("channel"):
                     continue
             progress = await self.repository.progress(
                 session, user_id, quest.id, for_update=True
@@ -197,7 +209,11 @@ class DailyQuestService:
         return changed
 
     async def claim(
-        self, session: AsyncSession, *, user_id: int, progress_id: int,
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        progress_id: int,
         membership_checker=None,
     ):
         progress = await session.scalar(

@@ -52,7 +52,9 @@ async def test_concurrent_group_answers_have_exactly_one_winner():
                 question=question,
                 status=QuestionStatus.ACTIVE,
             )
-            setup_session.add_all([group, first_user, second_user, question, publication])
+            setup_session.add_all(
+                [group, first_user, second_user, question, publication]
+            )
         group_id = group.id
         question_id = question.id
         first_user_id = first_user.id
@@ -80,7 +82,9 @@ async def test_concurrent_group_answers_have_exactly_one_winner():
             submit(second_user_id),
         )
         assert sum(not isinstance(result, Exception) for result in results) == 1
-        assert sum(isinstance(result, QuestionAlreadyAnswered) for result in results) == 1
+        assert (
+            sum(isinstance(result, QuestionAlreadyAnswered) for result in results) == 1
+        )
 
         async with AsyncSessionLocal() as verify_session:
             answers = (

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks import AttackConfirmationCallback
 from app.bot.utils.attack import teacher_phrase
+from app.bot.utils.telegram import schedule_message_deletion
 from app.services.attack_service import AttackPreview, AttackResult, AttackService
 from app.services.school_errors import (
     AttackerNotRegistered,
@@ -89,37 +90,45 @@ def _attack_help_text(*, group: bool = False) -> str:
 def _attack_confirmation_keyboard(
     preview: AttackPreview, *, source_message_id: int
 ) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="✅ تأیید حمله",
-            callback_data=AttackConfirmationCallback(
-                attacker_id=preview.attacker_id,
-                target_id=preview.target_id, teacher_id=preview.teacher_id,
-                decision="confirm",
-                teacher_ids=preview.teacher_ids,
-                source_message_id=source_message_id,
-            ).pack(),
-        ),
-        InlineKeyboardButton(
-            text="❌ لغو",
-            callback_data=AttackConfirmationCallback(
-                attacker_id=preview.attacker_id,
-                target_id=preview.target_id, teacher_id=preview.teacher_id,
-                decision="cancel",
-                teacher_ids=preview.teacher_ids,
-                source_message_id=source_message_id,
-            ).pack(),
-        ),
-    ]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ تأیید حمله",
+                    callback_data=AttackConfirmationCallback(
+                        attacker_id=preview.attacker_id,
+                        target_id=preview.target_id,
+                        teacher_id=preview.teacher_id,
+                        decision="confirm",
+                        teacher_ids=preview.teacher_ids,
+                        source_message_id=source_message_id,
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="❌ لغو",
+                    callback_data=AttackConfirmationCallback(
+                        attacker_id=preview.attacker_id,
+                        target_id=preview.target_id,
+                        teacher_id=preview.teacher_id,
+                        decision="cancel",
+                        teacher_ids=preview.teacher_ids,
+                        source_message_id=source_message_id,
+                    ).pack(),
+                ),
+            ]
+        ]
+    )
 
 
 async def _send_result(message: Message, result: AttackResult) -> None:
     await message.answer(_attack_text(result))
-    with suppress(TelegramAPIError):
-        await message.bot.send_message(
-            result.target_telegram_id,
-            f"🎯 شما مورد حمله قرار گرفتید!\n\n{_attack_text(result)}",
-        )
+    bot = message.bot
+    if bot is not None:
+        with suppress(TelegramAPIError):
+            await bot.send_message(
+                result.target_telegram_id,
+                f"🎯 شما مورد حمله قرار گرفتید!\n\n{_attack_text(result)}",
+            )
 
 
 async def _report_error(message: Message, error: Exception) -> None:
@@ -136,9 +145,13 @@ async def _report_error(message: Message, error: Exception) -> None:
     elif isinstance(error, TeacherInHospital):
         await message.answer("این دبیر در حال بهبود است و فعلاً نمی‌تواند حمله کند.")
     elif isinstance(error, AttackInProgress):
-        await message.answer("⚔️ حمله فعال دارید؛ پس از پایان آن می‌توانید دوباره حمله کنید.")
+        await message.answer(
+            "⚔️ حمله فعال دارید؛ پس از پایان آن می‌توانید دوباره حمله کنید."
+        )
     elif isinstance(error, ShieldAlreadyActive):
-        await message.answer("🛡 این بازیکن سپر فعال دارد و فعلاً نمی‌توان به او حمله کرد.")
+        await message.answer(
+            "🛡 این بازیکن سپر فعال دارد و فعلاً نمی‌توان به او حمله کرد."
+        )
     elif isinstance(error, InvalidTeacherState):
         await message.answer(
             "این دبیر فعال نیست؛ ابتدا آن را فعال کنید تا آماده حمله شود."
@@ -169,9 +182,7 @@ async def attack_message(message: Message, session: AsyncSession) -> None:
         and message.reply_to_message is not None
     ):
         await message.answer(
-            _attack_help_text(
-                group=message.chat.type in {"group", "supergroup"}
-            )
+            _attack_help_text(group=message.chat.type in {"group", "supergroup"})
         )
         return
     if not arguments:
@@ -185,8 +196,7 @@ async def attack_message(message: Message, session: AsyncSession) -> None:
             random_teacher = arguments[len("رندوم") :].strip()
             if not random_teacher:
                 await message.answer(
-                    "برای حمله رندوم نام دبیر را هم بنویسید؛ "
-                    "مثال: حمله رندوم افلاطون"
+                    "برای حمله رندوم نام دبیر را هم بنویسید؛ مثال: حمله رندوم افلاطون"
                 )
                 return
             preview = await attack_service.preview_random(
@@ -256,7 +266,9 @@ async def attack_confirmation(
         await callback.answer()
         return
     if callback.from_user.id != callback_data.attacker_id:
-        await callback.answer("فقط شروع‌کننده حمله می‌تواند آن را تأیید کند.", show_alert=True)
+        await callback.answer(
+            "فقط شروع‌کننده حمله می‌تواند آن را تأیید کند.", show_alert=True
+        )
         return
     if callback_data.decision == "cancel":
         await callback.message.delete()
@@ -294,12 +306,13 @@ async def attack_confirmation(
             except TelegramAPIError:
                 # A missing or invalid optional sticker must not block an attack.
                 continue
-        await callback.message.answer(
+        launch_message = await callback.message.answer(
             f"⚔️ حمله به «{launch.target_name}» آغاز شد!\n"
             f"👨‍🏫 {teacher_phrase(launch.teacher_name)}\n"
             "⏱ زمان حمله: ۲ دقیقه\n"
             "پس از پایان زمان، نتیجه حمله برای شما ارسال می‌شود.",
             reply_parameters=reply_parameters,
         )
+        schedule_message_deletion(launch_message, delay_seconds=10)
     except SchoolError as error:
         await _report_error(callback.message, error)
