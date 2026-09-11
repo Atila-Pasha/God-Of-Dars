@@ -95,6 +95,25 @@ class TeacherRepository:
         )
         return result.scalars().unique().one_or_none()
 
+    async def get_owned(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        user_teacher_id: int,
+    ) -> UserTeacher | None:
+        result = await session.execute(
+            select(UserTeacher)
+            .where(
+                UserTeacher.id == user_teacher_id,
+                UserTeacher.user_id == user_id,
+            )
+            .options(
+                selectinload(UserTeacher.teacher),
+                selectinload(UserTeacher.recoveries),
+            )
+        )
+        return result.scalars().unique().one_or_none()
+
     async def get_owned_by_teacher_for_update(
         self,
         session: AsyncSession,

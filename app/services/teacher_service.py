@@ -66,7 +66,7 @@ class TeacherService:
         self, session: AsyncSession, user_id: int, user_teacher_id: int
     ) -> UserTeacher:
         """Return one teacher owned by the user for the detail view."""
-        owned_teacher = await self.repository.get_owned_for_update(
+        owned_teacher = await self.repository.get_owned(
             session, user_id, user_teacher_id
         )
         if owned_teacher is None:

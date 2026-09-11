@@ -2,8 +2,13 @@ aiogram<4,>=3.31
 aiohttp-socks<1,>=0.12
 alembic<2,>=1.19
 asyncpg<1,>=0.31
+fastapi<1,>=0.116
+httpx[socks]<1,>=0.28
+pyjwt[crypto]<3,>=2.10
 pydantic-settings<3,>=2.15
+redis[hiredis]<8,>=6
 sqlalchemy[asyncio]<3,>=2.0.52
+uvicorn[standard]<1,>=0.35
 
 [dev]
 mypy<3,>=2.3

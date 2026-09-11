@@ -72,6 +72,8 @@ class AttackPreview:
 
 @dataclass(frozen=True)
 class AttackLaunch:
+    attack_ids: tuple[int, ...]
+    attack_command_id: str
     target_name: str
     teacher_name: str
     teacher_stickers: tuple[str, ...]
@@ -341,22 +343,25 @@ class AttackService:
         castle = await self.castle_service.battle_snapshot(session, target.id)
         resolve_at = datetime.now(UTC) + duration
         attack_command_id = str(uuid4())
+        created_attacks: list[Attack] = []
         for teacher in teachers:
-            session.add(
-                Attack(
-                    attacker_id=attacker.id,
-                    target_id=target.id,
-                    teacher_id=teacher.id,
-                    status=AttackStatus.PENDING,
-                    resolve_at=resolve_at,
-                    attack_command_id=attack_command_id,
-                    teacher_damage_snapshot=self.teacher_service.damage(teacher),
-                    target_castle_strength_snapshot=castle.strength,
-                    target_defense_power_snapshot=castle.defense_power,
-                )
+            attack = Attack(
+                attacker_id=attacker.id,
+                target_id=target.id,
+                teacher_id=teacher.id,
+                status=AttackStatus.PENDING,
+                resolve_at=resolve_at,
+                attack_command_id=attack_command_id,
+                teacher_damage_snapshot=self.teacher_service.damage(teacher),
+                target_castle_strength_snapshot=castle.strength,
+                target_defense_power_snapshot=castle.defense_power,
             )
+            session.add(attack)
+            created_attacks.append(attack)
         await session.flush()
         return AttackLaunch(
+            attack_ids=tuple(attack.id for attack in created_attacks),
+            attack_command_id=attack_command_id,
             target_name=target.first_name,
             teacher_name="، ".join(teacher.teacher.name for teacher in teachers),
             teacher_stickers=tuple(

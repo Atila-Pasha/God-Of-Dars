@@ -12,8 +12,13 @@ dependencies = [
     "aiohttp-socks>=0.12,<1",
     "alembic>=1.19,<2",
     "asyncpg>=0.31,<1",
+    "fastapi>=0.116,<1",
+    "httpx[socks]>=0.28,<1",
+    "pyjwt[crypto]>=2.10,<3",
     "pydantic-settings>=2.15,<3",
+    "redis[hiredis]>=6,<8",
     "sqlalchemy[asyncio]>=2.0.52,<3",
+    "uvicorn[standard]>=0.35,<1",
 ]
 
 [project.optional-dependencies]

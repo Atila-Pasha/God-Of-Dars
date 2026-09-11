@@ -1,4 +1,22 @@
 UNDER ACTIVE DEVELOPMENT
+
+## HTTP API for Flet
+
+GodOfDars includes a versioned FastAPI backend for Windows, Android, and Linux
+clients. It reuses the bot's domain services and PostgreSQL data, while running
+as a separate process:
+
+```bash
+alembic upgrade head
+python -m app.api
+```
+
+Copy the API and Telegram OIDC settings from `.env.example` into your private
+`.env`. Never place the Telegram client secret or `API_JWT_SECRET` in the Flet
+application. Development OpenAPI documentation is served at `/docs`; see
+[`app/api/README.md`](app/api/README.md) for the login flow and deployment
+requirements.
+
 # Operational semantics
 
 Telegram notifications use a durable, idempotent outbox with bounded retries

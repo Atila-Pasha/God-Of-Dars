@@ -10,8 +10,13 @@ Requires-Dist: aiogram<4,>=3.31
 Requires-Dist: aiohttp-socks<1,>=0.12
 Requires-Dist: alembic<2,>=1.19
 Requires-Dist: asyncpg<1,>=0.31
+Requires-Dist: fastapi<1,>=0.116
+Requires-Dist: httpx[socks]<1,>=0.28
+Requires-Dist: pyjwt[crypto]<3,>=2.10
 Requires-Dist: pydantic-settings<3,>=2.15
+Requires-Dist: redis[hiredis]<8,>=6
 Requires-Dist: sqlalchemy[asyncio]<3,>=2.0.52
+Requires-Dist: uvicorn[standard]<1,>=0.35
 Provides-Extra: dev
 Requires-Dist: mypy<3,>=2.3; extra == "dev"
 Requires-Dist: pytest<10,>=9.1; extra == "dev"
@@ -19,6 +24,24 @@ Requires-Dist: pytest-asyncio<2,>=1.4; extra == "dev"
 Requires-Dist: ruff<1,>=0.16; extra == "dev"
 
 UNDER ACTIVE DEVELOPMENT
+
+## HTTP API for Flet
+
+GodOfDars includes a versioned FastAPI backend for Windows, Android, and Linux
+clients. It reuses the bot's domain services and PostgreSQL data, while running
+as a separate process:
+
+```bash
+alembic upgrade head
+python -m app.api
+```
+
+Copy the API and Telegram OIDC settings from `.env.example` into your private
+`.env`. Never place the Telegram client secret or `API_JWT_SECRET` in the Flet
+application. Development OpenAPI documentation is served at `/docs`; see
+[`app/api/README.md`](app/api/README.md) for the login flow and deployment
+requirements.
+
 # Operational semantics
 
 Telegram notifications use a durable, idempotent outbox with bounded retries

@@ -223,14 +223,14 @@ Client ID/Secret در BotFather تنظیم می‌شوند. مرجع رسمی:
 8. `telegram user id` به identity داخلی متصل می‌شود.
 9. attempt به حالت approved می‌رود و یک exchange code کوتاه‌عمر تولید می‌شود.
 10. Flet با poll دارای backoff یا channel realtime نتیجه را می‌گیرد.
-11. exchange code فقط یک‌بار به access/refresh token داخلی تبدیل می‌شود.
+11. attempt secret فقط یک‌بار به access/refresh token داخلی تبدیل می‌شود.
 
 این جریان callback سفارشی متفاوت برای Windows، Android و Linux را الزامی
 نمی‌کند و token را داخل URL عمومی اپ قرار نمی‌دهد.
 
 ### مدل identity
 
-وابستگی مستقیم domain به `aiogram.types.User` باید حذف شود. مدل پیشنهادی:
+وابستگی مستقیم domain به `aiogram.types.User` باید حذف شود. مدل پیاده‌سازی‌شده:
 
 - `users`: هویت داخلی بازی و داده‌های domain
 - `auth_identities`: provider، provider subject، telegram user id و user id داخلی
@@ -244,8 +244,8 @@ Client ID/Secret در BotFather تنظیم می‌شوند. مرجع رسمی:
 
 ### tokenهای داخلی
 
-- access token کوتاه‌عمر، پیشنهادی ۱۰ تا ۱۵ دقیقه
-- refresh token چرخشی، پیشنهادی حداکثر ۳۰ روز
+- access token کوتاه‌عمر با پیش‌فرض ۱۵ دقیقه
+- refresh token چرخشی با پیش‌فرض ۳۰ روز
 - ذخیره فقط hash refresh token در دیتابیس
 - revoke کل token family در صورت reuse شدن refresh token مصرف‌شده
 - جداسازی signing key محیط توسعه، staging و production
@@ -268,9 +268,9 @@ Client ID/Secret در BotFather تنظیم می‌شوند. مرجع رسمی:
 
 ### قالب پاسخ موفق
 
-پاسخ یک resource می‌تواند مستقیم زیر `data` و پاسخ لیستی زیر `data.items` باشد.
-metadata شامل `request_id`، cursor و اطلاعات pagination است. زمان‌ها ISO 8601 و UTC
-هستند و مبلغ‌ها integer باقی می‌مانند.
+پاسخ موفق resource به‌شکل مستقیم و schemaدار برگردانده می‌شود؛ پاسخ‌های
+صفحه‌بندی‌شده `items` و `next_cursor` دارند. request id در header با نام
+`X-Request-ID` است. زمان‌ها ISO 8601 و UTC هستند و مبلغ‌ها integer باقی می‌مانند.
 
 ### قالب خطا
 
@@ -330,7 +330,7 @@ metadata شامل `request_id`، cursor و اطلاعات pagination است. ز�
 
 ### ذخیره‌سازی
 
-جدول پیشنهادی `api_idempotency_requests` شامل user، route operation، key، hash
+جدول `api_idempotency_requests` شامل user، route operation، key، hash
 درخواست، status، response code/body محدودشده و expiry است. unique constraint روی
 ترکیب `(user_id, operation, key)` قرار می‌گیرد.
 

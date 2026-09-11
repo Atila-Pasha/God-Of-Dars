@@ -53,12 +53,15 @@ class StudyService:
             statement = statement.where(StudyPack.is_active.is_(True))
         return await session.scalar(statement)
 
-    async def active(self, session: AsyncSession, user_id: int) -> StudySession | None:
-        result = await session.execute(
-            select(StudySession)
-            .where(StudySession.user_id == user_id, StudySession.completed_at.is_(None))
-            .with_for_update()
+    async def active(
+        self, session: AsyncSession, user_id: int, *, for_update: bool = True
+    ) -> StudySession | None:
+        statement = select(StudySession).where(
+            StudySession.user_id == user_id, StudySession.completed_at.is_(None)
         )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await session.execute(statement)
         return result.scalar_one_or_none()
 
     async def start(

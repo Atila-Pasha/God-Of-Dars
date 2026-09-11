@@ -1,5 +1,13 @@
 from app.models.answer import Answer
 from app.models.attack import Attack
+from app.models.auth import (
+    ApiIdempotencyRequest,
+    AuthAuditEvent,
+    AuthIdentity,
+    AuthLoginAttempt,
+    AuthRefreshToken,
+    AuthSession,
+)
 from app.models.bot_settings import BotSettings
 from app.models.castle import Castle
 from app.models.chance_box import ChanceBox
@@ -27,6 +35,12 @@ from app.models.user_teacher import UserTeacher
 __all__ = [
     "Answer",
     "Attack",
+    "ApiIdempotencyRequest",
+    "AuthAuditEvent",
+    "AuthIdentity",
+    "AuthLoginAttempt",
+    "AuthRefreshToken",
+    "AuthSession",
     "BotSettings",
     "Castle",
     "ChanceBox",

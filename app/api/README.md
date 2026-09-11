@@ -1,114 +1,37 @@
-# مرز ماژول API
+# GodOfDars API
 
-این پوشه در حال حاضر فقط blueprint معماری است و کد اجرایی ندارد. هنگام شروع
-پیاده‌سازی، ساختار زیر به‌تدریج ایجاد می‌شود؛ فقط پوشه‌های موردنیاز همان فاز ساخته
-می‌شوند.
+The HTTP API is part of the same Python package as the Telegram bot so both
+clients reuse the existing transaction-safe domain services. It is deployed as
+an independent process and never shares a client-side secret with Flet.
 
-```text
-app/api/
-├── main.py                    # ASGI entry point؛ بدون اجرای bot/worker
-├── application.py             # app factory، router registration و lifespan
-├── config.py                  # تنظیمات مخصوص HTTP/auth؛ مبتنی بر environment
-├── dependencies/
-│   ├── auth.py                # current user/session و policyها
-│   ├── database.py            # request-scoped session/transaction
-│   ├── idempotency.py         # mutation guard و replay
-│   └── pagination.py          # cursor و limitهای مشترک
-├── middleware/
-│   ├── request_id.py          # correlation id
-│   ├── access_log.py          # structured access log با redaction
-│   ├── rate_limit.py          # policy توزیع‌شده
-│   └── security_headers.py     # headerهای production
-├── auth/
-│   ├── telegram_oidc.py       # OIDC/PKCE/JWKS adapter
-│   ├── tokens.py              # access/refresh signing و validation
-│   ├── sessions.py            # device session و rotation/revoke
-│   └── policies.py            # authenticated/admin/inactive policies
-├── routers/
-│   ├── health.py              # live/ready
-│   ├── meta.py                # version و maintenance metadata
-│   ├── auth.py                # login/refresh/logout
-│   ├── bootstrap.py           # read model کمینه اپ
-│   ├── profile.py
-│   ├── economy.py
-│   ├── teachers.py
-│   ├── castle.py
-│   ├── shields.py
-│   ├── mine.py
-│   ├── study.py
-│   ├── questions.py
-│   ├── quests.py
-│   ├── battles.py
-│   ├── buffet.py
-│   ├── referrals.py
-│   ├── subscription.py
-│   └── notifications.py
-├── schemas/
-│   ├── common.py              # envelope، error و metadata
-│   ├── auth.py
-│   ├── profile.py
-│   ├── economy.py
-│   ├── school.py
-│   ├── battle.py
-│   ├── activity.py
-│   └── notification.py
-├── presenters/
-│   ├── profile.py             # domain DTO → API schema
-│   ├── school.py
-│   ├── battle.py
-│   └── activity.py
-├── errors/
-│   ├── codes.py               # error codeهای پایدار
-│   ├── mapper.py              # service exception → HTTP error
-│   └── handlers.py            # validation/unhandled exception handlers
-└── observability/
-    ├── logging.py
-    ├── metrics.py
-    └── tracing.py
+## Run locally
+
+```bash
+alembic upgrade head
+python -m app.api
 ```
 
-## جهت dependency
+In development, OpenAPI is available at `http://127.0.0.1:8000/docs`.
 
-```text
-app.api → app.services → app.repositories → app.models/app.db
-```
+## Telegram login flow
 
-موارد ممنوع:
+1. The Flet client creates `POST /api/v1/auth/telegram/attempts`.
+2. It opens the returned `authorization_url` in the system browser.
+3. Telegram redirects to the server callback. The server validates OIDC
+   signature, issuer, audience, expiry, nonce, state, and PKCE.
+4. Flet polls the attempt with `X-Login-Secret`, then exchanges the approved
+   attempt for a short-lived access token and a rotating refresh token.
 
-- `app.services` نباید `app.api` را import کند.
-- `app.bot` و `app.api` نباید یکدیگر را import کنند.
-- router نباید مستقیماً query اقتصادی بنویسد.
-- presenter نباید transaction یا side effect داشته باشد.
-- schema API نباید همان ORM model تلقی شود.
+The Telegram client secret, JWT signing secret, PKCE verifier, and stored token
+hashes remain server-side. Refresh-token reuse revokes the whole token family.
 
-## جای مدل‌های جدید
+## Production requirements
 
-مدل‌های persistent عمومی در `app/models` باقی می‌مانند، از جمله:
+- HTTPS public base URL and callback registered with BotFather
+- `API_JWT_SECRET` containing at least 32 random bytes
+- Telegram OIDC client ID and client secret
+- PostgreSQL migration at the current Alembic head
+- Redis for cross-process rate limiting (the local limiter is only a fallback)
+- trusted proxy/header configuration so login rate limits see the real client IP
 
-- identity و auth session
-- idempotency request
-- audit event
-- sync/event cursor در صورت نیاز
-
-repository آنها در `app/repositories` و use case آنها در `app/services` یا یک
-application layer مشترک قرار می‌گیرد. قرار دادن منطق persistent داخل `app/api/auth`
-ممنوع است؛ `app/api/auth` فقط adapter امنیتی HTTP/OIDC است.
-
-## جای تست‌ها
-
-```text
-tests/api/
-├── contract/
-├── integration/
-├── security/
-└── performance/
-```
-
-تست‌های domain فعلی در `tests/unit` باقی می‌مانند. تست route جای تست service را
-نمی‌گیرد؛ هر کدام مرز متفاوتی را پوشش می‌دهند.
-
-## مرجع کامل
-
-- `docs/api/ARCHITECTURE.md`
-- `docs/api/ROUTES_V1.md`
-- `docs/api/IMPLEMENTATION_PLAN.md`
+All state-changing economy endpoints require a UUID in `Idempotency-Key`.

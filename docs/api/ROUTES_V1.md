@@ -1,7 +1,7 @@
 # قرارداد سطح بالای Routeهای API v1
 
-این سند inventory نسخه اول است، نه OpenAPI نهایی. نام fieldها و schema دقیق در
-فاز پیاده‌سازی با تست قرارداد تثبیت می‌شوند.
+این سند نمای سطح‌بالای نسخه اول است. قرارداد دقیق و نهایی fieldها در OpenAPI
+تولیدشده توسط برنامه و تست‌های `tests/api` تثبیت شده است.
 
 ## قواعد عمومی
 
@@ -28,16 +28,16 @@
 
 | Method | Route | Auth | Idempotency | هدف |
 |---|---|---:|---:|---|
-| POST | `/api/v1/auth/telegram/attempts` | خیر | بله | ساخت login attempt و URL ورود |
+| POST | `/api/v1/auth/telegram/attempts` | خیر | خیر | ساخت login attempt و URL ورود |
 | GET | `/api/v1/auth/telegram/attempts/{attempt_id}` | attempt secret | خیر | وضعیت pending/approved/expired |
 | GET | `/api/v1/auth/telegram/authorize/{attempt_id}` | attempt state | خیر | redirect به Telegram OIDC |
 | GET | `/api/v1/auth/telegram/callback` | OIDC state | خیر | callback ثبت‌شده backend |
-| POST | `/api/v1/auth/telegram/exchange` | one-time code | بله | دریافت tokenهای داخلی |
-| POST | `/api/v1/auth/refresh` | refresh token | بله | rotation token family |
-| POST | `/api/v1/auth/logout` | بله | بله | revoke session جاری |
-| POST | `/api/v1/auth/logout-all` | بله | بله | revoke همه sessionهای کاربر |
+| POST | `/api/v1/auth/telegram/exchange` | attempt secret | خیر | مصرف یک‌باره attempt و دریافت tokenهای داخلی |
+| POST | `/api/v1/auth/refresh` | refresh token | خیر | rotation یک‌باره token family |
+| POST | `/api/v1/auth/logout` | بله | خیر | revoke idempotent نشست جاری |
+| POST | `/api/v1/auth/logout-all` | بله | خیر | revoke idempotent همه نشست‌های کاربر |
 | GET | `/api/v1/auth/sessions` | بله | خیر | فهرست دستگاه‌ها/sessionها |
-| DELETE | `/api/v1/auth/sessions/{session_id}` | بله | بله | revoke یک دستگاه |
+| DELETE | `/api/v1/auth/sessions/{session_id}` | بله | خیر | revoke idempotent یک دستگاه |
 
 callback مرورگر token بازی را نمایش نمی‌دهد؛ فقط attempt را approve کرده و صفحه
 موفقیت یا خطای عمومی نشان می‌دهد.
@@ -47,7 +47,7 @@ callback مرورگر token بازی را نمایش نمی‌دهد؛ فقط at
 | Method | Route | Auth | هدف |
 |---|---|---:|---|
 | GET | `/api/v1/bootstrap` | بله | داده کمینه صفحه اول، profile/resources و timerها |
-| GET | `/api/v1/sync?cursor=...` | بله | تغییرات بعد از cursor برای resume/reconnect |
+| GET | `/api/v1/sync` | بله | snapshot تازه برای resume/reconnect |
 
 `bootstrap` جای endpointهای domain را نمی‌گیرد؛ یک read model بهینه برای کاهش
 round trip موبایل است.
@@ -58,7 +58,6 @@ round trip موبایل است.
 |---|---|---:|---:|---|
 | GET | `/api/v1/me` | بله | خیر | هویت و وضعیت حساب جاری |
 | GET | `/api/v1/me/profile` | بله | خیر | snapshot کامل پروفایل |
-| PATCH | `/api/v1/me/profile` | بله | بله | تنظیمات قابل ویرایش بازی |
 | GET | `/api/v1/me/resources` | بله | خیر | موجودی authoritative |
 | GET | `/api/v1/me/transactions` | بله | خیر | ledger صفحه‌بندی‌شده |
 | GET | `/api/v1/users/search` | بله | خیر | جست‌وجوی محدود حریف/کاربر عمومی |
@@ -92,7 +91,6 @@ routeهای action به جای PATCH عمومی استفاده می‌شوند �
 | GET | `/api/v1/shields/catalog` | بله | خیر | catalog سپرها |
 | GET | `/api/v1/me/shields` | بله | خیر | سپرهای کاربر |
 | POST | `/api/v1/me/shields/{shield_id}/purchase` | بله | بله | خرید سپر |
-| POST | `/api/v1/me/shields/{owned_shield_id}/equip` | بله | بله | تجهیز سپر |
 
 ## معدن
 
@@ -120,7 +118,7 @@ routeهای action به جای PATCH عمومی استفاده می‌شوند �
 | GET | `/api/v1/daily-question` | بله | خیر | سؤال فعال و وضعیت پاسخ کاربر |
 | POST | `/api/v1/daily-question/answer` | بله | بله | ثبت یک‌باره پاسخ |
 | GET | `/api/v1/me/daily-quests` | بله | خیر | مأموریت و progress روز جاری |
-| POST | `/api/v1/me/daily-quests/{quest_id}/claim` | بله | بله | claim در صورت نیاز طراحی بازی |
+| POST | `/api/v1/me/daily-quests/{progress_id}/claim` | بله | بله | claim اتمیک progress تکمیل‌شده |
 
 اگر پاداش مأموریت خودکار است، route `claim` حذف می‌شود تا دو مدل پاداش هم‌زمان
 وجود نداشته باشد.
@@ -133,7 +131,7 @@ routeهای action به جای PATCH عمومی استفاده می‌شوند �
 | POST | `/api/v1/battles/preview` | بله | خیر | preview بدون تغییر state |
 | POST | `/api/v1/battles` | بله | بله | شروع حمله و دریافت `202` |
 | GET | `/api/v1/battles/{battle_id}` | بله | خیر | وضعیت/نتیجه برای طرف مجاز |
-| GET | `/api/v1/me/battles` | بله | خیر | تاریخچه ارسالی و دریافتی |
+| GET | `/api/v1/battles` | بله | خیر | تاریخچه cursor-based ارسالی و دریافتی |
 
 شروع حمله نتیجه نهایی را هم‌زمان محاسبه نمی‌کند؛ یک attack durable می‌سازد و
 worker آن را resolve می‌کند. preview تضمین نتیجه نیست و state نهایی دوباره داخل
@@ -143,11 +141,11 @@ transaction بررسی می‌شود.
 
 | Method | Route | Auth | Idempotency | هدف |
 |---|---|---:|---:|---|
-| POST | `/api/v1/exchanges/quote` | بله | خیر | quote کوتاه‌عمر با نرخ و expiry |
-| POST | `/api/v1/exchanges` | بله | بله | اجرای quote معتبر و اتمیک |
+| GET | `/api/v1/exchanges/options` | بله | خیر | گزینه‌های تبدیل authoritative |
+| POST | `/api/v1/exchanges` | بله | بله | اجرای نرخ معتبر سمت سرور به‌شکل اتمیک |
 
-کلاینت نرخ تبدیل را ارسال و تحمیل نمی‌کند؛ فقط quote id و مقدار موردنظر را ارائه
-می‌دهد و backend نرخ/expiry را دوباره بررسی می‌کند.
+کلاینت نرخ تبدیل را تعیین نمی‌کند؛ فقط نوع منبع و تعداد بسته‌ها را می‌فرستد و
+backend نرخ فعال را دوباره بررسی و اعمال می‌کند.
 
 ## دعوت‌ها
 
@@ -171,7 +169,7 @@ transaction بررسی می‌شود.
 | Method | Route | Auth | Idempotency | هدف |
 |---|---|---:|---:|---|
 | GET | `/api/v1/me/subscription` | بله | خیر | وضعیت cache‌شده requirementها |
-| POST | `/api/v1/me/subscription/verify` | بله | بله | بررسی مجدد محدودشده با Telegram |
+| POST | `/api/v1/me/subscription/verify` | بله | خیر | بررسی مجدد rate-limited با Telegram |
 
 اختلال Telegram نباید به‌صورت اشتباه کاربر معتبر را non-member اعلام کند. پاسخ
 می‌تواند `verified_at`، `stale` و `provider_unavailable` داشته باشد تا policy
@@ -184,8 +182,6 @@ transaction بررسی می‌شود.
 | GET | `/api/v1/me/notifications` | بله | خیر | inbox صفحه‌بندی‌شده |
 | POST | `/api/v1/me/notifications/{id}/read` | بله | بله | علامت‌گذاری خوانده‌شده |
 | POST | `/api/v1/me/notifications/read-all` | بله | بله | خواندن همه تا cursor/time مشخص |
-| GET | `/api/v1/me/notification-preferences` | بله | خیر | ترجیحات کانال‌ها |
-| PATCH | `/api/v1/me/notification-preferences` | بله | بله | تغییر ترجیحات |
 
 ## Admin API
 
