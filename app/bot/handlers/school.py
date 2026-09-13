@@ -103,6 +103,8 @@ def _teacher_purchase_error(error: Exception) -> str:
         return "این دبیر دیگر در فهرست خرید نیست."
     if isinstance(error, TeacherNotPurchasable):
         return "این دبیر فعلاً قابل خرید نیست."
+    if isinstance(error, InsufficientDiamonds):
+        return "الماس کافی برای خرید این دبیر ندارید."
     if isinstance(error, InsufficientCoins):
         return "سکه کافی برای خرید این دبیر ندارید."
     return "خرید دبیر در حال حاضر امکان‌پذیر نیست."

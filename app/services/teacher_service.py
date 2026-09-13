@@ -9,7 +9,7 @@ from app.models.user_teacher import UserTeacher
 from app.repositories.teacher import TeacherRepository
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
-    InsufficientCoins,
+    InsufficientDiamonds,
     InvalidTeacherState,
     OperationNotConfigured,
     ResourceNotFound,
@@ -90,6 +90,7 @@ class TeacherService:
             return self.config.teacher_sell_price(
                 owned_teacher.teacher.id,
                 owned_teacher.teacher.purchase_price,
+                owned_teacher.teacher.purchase_resource,
             )
         except GameConfigurationError as exc:
             raise OperationNotConfigured from exc
@@ -198,7 +199,7 @@ class TeacherService:
             raise OperationNotConfigured
         upgrade_cost = self.upgrade_cost(owned_teacher)
         if resources.diamond < upgrade_cost:
-            raise InsufficientCoins
+            raise InsufficientDiamonds
 
         await ResourceService.debit_diamond(
             session,
@@ -242,6 +243,7 @@ class TeacherService:
             sell_price = self.config.teacher_sell_price(
                 owned_teacher.teacher.id,
                 owned_teacher.teacher.purchase_price,
+                owned_teacher.teacher.purchase_resource,
             )
         except GameConfigurationError as exc:
             raise OperationNotConfigured from exc

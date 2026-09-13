@@ -182,12 +182,31 @@ class ShieldService:
     async def consume_for_attack(
         self, session: AsyncSession, user_id: int, incoming_damage: int
     ) -> ShieldMitigation:
-        """Keep the legacy damage API while timed protection is enforced upstream."""
+        """Apply the active timed shield without consuming its remaining duration."""
         if incoming_damage < 0:
             raise GameConfigurationError("Incoming damage cannot be negative")
-        if not await self.has_active_shield(session, user_id):
+        now = datetime.now(UTC)
+        result = await session.execute(
+            select(UserShield)
+            .where(
+                UserShield.user_id == user_id,
+                UserShield.active_until.is_not(None),
+                UserShield.active_until > now,
+            )
+            .options(selectinload(UserShield.shield))
+            .order_by(UserShield.is_equipped.desc(), UserShield.id)
+            .limit(1)
+            .with_for_update()
+        )
+        active = result.scalar_one_or_none()
+        if active is None:
             return ShieldMitigation(incoming_damage, 0, incoming_damage)
-        return ShieldMitigation(incoming_damage, 0, incoming_damage)
+        self.validate(active.shield)
+        return self.config.apply_shield(
+            incoming_damage,
+            reduction_percent=active.shield.reduction_percent,
+            flat_absorption=active.shield.flat_absorption,
+        )
 
 
 class ShieldAdminService:

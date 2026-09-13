@@ -153,28 +153,13 @@ class LevelProgression:
         return max(1, round(self.xp_base * self.xp_growth ** (level - 1)))
 
     def upgrade_cost(self, level: int) -> int:
-        if level < 1 or level >= self.max_level:
+        required = self.required_xp(level)
+        if required is None:
             raise GameConfigurationError("Maximum player level reached")
-        configured = dict(self.upgrade_cost_by_level).get(level)
-        if configured is not None:
-            return configured
-        configured_levels = dict(self.upgrade_cost_by_level)
-        if configured_levels:
-            anchor = max(
-                (item for item in configured_levels if item < level), default=0
-            )
-            if anchor:
-                return max(
-                    1,
-                    round(
-                        configured_levels[anchor]
-                        * self.upgrade_cost_growth ** (level - anchor)
-                    ),
-                )
-        return max(
-            1,
-            round(self.upgrade_cost_base * self.upgrade_cost_growth ** (level - 1)),
-        )
+        # A second, divergent level-cost curve made the displayed XP target
+        # differ from the amount actually charged. Keep the legacy fields
+        # parseable, but use one authoritative XP curve everywhere.
+        return required
 
 
 @dataclass(frozen=True)
@@ -516,13 +501,27 @@ class GameConfig:
         return max(base_cost + steps, round(raw_cost / rounding) * rounding)
 
     def teacher_sell_price(
-        self, teacher_id: int, purchase_price: int | None = None
+        self,
+        teacher_id: int,
+        purchase_price: int | None = None,
+        purchase_resource: ResourceType | None = ResourceType.COIN,
     ) -> int:
         price = self.teacher_sell_prices.get(teacher_id)
         if price is None:
             if self.teacher_sell_ratio is None or purchase_price is None:
                 raise GameConfigurationError("Teacher sell price is not configured")
-            price = round(purchase_price * self.teacher_sell_ratio)
+            purchase_resource = purchase_resource or ResourceType.COIN
+            coin_value = purchase_price
+            if purchase_resource is ResourceType.DIAMOND:
+                conversion = self.buffet_conversion(
+                    ResourceType.DIAMOND, ResourceType.COIN
+                )
+                coin_value = round(
+                    purchase_price * conversion.target_amount / conversion.source_amount
+                )
+            elif purchase_resource is not ResourceType.COIN:
+                raise GameConfigurationError("Teacher purchase resource is invalid")
+            price = round(coin_value * self.teacher_sell_ratio)
         if price < 0:
             raise GameConfigurationError("Teacher sell price cannot be negative")
         return price

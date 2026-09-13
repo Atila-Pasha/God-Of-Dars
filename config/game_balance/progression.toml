@@ -1,7 +1,7 @@
 # پیشرفت بازیکن: XP لازم برای رفتن از هر Level به Level بعدی.
-# XP پس از هر ارتقا صفر می‌شود و هیچ مقدار XP در کد هاردکد نشده است.
+# فقط XP لازم برای ارتقا مصرف می‌شود و مقدار اضافه برای سطح بعد می‌ماند.
 [progression]
-reset_xp_on_level_up = true
+reset_xp_on_level_up = false
 max_level = 500
 xp_base = 100
 xp_growth = 1.03
@@ -22,7 +22,7 @@ level_11 = 2800
 level_12 = 3300
 level_13 = 3800
 level_14 = 4300
-level_15 = 4300
+level_15 = 5300
 level_16 = 6300
 level_17 = 7300
 level_18 = 8300

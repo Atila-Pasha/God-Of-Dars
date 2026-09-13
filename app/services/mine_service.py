@@ -83,7 +83,8 @@ class MineService:
             last = last.replace(tzinfo=UTC)
         if mine.today != now.date():
             mine.today = now.date()
-            mine.today_coin = mine.today_diamond = mine.today_banana = 0
+            # These legacy `today_*` columns are the uncollected wallet shown
+            # by the bot. Never erase an already-accrued balance at midnight.
         elapsed_minutes = max(0, int((now - last).total_seconds() // 60))
         capped = elapsed_minutes > self.config.mine_max_catchup_minutes
         elapsed_minutes = min(elapsed_minutes, self.config.mine_max_catchup_minutes)
@@ -128,42 +129,31 @@ class MineService:
             raise MineNotFound
         self._accrue(mine)
         amounts = (mine.today_coin, mine.today_diamond, mine.today_banana)
-        mine.collection_count += 1
-        collection_event_id = f"mine:{mine.id}:collection:{mine.collection_count}"
-        await ResourceService.credit_coin(
-            session,
-            resources,
-            user_id=user_id,
-            amount=amounts[0],
-            reason="MINE_COLLECTION",
-            reference_type="MINE",
-            reference_id=mine.id,
+        credit_methods = (
+            ResourceService.credit_coin,
+            ResourceService.credit_diamond,
+            ResourceService.credit_banana,
         )
-        await ResourceService.credit_diamond(
-            session,
-            resources,
-            user_id=user_id,
-            amount=amounts[1],
-            reason="MINE_COLLECTION",
-            reference_type="MINE",
-            reference_id=mine.id,
-        )
-        await ResourceService.credit_banana(
-            session,
-            resources,
-            user_id=user_id,
-            amount=amounts[2],
-            reason="MINE_COLLECTION",
-            reference_type="MINE",
-            reference_id=mine.id,
-        )
+        for amount, credit in zip(amounts, credit_methods, strict=True):
+            if amount > 0:
+                await credit(
+                    session,
+                    resources,
+                    user_id=user_id,
+                    amount=amount,
+                    reason="MINE_COLLECTION",
+                    reference_type="MINE",
+                    reference_id=mine.id,
+                )
         mine.today_coin = mine.today_diamond = mine.today_banana = 0
-        await DailyQuestService().record_event(
-            session,
-            user_id=user_id,
-            event_type="COLLECT_MINE",
-            event_id=collection_event_id,
-        )
+        if any(amounts):
+            mine.collection_count += 1
+            await DailyQuestService().record_event(
+                session,
+                user_id=user_id,
+                event_type="COLLECT_MINE",
+                event_id=f"mine:{mine.id}:collection:{mine.collection_count}",
+            )
         await session.flush()
         return (
             MineSnapshot(

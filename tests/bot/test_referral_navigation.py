@@ -39,7 +39,7 @@ async def test_referral_menu_shows_personal_link_and_count(monkeypatch):
 async def test_start_payload_applies_referral_before_showing_menu(monkeypatch):
     target = SimpleNamespace(answer=AsyncMock())
     telegram_user = SimpleNamespace(id=100, first_name="new")
-    created_user = SimpleNamespace(id=200, is_active=True)
+    created_user = SimpleNamespace(id=200, is_active=True, _was_created=True)
     monkeypatch.setattr(
         start.user_service,
         "get_or_create_from_telegram",
@@ -65,10 +65,33 @@ async def test_start_payload_applies_referral_before_showing_menu(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_returning_account_cannot_claim_a_new_referral(monkeypatch):
+    target = SimpleNamespace(answer=AsyncMock())
+    telegram_user = SimpleNamespace(id=100, first_name="returning")
+    existing_user = SimpleNamespace(id=200, is_active=True, _was_created=False)
+    monkeypatch.setattr(
+        start.user_service,
+        "get_or_create_from_telegram",
+        AsyncMock(return_value=existing_user),
+    )
+    apply = AsyncMock()
+    monkeypatch.setattr(start.referral_service, "apply", apply)
+
+    assert await start._initialize_and_show_menu(
+        target=target,
+        telegram_user=telegram_user,
+        session=AsyncMock(),
+        referral_payload="ref_7",
+    )
+
+    apply.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_start_with_own_referral_link_shows_funny_notice(monkeypatch):
     target = SimpleNamespace(answer=AsyncMock())
     telegram_user = SimpleNamespace(id=100, first_name="self")
-    created_user = SimpleNamespace(id=7, is_active=True)
+    created_user = SimpleNamespace(id=7, is_active=True, _was_created=True)
     monkeypatch.setattr(
         start.user_service,
         "get_or_create_from_telegram",

@@ -10,9 +10,8 @@ from app.services.resource_service import ResourceService
 from app.services.school_errors import (
     CastleNotFound,
     CastleUpgradeUnavailable,
-    InsufficientCoins,
+    InsufficientDiamonds,
     ResourceNotFound,
-    ShieldAlreadyActive,
 )
 from app.services.shield_service import ShieldService
 
@@ -150,7 +149,7 @@ class CastleService:
             raise CastleUpgradeUnavailable from exc
 
         if resources.diamond < upgrade.diamond_cost:
-            raise InsufficientCoins
+            raise InsufficientDiamonds
 
         await ResourceService.debit_diamond(
             session,
@@ -188,8 +187,6 @@ class CastleService:
         castle = await self.repository.get_by_user(session, user_id, for_update=True)
         if castle is None:
             raise CastleNotFound
-        if await self.shield_service.has_active_shield(session, user_id):
-            raise ShieldAlreadyActive
         mitigation = await self.shield_service.consume_for_attack(
             session, user_id, incoming_damage
         )

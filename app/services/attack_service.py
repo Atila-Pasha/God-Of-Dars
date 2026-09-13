@@ -118,18 +118,18 @@ class AttackService:
                 .values(attack_xp_awarded=True)
             )
         else:
-            first_unawarded = (
+            first_attack = (
                 select(func.min(Attack.id))
                 .where(
                     Attack.attack_command_id == attack_command_id,
-                    Attack.attack_xp_awarded.is_(False),
                 )
                 .scalar_subquery()
             )
             statement = (
                 update(Attack)
                 .where(
-                    Attack.id == first_unawarded,
+                    Attack.id == first_attack,
+                    Attack.attack_xp_awarded.is_(False),
                 )
                 .values(attack_xp_awarded=True)
             )
@@ -408,6 +408,16 @@ class AttackService:
             attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
             attack.is_successful = False
             return None
+        if attacker.id == target.id:
+            # Reject legacy/tampered pending rows without ever touching the
+            # shared resource object. Treating one wallet as both sides of a
+            # loot transfer would mint resources.
+            attack.status = AttackStatus.RESOLVED
+            attack.resolved_at = datetime.now(UTC)
+            attack.result_damage = 0
+            attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
+            attack.is_successful = False
+            return None
         _, castles = await lock_attack_dependencies(session, (attacker, target))
         if await self.castle_service.shield_service.has_active_shield(
             session, target.id
@@ -465,7 +475,11 @@ class AttackService:
             session,
             user_id=attacker.id,
             event_type="COMPLETE_BATTLES",
-            event_id=f"attack:{attack.id}",
+            event_id=(
+                f"attack-command:{attack.attack_command_id}"
+                if attack.attack_command_id is not None
+                else f"attack:{attack.id}"
+            ),
         )
         xp_awarded = await self._claim_attack_xp(
             session,
@@ -520,6 +534,8 @@ class AttackService:
     async def _preview(
         self, session, attacker, target, teacher_name: str | list[str]
     ) -> AttackPreview:
+        if attacker.id == target.id:
+            raise CannotAttackSelf
         if await self.castle_service.shield_service.has_active_shield(
             session, target.id
         ):
@@ -657,6 +673,8 @@ class AttackService:
     async def _attack_with_teachers(
         self, session, attacker, target, teachers
     ) -> AttackResult:
+        if attacker.id == target.id:
+            raise CannotAttackSelf
         if not teachers:
             raise TeacherNotOwned
         for teacher in teachers:
@@ -701,7 +719,10 @@ class AttackService:
                 if teacher.current_hp == 0:
                     await session.delete(teacher)
             loot = self._loot(
-                target, applied_damage, target_castle.strength, teacher_damage
+                target,
+                applied_damage,
+                castle_damage_result.castle_strength_before,
+                teacher_damage,
             )
             # XP is awarded once per attack command, not once per selected
             # teacher. Resource loot remains per actual castle damage.

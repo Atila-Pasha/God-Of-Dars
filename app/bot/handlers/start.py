@@ -142,7 +142,10 @@ async def _initialize_and_show_menu(
         return False
 
     referral_notice = None
-    if referral_payload:
+    # Referral attribution is an acquisition reward, not a transferable bonus
+    # for established accounts. Accept it only during the account's first
+    # successful initialization.
+    if referral_payload and getattr(user, "_was_created", False) is True:
         referrer_id = referral_service.parse_payload(referral_payload)
         if referrer_id is not None:
             try:

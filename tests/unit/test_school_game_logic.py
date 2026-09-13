@@ -15,7 +15,7 @@ from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
-    InsufficientCoins,
+    InsufficientDiamonds,
     InvalidTeacherState,
     TeacherLocked,
     TeacherSlotLocked,
@@ -222,7 +222,7 @@ async def test_upgrade_rejects_insufficient_diamonds_without_changing_teacher() 
         config=GameConfig(teacher_damage_by_level={(model.id, 2): 25}),
     )
 
-    with pytest.raises(InsufficientCoins):
+    with pytest.raises(InsufficientDiamonds):
         await service.upgrade(SimpleNamespace(), 10, 11)
 
     assert owned.level == 1

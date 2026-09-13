@@ -6,6 +6,7 @@ from app.bot.utils.attack import teacher_phrase
 from app.core.enums import ResourceType
 from app.core.game_logic import AttackRules, CastleRepairRules, GameConfig
 from app.services.attack_service import AttackService
+from app.services.school_errors import CannotAttackSelf
 
 
 @pytest.mark.parametrize(
@@ -25,6 +26,7 @@ class _ClaimSession:
         self.rowcounts = iter(rowcounts)
 
     async def execute(self, statement):
+        self.statement = statement
         return SimpleNamespace(rowcount=next(self.rowcounts))
 
 
@@ -41,6 +43,29 @@ async def test_attack_xp_claim_is_one_time_for_any_command_size(record_ids):
     ]
 
     assert claims.count(True) == 1
+
+
+@pytest.mark.asyncio
+async def test_attack_xp_claim_targets_only_the_first_command_record():
+    session = _ClaimSession([1])
+
+    await AttackService._claim_attack_xp(
+        session, attack_command_id="command-100", attack_id=2
+    )
+
+    statement = str(session.statement)
+    assert "SELECT min(attacks.id)" in statement
+    assert statement.count("attack_xp_awarded IS false") == 1
+
+
+@pytest.mark.asyncio
+async def test_tampered_self_attack_is_rejected_before_wallet_mutation():
+    player = SimpleNamespace(id=7)
+
+    with pytest.raises(CannotAttackSelf):
+        await AttackService()._attack_with_teachers(
+            SimpleNamespace(), player, player, []
+        )
 
 
 def test_loot_is_capped_by_teacher_power_not_target_wealth():

@@ -101,7 +101,9 @@ required_player_level = 1
 coin_per_minute = 4
 diamond_per_minute = 1
 banana_per_minute = 0
-diamond_cost = 800
+# The first diamond-producing level must be reachable through early study and
+# quest rewards; 800 created a hard progression wall before passive diamonds.
+diamond_cost = 120
 required_player_level = 1
 
 [mine.levels.level_3]

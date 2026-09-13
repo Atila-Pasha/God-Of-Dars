@@ -1,3 +1,4 @@
+from app.core.enums import ResourceType
 from app.core.game_logic import game_config
 
 
@@ -30,6 +31,30 @@ def test_progression_is_defined_and_bounded_through_level_500() -> None:
     assert xp_values == sorted(xp_values)
     assert cost_values == sorted(cost_values)
     assert game_config.teacher_slots(500) == game_config.max_owned_teacher_slots
+
+
+def test_level_upgrade_uses_the_authoritative_xp_curve_and_keeps_overflow() -> None:
+    for level in (1, 10, 15, 29, 100):
+        assert game_config.level_progression.upgrade_cost(level) == (
+            game_config.level_progression.required_xp(level)
+        )
+    assert game_config.level_progression.reset_xp_on_level_up is False
+
+
+def test_first_diamond_mine_level_is_reachable_before_passive_income() -> None:
+    assert game_config.mine_level(1).diamond_per_minute == 0
+    assert game_config.mine_level(2).diamond_cost == 120
+
+
+def test_diamond_teacher_sale_refunds_equivalent_coin_value() -> None:
+    assert (
+        game_config.teacher_sell_price(
+            999_999,
+            purchase_price=1_000,
+            purchase_resource=ResourceType.DIAMOND,
+        )
+        == 45_000
+    )
 
 
 def test_teacher_damage_has_a_configured_high_level_cap() -> None:

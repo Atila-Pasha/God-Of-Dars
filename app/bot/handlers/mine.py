@@ -39,7 +39,7 @@ def _mine_text(snapshot) -> str:
         f"⚙️ تولید فعلی: هر دقیقه {production.coin_per_minute} طلا، "
         f"{production.diamond_per_minute} الماس\n"
         f"⏱️ زمان محاسبه‌شده: {snapshot.collected_minutes} دقیقه\n\n"
-        "📦 دریافت امروز:\n"
+        "📦 آماده جمع‌آوری:\n"
         f"🪙 طلا: {snapshot.today_coin}\n"
         f"💎 الماس: {snapshot.today_diamond}"
     )
