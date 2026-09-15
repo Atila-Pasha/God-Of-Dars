@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     TELEGRAM_API_CONCURRENCY: int = Field(default=30, ge=1)
     TELEGRAM_RETRY_AFTER_MAX: int = Field(default=3, ge=0)
     WORKER_COUNT: int = Field(default=4, ge=1)
+    NOTIFICATION_WORKER_COUNT: int = Field(default=4, ge=1)
     WORKER_POLL_INTERVAL: float = Field(default=2.0, gt=0)
     WORKER_BATCH_SIZE: int = Field(default=100, ge=1)
     ATTACK_MAX_RETRIES: int = Field(default=3, ge=0)
@@ -34,61 +35,23 @@ class Settings(BaseSettings):
     MEMBERSHIP_CACHE_MAX_ENTRIES: int = Field(default=10_000, ge=100)
     CHANNELS_CACHE_TTL: float = Field(default=30, ge=0)
     GROUP_REGISTER_CACHE_TTL: float = Field(default=300, ge=0)
+    GROUP_REGISTER_CACHE_MAX_ENTRIES: int = Field(default=10_000, ge=100)
+    GROUP_USER_CACHE_TTL: float = Field(default=60, ge=0)
+    GROUP_USER_CACHE_MAX_ENTRIES: int = Field(default=50_000, ge=100)
     DAILY_QUEST_TIMEZONE: str = "UTC"
     LEADERBOARD_TIMEZONE: str = "Asia/Tehran"
-    API_PUBLIC_BASE_URL: str = "http://127.0.0.1:8000"
-    API_ALLOWED_ORIGINS: str = ""
-    API_ACCESS_TOKEN_MINUTES: int = Field(default=15, ge=1, le=60)
-    API_REFRESH_TOKEN_DAYS: int = Field(default=30, ge=1, le=365)
-    API_LOGIN_ATTEMPT_MINUTES: int = Field(default=10, ge=2, le=30)
-    API_IDEMPOTENCY_HOURS: int = Field(default=24, ge=1, le=168)
-    API_CLEANUP_INTERVAL_SECONDS: float = Field(default=3600, ge=60)
-    REDIS_URL: str | None = None
-    API_OUTBOUND_PROXY: str | None = None
-    API_JWT_ISSUER: str = "godofdars-api"
-    API_JWT_AUDIENCE: str = "godofdars-flet"
-    API_JWT_SECRET: str | None = None
-    TELEGRAM_CLIENT_ID: str | None = None
-    TELEGRAM_CLIENT_SECRET: str | None = None
-    TELEGRAM_REDIRECT_URI: str | None = None
-    TELEGRAM_OIDC_ISSUER: str = "https://oauth.telegram.org"
-    TELEGRAM_OIDC_AUTH_URL: str = "https://oauth.telegram.org/auth"
-    TELEGRAM_OIDC_TOKEN_URL: str = "https://oauth.telegram.org/token"
-    TELEGRAM_OIDC_JWKS_URL: str = "https://oauth.telegram.org/.well-known/jwks.json"
-    TELEGRAM_OIDC_SCOPES: str = "openid profile telegram:bot_access"
 
-    def validate_api_production(self) -> None:
-        if self.ENVIRONMENT.casefold() != "production":
-            return
-        missing: list[str] = []
-        if not self.API_JWT_SECRET or len(self.API_JWT_SECRET.encode()) < 32:
-            missing.append("API_JWT_SECRET (at least 32 bytes)")
-        if not self.TELEGRAM_CLIENT_ID:
-            missing.append("TELEGRAM_CLIENT_ID")
-        if not self.TELEGRAM_CLIENT_SECRET:
-            missing.append("TELEGRAM_CLIENT_SECRET")
-        if not self.API_PUBLIC_BASE_URL.startswith("https://"):
-            missing.append("API_PUBLIC_BASE_URL (HTTPS)")
-        if not self.telegram_redirect_uri.startswith("https://"):
-            missing.append("TELEGRAM_REDIRECT_URI (HTTPS)")
-        if missing:
-            raise ValueError(
-                "API production configuration is invalid: " + ", ".join(missing)
-            )
-
-    @property
-    def api_allowed_origin_set(self) -> frozenset[str]:
-        return frozenset(
-            value.strip().rstrip("/")
-            for value in self.API_ALLOWED_ORIGINS.split(",")
-            if value.strip()
-        )
-
-    @property
-    def telegram_redirect_uri(self) -> str:
-        if self.TELEGRAM_REDIRECT_URI:
-            return self.TELEGRAM_REDIRECT_URI
-        return f"{self.API_PUBLIC_BASE_URL.rstrip('/')}/api/v1/auth/telegram/callback"
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: object) -> object:
+        """Make common PostgreSQL URLs use the required async driver."""
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            return "postgresql+asyncpg://" + value.removeprefix("postgres://")
+        if value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value.removeprefix("postgresql://")
+        return value
 
     @property
     def admin_id_set(self) -> frozenset[int]:
@@ -108,6 +71,9 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        # Removed API variables may still exist in an older production .env.
+        # Ignoring unknown keys keeps that upgrade non-breaking.
+        extra="ignore",
     )
 
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import (
 from app.core.config import settings
 
 engine_options: dict[str, Any] = {"echo": settings.ENVIRONMENT == "development"}
-if settings.DATABASE_URL.startswith(("postgresql+asyncpg://", "postgres://")):
+if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
     engine_options.update(
         pool_size=settings.DB_POOL_SIZE,
         max_overflow=settings.DB_MAX_OVERFLOW,

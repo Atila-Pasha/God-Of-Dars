@@ -12,8 +12,12 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        op.execute("ALTER TYPE attack_status ADD VALUE IF NOT EXISTS 'PROCESSING'")
-        op.execute("ALTER TYPE attack_status ADD VALUE IF NOT EXISTS 'FAILED'")
+        # PostgreSQL cannot use a newly added enum value until the transaction
+        # that added it commits. A later migration creates partial indexes with
+        # these values, so fresh installations need an explicit commit boundary.
+        with op.get_context().autocommit_block():
+            op.execute("ALTER TYPE attack_status ADD VALUE IF NOT EXISTS 'PROCESSING'")
+            op.execute("ALTER TYPE attack_status ADD VALUE IF NOT EXISTS 'FAILED'")
 
     op.add_column(
         "attacks",

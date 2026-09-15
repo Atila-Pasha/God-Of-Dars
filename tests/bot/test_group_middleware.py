@@ -43,12 +43,44 @@ def test_group_policy_runs_before_subscription_middleware() -> None:
 
 @pytest.mark.asyncio
 async def test_group_members_are_auto_registered_once_and_bots_are_skipped() -> None:
-    user_service = SimpleNamespace(get_or_create_from_telegram=AsyncMock())
+    user_service = SimpleNamespace(
+        get_or_create_from_telegram=AsyncMock(
+            return_value=SimpleNamespace(_was_created=False)
+        )
+    )
     middleware = GroupAccessMiddleware(user_service=user_service)
     member = SimpleNamespace(id=42, is_bot=False)
     bot = SimpleNamespace(id=7, is_bot=True)
     session = SimpleNamespace()
 
     await middleware._register_users(session, member, member, bot, None)
+    await middleware._register_users(session, member)
 
     user_service.get_or_create_from_telegram.assert_awaited_once_with(session, member)
+
+
+@pytest.mark.asyncio
+async def test_new_group_member_is_cached_only_after_creation_is_durable() -> None:
+    created = SimpleNamespace(_was_created=True)
+    existing = SimpleNamespace(_was_created=False)
+    user_service = SimpleNamespace(
+        get_or_create_from_telegram=AsyncMock(side_effect=[created, existing])
+    )
+    middleware = GroupAccessMiddleware(user_service=user_service)
+    member = SimpleNamespace(id=42, is_bot=False)
+    session = SimpleNamespace()
+
+    await middleware._register_users(session, member)
+    await middleware._register_users(session, member)
+    await middleware._register_users(session, member)
+
+    assert user_service.get_or_create_from_telegram.await_count == 2
+
+
+def test_group_caches_are_bounded() -> None:
+    cache: dict[int, float] = {}
+
+    for key in range(5):
+        GroupAccessMiddleware._remember(cache, key, expires_at=100, max_entries=3)
+
+    assert list(cache) == [2, 3, 4]

@@ -55,6 +55,7 @@ class GroupAccessMiddleware(BaseMiddleware):
         self.group_service = group_service or GroupService()
         self.user_service = user_service or UserService()
         self._registered_groups: dict[int, float] = {}
+        self._registered_users: dict[int, float] = {}
 
     async def __call__(
         self,
@@ -63,7 +64,6 @@ class GroupAccessMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         if isinstance(event, Message) and self._is_group_message(event):
-            await self._register_group(event, data.get("session"))
             replied_user = (
                 event.reply_to_message.from_user
                 if event.reply_to_message is not None
@@ -76,6 +76,7 @@ class GroupAccessMiddleware(BaseMiddleware):
                 event.left_chat_member,
                 *(event.new_chat_members or ()),
             )
+            await self._register_group(event, data.get("session"))
             if not self._message_is_allowed(event):
                 # Keep groups quiet for private-menu input and unsupported
                 # commands; a warning for each input only creates spam.
@@ -101,12 +102,12 @@ class GroupAccessMiddleware(BaseMiddleware):
             isinstance(event, ChatMemberUpdated) and event.chat.type in GROUP_CHAT_TYPES
         ):
             session = data.get("session")
-            await self._register_chat(event.chat, session)
             await self._register_users(
                 session,
                 event.from_user,
                 event.new_chat_member.user,
             )
+            await self._register_chat(event.chat, session)
         return await handler(event, data)
 
     async def _register_group(
@@ -118,17 +119,25 @@ class GroupAccessMiddleware(BaseMiddleware):
         if session is None:
             return
         now = monotonic()
-        if self._registered_groups.get(chat.id, 0) > now:
+        if self._is_cached(self._registered_groups, chat.id, now):
             return
         title = chat.title or chat.username or "گروه بدون نام"
         try:
-            await self.group_service.register_chat(
-                session,
-                telegram_chat_id=chat.id,
-                title=title,
-                username=chat.username,
+            # A registration failure is non-critical, but it must not poison
+            # the transaction used by the actual update handler.
+            async with session.begin_nested():
+                await self.group_service.register_chat(
+                    session,
+                    telegram_chat_id=chat.id,
+                    title=title,
+                    username=chat.username,
+                )
+            self._remember(
+                self._registered_groups,
+                chat.id,
+                now + settings.GROUP_REGISTER_CACHE_TTL,
+                settings.GROUP_REGISTER_CACHE_MAX_ENTRIES,
             )
-            self._registered_groups[chat.id] = now + settings.GROUP_REGISTER_CACHE_TTL
         except SQLAlchemyError:
             logger.exception("Could not register Telegram group %s", chat.id)
 
@@ -139,6 +148,7 @@ class GroupAccessMiddleware(BaseMiddleware):
     ) -> None:
         if session is None:
             return
+        now = monotonic()
         seen: set[int] = set()
         for telegram_user in telegram_users:
             if (
@@ -148,10 +158,21 @@ class GroupAccessMiddleware(BaseMiddleware):
             ):
                 continue
             seen.add(telegram_user.id)
+            if self._is_cached(self._registered_users, telegram_user.id, now):
+                continue
             try:
-                await self.user_service.get_or_create_from_telegram(
+                user = await self.user_service.get_or_create_from_telegram(
                     session, telegram_user
                 )
+                # A newly created row is not durable until the outer middleware
+                # commits. Cache it only after a later update observes it.
+                if not getattr(user, "_was_created", False):
+                    self._remember(
+                        self._registered_users,
+                        telegram_user.id,
+                        now + settings.GROUP_USER_CACHE_TTL,
+                        settings.GROUP_USER_CACHE_MAX_ENTRIES,
+                    )
             except UserInactiveError:
                 # Observing a banned member must never reactivate the account.
                 continue
@@ -160,6 +181,27 @@ class GroupAccessMiddleware(BaseMiddleware):
                     "Could not auto-register Telegram group member %s",
                     telegram_user.id,
                 )
+
+    @staticmethod
+    def _is_cached(cache: dict[int, float], key: int, now: float) -> bool:
+        expires_at = cache.get(key, 0)
+        if expires_at > now:
+            return True
+        cache.pop(key, None)
+        return False
+
+    @staticmethod
+    def _remember(
+        cache: dict[int, float],
+        key: int,
+        expires_at: float,
+        max_entries: int,
+    ) -> None:
+        # Dicts preserve insertion order, giving us a low-cost bounded cache.
+        cache.pop(key, None)
+        while len(cache) >= max_entries:
+            cache.pop(next(iter(cache)))
+        cache[key] = expires_at
 
     @staticmethod
     def _is_group_message(message: Message) -> bool:

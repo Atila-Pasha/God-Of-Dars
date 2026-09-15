@@ -75,12 +75,12 @@ async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> None:
                 row.last_error = None
 
 
-async def run_notification_worker(bot: Bot) -> None:
+async def run_notification_worker(bot: Bot, *, worker_id: int = 0) -> None:
     while True:
         try:
             await process_due_notifications(bot, batch_size=settings.WORKER_BATCH_SIZE)
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("Notification worker failed; retrying")
+            logger.exception("Notification worker %s failed; retrying", worker_id)
         await asyncio.sleep(settings.WORKER_POLL_INTERVAL)

@@ -5,13 +5,21 @@ from contextlib import suppress
 
 from aiogram import Bot
 from aiogram.client.session.aiohttp import AiohttpSession
+from sqlalchemy import text
 
 from app.bot import create_dispatcher
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.db.session import engine
 from app.workers.runtime import run_workers
 
 logger = logging.getLogger(__name__)
+
+
+async def verify_database() -> None:
+    """Fail fast before polling when PostgreSQL is unreachable."""
+    async with engine.connect() as connection:
+        await connection.execute(text("SELECT 1"))
 
 
 async def run_main_bot(stop_event: asyncio.Event) -> None:
@@ -26,7 +34,7 @@ async def run_main_bot(stop_event: asyncio.Event) -> None:
     async with Bot(token=settings.BOT_TOKEN, session=bot_session) as bot:
         worker_task = asyncio.create_task(
             run_workers(bot),
-            name="attack-workers",
+            name="background-workers",
         )
         polling_task = asyncio.create_task(
             dispatcher.start_polling(
@@ -64,6 +72,8 @@ async def run_main_bot(stop_event: asyncio.Event) -> None:
 
 
 async def main() -> None:
+    await verify_database()
+    logger.info("Database connection verified")
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
@@ -97,6 +107,7 @@ async def main() -> None:
         for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
             with suppress(NotImplementedError):
                 loop.remove_signal_handler(shutdown_signal)
+        await engine.dispose()
 
 
 if __name__ == "__main__":
