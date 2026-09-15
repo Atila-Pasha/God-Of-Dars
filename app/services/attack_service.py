@@ -26,7 +26,6 @@ from app.services.school_errors import (
     CannotAttackSelf,
     InvalidTeacherState,
     RandomOpponentNotFound,
-    ShieldAlreadyActive,
     TeacherInHospital,
     TeacherLimitReached,
     TeacherNotOwned,
@@ -193,6 +192,8 @@ class AttackService:
             raise AttackerNotRegistered
         if target is None or not target.is_active:
             raise AttackTargetNotRegistered
+        if attacker.id == target.id:
+            raise CannotAttackSelf
         attacker, target = await lock_users_ordered(
             session, (attacker, target), repository=self.users
         )
@@ -245,10 +246,6 @@ class AttackService:
                 session, level=level, exclude_user_id=attacker.id
             )
             for target in candidates:
-                if await self.castle_service.shield_service.has_active_shield(
-                    session, target.id
-                ):
-                    continue
                 return await self._preview(session, attacker, target, teacher_name)
         raise RandomOpponentNotFound
 
@@ -274,10 +271,6 @@ class AttackService:
         )
         await lock_attack_dependencies(session, (attacker, target))
         await self._ensure_no_active_attack(session, attacker.id)
-        if await self.castle_service.shield_service.has_active_shield(
-            session, target.id
-        ):
-            raise ShieldAlreadyActive
         selected_ids = teacher_ids or [teacher_id]
         if len(dict.fromkeys(selected_ids)) > self.config.max_attack_teachers:
             raise TeacherLimitReached
@@ -308,14 +301,11 @@ class AttackService:
             raise AttackerNotRegistered
         if target is None or not target.is_active:
             raise AttackTargetNotRegistered
+        if attacker.id == target.id:
+            raise CannotAttackSelf
         attacker, target = await lock_users_ordered(
             session, (attacker, target), repository=self.users
         )
-        if await self.castle_service.shield_service.has_active_shield(
-            session, target.id
-        ):
-            raise ShieldAlreadyActive
-
         await lock_attack_dependencies(session, (attacker, target))
         await self._ensure_no_active_attack(session, attacker.id)
 
@@ -419,16 +409,6 @@ class AttackService:
             attack.is_successful = False
             return None
         _, castles = await lock_attack_dependencies(session, (attacker, target))
-        if await self.castle_service.shield_service.has_active_shield(
-            session, target.id
-        ):
-            attack.status = AttackStatus.RESOLVED
-            attack.resolved_at = datetime.now(UTC)
-            attack.result_damage = 0
-            attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
-            attack.is_successful = False
-            return None
-
         target_castle = castles.get(target.id)
         if target_castle is None:
             raise AttackTargetNotRegistered
@@ -536,10 +516,6 @@ class AttackService:
     ) -> AttackPreview:
         if attacker.id == target.id:
             raise CannotAttackSelf
-        if await self.castle_service.shield_service.has_active_shield(
-            session, target.id
-        ):
-            raise ShieldAlreadyActive
         names = await self._normalize_teacher_names(session, attacker.id, teacher_name)
         names = [name.strip() for name in names if name.strip()]
         if not names:
@@ -568,8 +544,15 @@ class AttackService:
             )
             for teacher in teachers
         ]
-        raw_damages = [item[0] for item in resolved]
-        damage = min(castle.strength, sum(raw_damages))
+        mitigated_damages = [
+            (
+                await self.castle_service.shield_service.mitigate_attack(
+                    session, target.id, raw_damage
+                )
+            ).remaining_damage
+            for raw_damage, _injury in resolved
+        ]
+        damage = min(castle.strength, sum(mitigated_damages))
         injury = sum(item[1] for item in resolved)
         loot = self._loot(
             target,

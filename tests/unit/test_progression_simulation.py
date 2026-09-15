@@ -39,6 +39,7 @@ def test_level_upgrade_uses_the_authoritative_xp_curve_and_keeps_overflow() -> N
             game_config.level_progression.required_xp(level)
         )
     assert game_config.level_progression.reset_xp_on_level_up is False
+    assert game_config.level_progression.required_xp(499) <= 250_000
 
 
 def test_first_diamond_mine_level_is_reachable_before_passive_income() -> None:

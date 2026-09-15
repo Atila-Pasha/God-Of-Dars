@@ -146,8 +146,8 @@ async def group_purchase_message(
                 f"🛒 خرید سپر «{shield.name}»\n\n"
                 f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
                 f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
-                "با خرید، سپر بلافاصله فعال می‌شود و در این مدت هیچ حمله‌ای "
-                "به شما اثر نمی‌کند.\n\n"
+                f"کاهش آسیب: {shield.reduction_percent}٪ + "
+                f"{shield.flat_absorption} جذب ثابت\n\n"
                 "آیا خرید را تأیید می‌کنید؟",
                 reply_markup=shield_purchase_confirmation(shield),
                 reply_to_message_id=message.message_id,
@@ -342,7 +342,8 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
         for shield in catalog:
             lines.append(
                 f"\n🛡 {shield.name} — {shield.purchase_price} {_shield_currency(shield)}"
-                f"\nمحافظت کامل: {shield.duration_minutes} دقیقه"
+                f"\nمدت: {shield.duration_minutes} دقیقه — کاهش "
+                f"{shield.reduction_percent}٪ + {shield.flat_absorption} جذب"
                 + (f"\n{shield.description}" if shield.description else "")
             )
     reply_markup = (
@@ -446,8 +447,8 @@ async def shield_callback(
                 f"🛒 خرید سپر «{shield.name}»\n\n"
                 f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
                 f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
-                "با خرید، سپر بلافاصله فعال می‌شود و در این مدت هیچ حمله‌ای "
-                "به شما اثر نمی‌کند.\n\n"
+                f"کاهش آسیب: {shield.reduction_percent}٪ + "
+                f"{shield.flat_absorption} جذب ثابت\n\n"
                 "آیا خرید را تأیید می‌کنید؟",
                 reply_markup=shield_purchase_confirmation(shield),
             )

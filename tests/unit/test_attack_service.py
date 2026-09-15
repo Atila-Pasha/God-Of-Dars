@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -65,6 +66,24 @@ async def test_tampered_self_attack_is_rejected_before_wallet_mutation():
     with pytest.raises(CannotAttackSelf):
         await AttackService()._attack_with_teachers(
             SimpleNamespace(), player, player, []
+        )
+
+
+@pytest.mark.asyncio
+async def test_tampered_confirmation_cannot_schedule_self_attack():
+    player = SimpleNamespace(id=7, is_active=True)
+    service = AttackService()
+    service.users = SimpleNamespace(
+        get_by_telegram_user_id=AsyncMock(return_value=player),
+        get_active_by_id=AsyncMock(return_value=player),
+    )
+
+    with pytest.raises(CannotAttackSelf):
+        await service.start_attack_by_ids(
+            SimpleNamespace(),
+            attacker_telegram_id=100,
+            target_id=7,
+            teacher_ids=[3],
         )
 
 

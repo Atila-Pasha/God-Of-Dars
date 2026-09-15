@@ -183,10 +183,23 @@ class ShieldService:
         self, session: AsyncSession, user_id: int, incoming_damage: int
     ) -> ShieldMitigation:
         """Apply the active timed shield without consuming its remaining duration."""
+        return await self.mitigate_attack(
+            session, user_id, incoming_damage, for_update=True
+        )
+
+    async def mitigate_attack(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        incoming_damage: int,
+        *,
+        for_update: bool = False,
+    ) -> ShieldMitigation:
+        """Calculate mitigation from the user's active shield."""
         if incoming_damage < 0:
             raise GameConfigurationError("Incoming damage cannot be negative")
         now = datetime.now(UTC)
-        result = await session.execute(
+        statement = (
             select(UserShield)
             .where(
                 UserShield.user_id == user_id,
@@ -196,8 +209,10 @@ class ShieldService:
             .options(selectinload(UserShield.shield))
             .order_by(UserShield.is_equipped.desc(), UserShield.id)
             .limit(1)
-            .with_for_update()
         )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await session.execute(statement)
         active = result.scalar_one_or_none()
         if active is None:
             return ShieldMitigation(incoming_damage, 0, incoming_damage)

@@ -4,9 +4,9 @@
 reset_xp_on_level_up = false
 max_level = 500
 xp_base = 100
-xp_growth = 1.03
-upgrade_cost_base = 10
-upgrade_cost_growth = 1.03
+# After the explicit early-game table, keep long-term progression difficult
+# without turning level 500 into a multi-billion-XP wall.
+xp_growth = 1.004
 [progression.xp_to_next_level]
 level_1 = 100
 level_2 = 200
@@ -37,15 +37,3 @@ level_26 = 25300
 level_27 = 28300
 level_28 = 31300
 level_29 = 34300
-
-[progression.level_upgrade_cost]
-level_1 = 10
-level_2 = 20
-level_3 = 35
-level_4 = 55
-level_5 = 80
-level_6 = 110
-level_7 = 145
-level_8 = 185
-level_9 = 230
-level_10 = 280
