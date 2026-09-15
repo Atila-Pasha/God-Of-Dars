@@ -1,6 +1,10 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
+from app.bot.callbacks import (
+    LeaderboardCallback,
+    LevelConfirmationCallback,
+    ProfileCallback,
+)
 
 
 def profile_keyboard(
@@ -46,7 +50,11 @@ def profile_keyboard(
                         callback_data=ProfileCallback(
                             action="upgrade", owner_id=owner_id
                         ).pack(),
-                    )
+                    ),
+                    InlineKeyboardButton(
+                        text="🏆 برترین‌ها",
+                        callback_data=LeaderboardCallback(action="menu").pack(),
+                    ),
                 ],
             ]
         )

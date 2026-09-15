@@ -19,6 +19,14 @@ def test_group_policy_allows_only_stat_and_attack_commands() -> None:
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="پروفایل")
     )
+    assert not GroupAccessMiddleware._message_is_allowed(
+        SimpleNamespace(text="/leaderbord")
+    )
+
+
+def test_group_policy_allows_leaderboard_phrases() -> None:
+    for text in ("برترین فرمانده", "برترین دانش آموز", "برترین مبارز"):
+        assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
 
 
 def test_group_policy_allows_plain_text_for_question_answers() -> None:

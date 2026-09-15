@@ -109,6 +109,10 @@ class ProfileCallback(CallbackData, prefix="profile"):
     owner_id: int = 0
 
 
+class LeaderboardCallback(CallbackData, prefix="leaderboard"):
+    action: Literal["menu", "commander", "student", "fighter", "back"]
+
+
 class LevelConfirmationCallback(CallbackData, prefix="level"):
     decision: Literal["confirm", "cancel"]
 
