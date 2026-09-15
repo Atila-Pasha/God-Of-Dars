@@ -30,6 +30,13 @@ class Transaction(Base):
         Index("ix_transactions_created_at", "created_at"),
         Index("ix_transactions_user_created_at", "user_id", "created_at"),
         Index(
+            "ix_transactions_leaderboard_xp",
+            "created_at",
+            "user_id",
+            postgresql_where=text("resource_type = 'BANANA' AND amount > 0"),
+            sqlite_where=text("resource_type = 'BANANA' AND amount > 0"),
+        ),
+        Index(
             "uq_attack_transaction_per_resource",
             "user_id",
             "resource_type",

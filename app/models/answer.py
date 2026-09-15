@@ -30,6 +30,7 @@ class Answer(Base):
         Index("ix_answers_question_id", "question_id"),
         Index("ix_answers_group_id", "group_id"),
         Index("ix_answers_user_id", "user_id"),
+        Index("ix_answers_answered_user", "answered_at", "user_id"),
         Index("ix_answers_group_question_id", "group_question_id"),
         Index(
             "uq_daily_answer_per_user",

@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     CHANNELS_CACHE_TTL: float = Field(default=30, ge=0)
     GROUP_REGISTER_CACHE_TTL: float = Field(default=300, ge=0)
     DAILY_QUEST_TIMEZONE: str = "UTC"
+    LEADERBOARD_TIMEZONE: str = "Asia/Tehran"
     API_PUBLIC_BASE_URL: str = "http://127.0.0.1:8000"
     API_ALLOWED_ORIGINS: str = ""
     API_ACCESS_TOKEN_MINUTES: int = Field(default=15, ge=1, le=60)

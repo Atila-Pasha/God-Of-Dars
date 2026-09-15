@@ -111,6 +111,7 @@ class ProfileCallback(CallbackData, prefix="profile"):
 
 class LeaderboardCallback(CallbackData, prefix="leaderboard"):
     action: Literal["menu", "commander", "student", "fighter", "back"]
+    period: Literal["daily", "weekly", "monthly"] = "weekly"
 
 
 class LevelConfirmationCallback(CallbackData, prefix="level"):

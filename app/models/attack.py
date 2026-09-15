@@ -38,6 +38,13 @@ class Attack(Base):
         Index("ix_attacks_resolve_at", "resolve_at"),
         Index("ix_attacks_status_resolve_at", "status", "resolve_at"),
         Index(
+            "ix_attacks_leaderboard_resolved",
+            "resolved_at",
+            "attacker_id",
+            postgresql_where=text("status = 'RESOLVED' AND is_successful = true"),
+            sqlite_where=text("status = 'RESOLVED' AND is_successful = 1"),
+        ),
+        Index(
             "ix_attacks_failed_next_retry",
             "next_retry_at",
             "id",
