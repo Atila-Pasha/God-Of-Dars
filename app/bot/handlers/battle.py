@@ -1,4 +1,5 @@
 from contextlib import suppress
+from datetime import UTC, datetime
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -7,20 +8,29 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    MessageEntity,
     ReplyParameters,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import AttackConfirmationCallback
+from app.bot.callbacks import AttackConfirmationCallback, RandomAttackCallback
+from app.bot.custom_emojis import custom_emoji_entity
 from app.bot.utils.attack import teacher_phrase
 from app.bot.utils.telegram import schedule_message_deletion
-from app.services.attack_service import AttackPreview, AttackResult, AttackService
+from app.services.attack_service import (
+    AttackPreview,
+    AttackResult,
+    AttackService,
+    RandomAttackPreview,
+)
 from app.services.school_errors import (
     AttackerNotRegistered,
     AttackInProgress,
     AttackTargetNotRegistered,
     CannotAttackSelf,
+    InsufficientCoins,
     InvalidTeacherState,
+    RandomAttackSelectionExpired,
     RandomOpponentNotFound,
     SchoolError,
     SchoolUserNotFound,
@@ -50,9 +60,25 @@ def _attack_text(result: AttackResult) -> str:
     )
 
 
-def _preview_text(preview: AttackPreview) -> str:
-    return (
-        f"⚔️ پیش‌نمایش حمله با {teacher_phrase(preview.teacher_name)}\n\n"
+def _teacher_icons(preview: AttackPreview) -> tuple[str, list[MessageEntity]]:
+    """Render every selected teacher icon, including admin-configured premium emoji."""
+    icons: list[str] = []
+    entities: list[MessageEntity] = []
+    for teacher_emoji in preview.teacher_emojis or (None,):
+        if icons:
+            icons.append(" ")
+        offset = len("".join(icons).encode("utf-16-le")) // 2
+        icon, entity = custom_emoji_entity(teacher_emoji, fallback="👨‍🏫")
+        icons.append(icon)
+        if entity is not None:
+            entities.append(entity.model_copy(update={"offset": offset}))
+    return "".join(icons), entities
+
+
+def _preview_content(preview: AttackPreview) -> tuple[str, list[MessageEntity]]:
+    teacher_icons, entities = _teacher_icons(preview)
+    text = (
+        f"{teacher_icons} پیش‌نمایش حمله با {teacher_phrase(preview.teacher_name)}\n\n"
         f"🎯 هدف: {preview.target_name}\n"
         f"⚔️ قدرت حمله دبیر: {preview.teacher_damage}\n"
         f"✨ توانایی دبیر: {preview.ability_text or 'بدون توانایی ثبت‌شده'}\n"
@@ -65,6 +91,11 @@ def _preview_text(preview: AttackPreview) -> str:
         f"🍌 موز: {preview.loot_banana}\n\n"
         "آیا حمله را تأیید می‌کنی؟"
     )
+    return text, entities
+
+
+def _preview_text(preview: AttackPreview) -> str:
+    return _preview_content(preview)[0]
 
 
 def _attack_help_text(*, group: bool = False) -> str:
@@ -120,6 +151,68 @@ def _attack_confirmation_keyboard(
     )
 
 
+def _random_attack_preview_content(
+    selection: RandomAttackPreview,
+) -> tuple[str, list[MessageEntity]]:
+    remaining_seconds = max(
+        0, int((selection.expires_at - datetime.now(UTC)).total_seconds())
+    )
+    remaining_minutes = max(1, (remaining_seconds + 59) // 60)
+    text, entities = _preview_content(selection.preview)
+    return (
+        text.removesuffix("آیا حمله را تأیید می‌کنی؟")
+        + "🎲 این حریف برای شما انتخاب شده است.\n"
+        + f"🔒 انتخاب تا حدود {remaining_minutes} دقیقه ثابت می‌ماند.\n"
+        + f"♻️ دیدن حریف دیگر: {selection.reroll_coin_cost} سکه\n\n"
+        + "حمله را تأیید می‌کنی یا حریف دیگری می‌خواهی؟",
+        entities,
+    )
+
+
+def _random_attack_preview_text(selection: RandomAttackPreview) -> str:
+    return _random_attack_preview_content(selection)[0]
+
+
+def _random_attack_confirmation_keyboard(
+    selection: RandomAttackPreview, *, source_message_id: int
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ تأیید حمله",
+                    callback_data=RandomAttackCallback(
+                        action="confirm",
+                        attacker_id=selection.preview.attacker_id,
+                        version=selection.version,
+                        source_message_id=source_message_id,
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="❌ لغو",
+                    callback_data=RandomAttackCallback(
+                        action="cancel",
+                        attacker_id=selection.preview.attacker_id,
+                        version=selection.version,
+                        source_message_id=source_message_id,
+                    ).pack(),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"♻️ حریف دیگر ({selection.reroll_coin_cost} 🪙)",
+                    callback_data=RandomAttackCallback(
+                        action="reroll",
+                        attacker_id=selection.preview.attacker_id,
+                        version=selection.version,
+                        source_message_id=source_message_id,
+                    ).pack(),
+                )
+            ],
+        ]
+    )
+
+
 async def _send_result(message: Message, result: AttackResult) -> None:
     await message.answer(_attack_text(result))
     bot = message.bot
@@ -160,6 +253,12 @@ async def _report_error(message: Message, error: Exception) -> None:
         await message.answer("نمی‌توانید به خودتان حمله کنید.")
     elif isinstance(error, RandomOpponentNotFound):
         await message.answer("حریفی برای حمله پیدا نکردم.")
+    elif isinstance(error, RandomAttackSelectionExpired):
+        await message.answer(
+            "این انتخاب دیگر معتبر نیست؛ دوباره «حمله رندوم {اسم دبیر}» را بفرستید."
+        )
+    elif isinstance(error, InsufficientCoins):
+        await message.answer("برای دیدن حریف دیگر، سکه کافی ندارید.")
     else:
         await message.answer("اجرای حمله ممکن نبود؛ لطفاً مشخصات حمله را بررسی کنید.")
 
@@ -192,6 +291,7 @@ async def attack_message(message: Message, session: AsyncSession) -> None:
         )
         return
     try:
+        random_selection: RandomAttackPreview | None = None
         if arguments.casefold().startswith("رندوم"):
             random_teacher = arguments[len("رندوم") :].strip()
             if not random_teacher:
@@ -199,11 +299,12 @@ async def attack_message(message: Message, session: AsyncSession) -> None:
                     "برای حمله رندوم نام دبیر را هم بنویسید؛ مثال: حمله رندوم افلاطون"
                 )
                 return
-            preview = await attack_service.preview_random(
+            random_selection = await attack_service.prepare_random_preview(
                 session,
                 attacker_telegram_id=message.from_user.id,
                 teacher_name=random_teacher,
             )
+            preview = random_selection.preview
         elif message.chat.type in {"group", "supergroup"}:
             replied = message.reply_to_message
             if replied is not None and replied.from_user is not None:
@@ -241,21 +342,107 @@ async def attack_message(message: Message, session: AsyncSession) -> None:
     except SchoolError as error:
         await _report_error(message, error)
         return
+    if random_selection is not None:
+        text, entities = _random_attack_preview_content(random_selection)
+        keyboard = _random_attack_confirmation_keyboard(
+            random_selection, source_message_id=message.message_id
+        )
+    else:
+        text, entities = _preview_content(preview)
+        keyboard = _attack_confirmation_keyboard(
+            preview, source_message_id=message.message_id
+        )
     if message.chat.type in {"group", "supergroup"}:
         await message.answer(
-            _preview_text(preview),
-            reply_markup=_attack_confirmation_keyboard(
-                preview, source_message_id=message.message_id
-            ),
+            text,
+            reply_markup=keyboard,
             reply_to_message_id=message.message_id,
+            entities=entities,
         )
     else:
         await message.answer(
-            _preview_text(preview),
-            reply_markup=_attack_confirmation_keyboard(
-                preview, source_message_id=message.message_id
-            ),
+            text,
+            reply_markup=keyboard,
+            entities=entities,
         )
+
+
+@router.callback_query(RandomAttackCallback.filter())
+async def random_attack_confirmation(
+    callback, callback_data: RandomAttackCallback, session: AsyncSession
+) -> None:
+    if callback.from_user is None or callback.message is None:
+        await callback.answer()
+        return
+    if callback.from_user.id != callback_data.attacker_id:
+        await callback.answer(
+            "فقط شروع‌کننده حمله می‌تواند این انتخاب را تغییر دهد.",
+            show_alert=True,
+        )
+        return
+    if callback_data.action == "cancel":
+        with suppress(TelegramAPIError):
+            await callback.message.delete()
+        await callback.answer("پیش‌نمایش بسته شد؛ حریف تا پایان مهلت ثابت می‌ماند.")
+        return
+    if callback_data.action == "reroll":
+        await callback.answer()
+        try:
+            selection = await attack_service.reroll_random_preview(
+                session,
+                attacker_telegram_id=callback.from_user.id,
+                version=callback_data.version,
+            )
+            # Commit the paid reroll before editing Telegram, so a transient
+            # Bot API failure can never make the same stale button charge twice.
+            await session.commit()
+            text, entities = _random_attack_preview_content(selection)
+            await callback.message.edit_text(
+                text,
+                reply_markup=_random_attack_confirmation_keyboard(
+                    selection,
+                    source_message_id=callback_data.source_message_id,
+                ),
+                entities=entities,
+            )
+        except SchoolError as error:
+            await _report_error(callback.message, error)
+        return
+
+    # Acknowledge before the database transaction so Telegram does not expire
+    # the button query while the attack is being scheduled.
+    await callback.answer()
+    try:
+        launch = await attack_service.launch_random_attack(
+            session,
+            attacker_telegram_id=callback.from_user.id,
+            version=callback_data.version,
+        )
+        await session.commit()
+        with suppress(TelegramAPIError):
+            await callback.message.delete()
+        reply_parameters = (
+            ReplyParameters(message_id=callback_data.source_message_id)
+            if callback_data.source_message_id
+            else None
+        )
+        for sticker in launch.teacher_stickers:
+            try:
+                await callback.message.answer_sticker(
+                    sticker, reply_parameters=reply_parameters
+                )
+            except TelegramAPIError:
+                continue
+        launch_message = await callback.message.answer(
+            f"⚔️ حمله به «{launch.target_name}» آغاز شد!\n"
+            f"👨‍🏫 {teacher_phrase(launch.teacher_name)}\n"
+            "⏱ زمان حمله: ۲ دقیقه\n"
+            "پس از پایان زمان، نتیجه حمله برای شما ارسال می‌شود.",
+            reply_parameters=reply_parameters,
+        )
+        schedule_message_deletion(launch_message, delay_seconds=10)
+    except SchoolError as error:
+        await _report_error(callback.message, error)
 
 
 @router.callback_query(AttackConfirmationCallback.filter())

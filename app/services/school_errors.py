@@ -22,6 +22,12 @@ class RandomOpponentNotFound(SchoolError):
     pass
 
 
+class RandomAttackSelectionExpired(SchoolError):
+    """The durable random-opponent preview is no longer usable."""
+
+    pass
+
+
 class ResourceNotFound(SchoolError):
     pass
 

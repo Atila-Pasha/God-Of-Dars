@@ -76,6 +76,15 @@ class AttackConfirmationCallback(CallbackData, prefix="attack"):
     source_message_id: int = 0
 
 
+class RandomAttackCallback(CallbackData, prefix="random_attack"):
+    action: Literal["confirm", "cancel", "reroll"]
+    # The version makes stale Telegram buttons harmless: only the currently
+    # persisted opponent can be rerolled or launched.
+    attacker_id: int
+    version: int
+    source_message_id: int = 0
+
+
 class LibraryCallback(CallbackData, prefix="library"):
     action: Literal["daily", "group", "study", "teachers", "back", "cancel"]
 

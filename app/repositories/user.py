@@ -1,3 +1,5 @@
+from secrets import randbelow
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -73,26 +75,64 @@ class UserRepository:
         result = await session.execute(statement)
         return result.scalar_one_or_none()
 
-    async def list_active_at_level(
+    async def list_active_levels_by_proximity(
         self, session: AsyncSession, *, level: int, exclude_user_id: int
-    ) -> list[User]:
-        result = await session.execute(
-            select(User)
-            .where(
-                User.is_active.is_(True),
-                User.level == level,
-                User.id != exclude_user_id,
-            )
-            .options(selectinload(User.resources))
-            .order_by(func.random())
+    ) -> list[int]:
+        """Return populated levels nearest to a player without scanning users."""
+        result = await session.scalars(
+            select(User.level)
+            .where(User.is_active.is_(True), User.id != exclude_user_id)
+            .group_by(User.level)
+            .order_by(func.abs(User.level - level), User.level)
         )
-        return list(result.scalars().all())
+        return list(result)
 
-    async def max_active_level(self, session: AsyncSession) -> int:
-        result = await session.execute(
-            select(func.max(User.level)).where(User.is_active.is_(True))
+    async def pick_random_active_at_level(
+        self,
+        session: AsyncSession,
+        *,
+        level: int,
+        exclude_user_id: int,
+        exclude_target_id: int | None = None,
+    ) -> User | None:
+        """Pick an indexed, approximately uniform random user at one level.
+
+        ``ORDER BY random()`` becomes increasingly expensive as the user table
+        grows. Picking an id pivot keeps the query index-friendly; a possible
+        id gap only causes a harmless small distribution bias.
+        """
+        conditions = [
+            User.is_active.is_(True),
+            User.level == level,
+            User.id != exclude_user_id,
+        ]
+        if exclude_target_id is not None:
+            conditions.append(User.id != exclude_target_id)
+        lower_id, upper_id = (
+            await session.execute(
+                select(func.min(User.id), func.max(User.id)).where(*conditions)
+            )
+        ).one()
+        if lower_id is None or upper_id is None:
+            return None
+        pivot = lower_id + randbelow(upper_id - lower_id + 1)
+        statement = (
+            select(User)
+            .where(*conditions, User.id >= pivot)
+            .options(selectinload(User.resources))
+            .order_by(User.id)
+            .limit(1)
         )
-        return int(result.scalar_one() or 1)
+        target = await session.scalar(statement)
+        if target is not None:
+            return target
+        return await session.scalar(
+            select(User)
+            .where(*conditions, User.id < pivot)
+            .options(selectinload(User.resources))
+            .order_by(User.id.desc())
+            .limit(1)
+        )
 
     async def create(
         self,

@@ -126,3 +126,14 @@ def test_stronger_teacher_has_a_larger_but_still_bounded_loot_capacity():
 
     assert rules.loot_cap(10, ResourceType.COIN) == 100
     assert rules.loot_cap(25, ResourceType.COIN) == 250
+
+
+def test_random_attack_balance_is_non_exploitable_and_configured() -> None:
+    rules = AttackRules(random_reroll_coin_cost=25, random_selection_ttl_seconds=900)
+
+    assert rules.random_reroll_coin_cost == 25
+    assert rules.random_selection_ttl_seconds == 900
+    with pytest.raises(ValueError):
+        AttackRules(random_reroll_coin_cost=-1)
+    with pytest.raises(ValueError):
+        AttackRules(random_selection_ttl_seconds=0)

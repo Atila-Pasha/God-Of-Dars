@@ -238,6 +238,7 @@ class GroupAccessMiddleware(BaseMiddleware):
                 "help:",
                 "profile:",
                 "attack:",
+                "random_attack:",
                 "confirm:",
                 "shield_purchase:",
                 "chance_box:",

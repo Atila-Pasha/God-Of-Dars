@@ -67,6 +67,8 @@ class AttackRules:
     loot_diamond_per_power: float = 0.1
     minimum_coin_loot_cap: int = 10
     minimum_diamond_loot_cap: int = 1
+    random_reroll_coin_cost: int = 25
+    random_selection_ttl_seconds: int = 900
 
     def __post_init__(self) -> None:
         if self.defense_absorption_ratio < 0 or self.counter_damage_ratio < 0:
@@ -77,6 +79,10 @@ class AttackRules:
             raise ValueError("loot per power cannot be negative")
         if min(self.minimum_coin_loot_cap, self.minimum_diamond_loot_cap) < 0:
             raise ValueError("minimum loot caps cannot be negative")
+        if self.random_reroll_coin_cost < 0:
+            raise ValueError("random reroll coin cost cannot be negative")
+        if self.random_selection_ttl_seconds <= 0:
+            raise ValueError("random selection TTL must be positive")
 
     def resolve(
         self, attack_power: int, defense_power: int, defender_hp: int
@@ -871,6 +877,12 @@ class GameConfig:
                 minimum_coin_loot_cap=int(attack_data.get("minimum_coin_loot_cap", 10)),
                 minimum_diamond_loot_cap=int(
                     attack_data.get("minimum_diamond_loot_cap", 1)
+                ),
+                random_reroll_coin_cost=int(
+                    attack_data.get("random_reroll_coin_cost", 25)
+                ),
+                random_selection_ttl_seconds=int(
+                    attack_data.get("random_selection_ttl_seconds", 900)
                 ),
             ),
             instant_recovery_diamond_cost=(

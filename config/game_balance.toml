@@ -38,6 +38,11 @@ loot_coin_per_power = 10.0
 loot_diamond_per_power = 0.1
 minimum_coin_loot_cap = 10
 minimum_diamond_loot_cap = 1
+# The first opponent shown is free. Changing it costs roughly 12.5 minutes
+# of production from a level-1 mine, preventing free target fishing.
+random_reroll_coin_cost = 25
+# A cancelled random preview keeps its opponent for 15 minutes.
+random_selection_ttl_seconds = 900
 
 [hospital]
 instant_recovery_diamond_cost = 15

@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.core.enums import AttackStatus, ResourceType, TeacherStatus
 from app.core.game_logic import GameConfig, game_config
 from app.models.attack import Attack
+from app.models.random_attack_selection import RandomAttackSelection
 from app.models.transaction import Transaction
 from app.models.user_teacher import UserTeacher
 from app.repositories.castle import CastleRepository
@@ -19,12 +20,14 @@ from app.repositories.user import UserRepository
 from app.services.castle_service import CastleService
 from app.services.daily_quest_service import DailyQuestService
 from app.services.lock_order import lock_attack_dependencies, lock_users_ordered
+from app.services.resource_service import ResourceService
 from app.services.school_errors import (
     AttackerNotRegistered,
     AttackInProgress,
     AttackTargetNotRegistered,
     CannotAttackSelf,
     InvalidTeacherState,
+    RandomAttackSelectionExpired,
     RandomOpponentNotFound,
     TeacherInHospital,
     TeacherLimitReached,
@@ -67,6 +70,7 @@ class AttackPreview:
     loot_diamond: int
     loot_banana: int
     teacher_ids: str = ""
+    teacher_emojis: tuple[str | None, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,15 @@ class AttackLaunch:
     teacher_name: str
     teacher_stickers: tuple[str, ...]
     resolve_at: datetime
+
+
+@dataclass(frozen=True)
+class RandomAttackPreview:
+    preview: AttackPreview
+    version: int
+    expires_at: datetime
+    reroll_count: int
+    reroll_coin_cost: int
 
 
 class AttackService:
@@ -232,22 +245,153 @@ class AttackService:
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
 
-        max_level = await self.users.max_active_level(session)
-        levels = [attacker.level]
-        distance = 1
-        while distance <= max(max_level - attacker.level, attacker.level - 1):
-            levels.extend((attacker.level + distance, attacker.level - distance))
-            distance += 1
+        target = await self._pick_random_target(session, attacker)
+        return await self._preview(session, attacker, target, teacher_name)
 
-        for level in levels:
-            if level < 1:
-                continue
-            candidates = await self.users.list_active_at_level(
-                session, level=level, exclude_user_id=attacker.id
+    async def prepare_random_preview(
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        teacher_name: str | list[str],
+    ) -> RandomAttackPreview:
+        """Get a durable free random opponent, preserving a live choice."""
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        # Random-selection locks always precede the user row. Confirm and
+        # reroll follow this order too, avoiding a cross-path deadlock.
+        selection = await self._selection_for_update(session, attacker.id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id, for_update=True
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        if selection is None:
+            # Two first-time commands can both observe no row before one gets
+            # the user lock. Re-read after that lock to preserve one selection.
+            selection = await self._selection_for_update(session, attacker.id)
+        await self._ensure_no_active_attack(session, attacker.id)
+        now = datetime.now(UTC)
+        target = (
+            await self.users.get_active_by_id(session, selection.target_id)
+            if selection is not None and selection.expires_at > now
+            else None
+        )
+        if selection is not None and target is not None:
+            # A new command may change the attacking teacher, but never gets a
+            # free new opponent while this selection is still alive.
+            preview = await self._preview(session, attacker, target, teacher_name)
+            if selection.teacher_ids != preview.teacher_ids:
+                selection.teacher_ids = preview.teacher_ids
+                selection.version += 1
+                await session.flush()
+            return self._random_preview(selection, preview)
+
+        target = await self._pick_random_target(session, attacker)
+        preview = await self._preview(session, attacker, target, teacher_name)
+        expires_at = now + timedelta(
+            seconds=self.config.attack_rules.random_selection_ttl_seconds
+        )
+        if selection is None:
+            selection = RandomAttackSelection(
+                attacker_id=attacker.id,
+                target_id=target.id,
+                teacher_ids=preview.teacher_ids,
+                expires_at=expires_at,
             )
-            for target in candidates:
-                return await self._preview(session, attacker, target, teacher_name)
-        raise RandomOpponentNotFound
+            session.add(selection)
+        else:
+            selection.target_id = target.id
+            selection.teacher_ids = preview.teacher_ids
+            selection.version += 1
+            selection.reroll_count = 0
+            selection.expires_at = expires_at
+        await session.flush()
+        return self._random_preview(selection, preview)
+
+    async def reroll_random_preview(
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        version: int,
+    ) -> RandomAttackPreview:
+        """Spend coins atomically to replace one still-valid random opponent."""
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        selection = await self._selection_for_update(session, attacker.id)
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id, for_update=True
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        await self._ensure_no_active_attack(session, attacker.id)
+        now = datetime.now(UTC)
+        if (
+            selection is None
+            or selection.expires_at <= now
+            or selection.version != version
+        ):
+            raise RandomAttackSelectionExpired
+        target = await self._pick_random_target(
+            session, attacker, exclude_target_id=selection.target_id
+        )
+        preview = await self._preview_by_teacher_ids(
+            session, attacker, target, selection.teacher_ids
+        )
+        await ResourceService.debit_coin(
+            session,
+            attacker.resources,
+            user_id=attacker.id,
+            amount=self.config.attack_rules.random_reroll_coin_cost,
+            reason="RANDOM_ATTACK_REROLL",
+            reference_type="RANDOM_ATTACK_SELECTION",
+            reference_id=attacker.id,
+        )
+        selection.target_id = target.id
+        selection.version += 1
+        selection.reroll_count += 1
+        selection.expires_at = now + timedelta(
+            seconds=self.config.attack_rules.random_selection_ttl_seconds
+        )
+        await session.flush()
+        return self._random_preview(selection, preview)
+
+    async def launch_random_attack(
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        version: int,
+    ) -> AttackLaunch:
+        """Launch exactly the target and teachers retained in the selection."""
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        selection = await self._selection_for_update(session, attacker.id)
+        if (
+            selection is None
+            or selection.expires_at <= datetime.now(UTC)
+            or selection.version != version
+        ):
+            raise RandomAttackSelectionExpired
+        teacher_ids = self._parse_teacher_ids(selection.teacher_ids)
+        launch = await self.start_attack_by_ids(
+            session,
+            attacker_telegram_id=attacker_telegram_id,
+            target_id=selection.target_id,
+            teacher_ids=teacher_ids,
+        )
+        await session.delete(selection)
+        return launch
 
     async def attack_by_ids(
         self,
@@ -511,6 +655,56 @@ class AttackService:
             loot_banana=attack.loot_banana,
         )
 
+    async def _selection_for_update(
+        self, session: AsyncSession, attacker_id: int
+    ) -> RandomAttackSelection | None:
+        return await session.scalar(
+            select(RandomAttackSelection)
+            .where(RandomAttackSelection.attacker_id == attacker_id)
+            .with_for_update()
+        )
+
+    async def _pick_random_target(
+        self,
+        session: AsyncSession,
+        attacker,
+        *,
+        exclude_target_id: int | None = None,
+    ):
+        for level in await self.users.list_active_levels_by_proximity(
+            session, level=attacker.level, exclude_user_id=attacker.id
+        ):
+            target = await self.users.pick_random_active_at_level(
+                session,
+                level=level,
+                exclude_user_id=attacker.id,
+                exclude_target_id=exclude_target_id,
+            )
+            if target is not None:
+                return target
+        raise RandomOpponentNotFound
+
+    def _random_preview(
+        self, selection: RandomAttackSelection, preview: AttackPreview
+    ) -> RandomAttackPreview:
+        return RandomAttackPreview(
+            preview=preview,
+            version=selection.version,
+            expires_at=selection.expires_at,
+            reroll_count=selection.reroll_count,
+            reroll_coin_cost=self.config.attack_rules.random_reroll_coin_cost,
+        )
+
+    @staticmethod
+    def _parse_teacher_ids(value: str) -> list[int]:
+        try:
+            teacher_ids = [int(item) for item in value.split(",") if item.strip()]
+        except ValueError as exc:
+            raise TeacherNotOwned from exc
+        if not teacher_ids or len(teacher_ids) != len(set(teacher_ids)):
+            raise TeacherNotOwned
+        return teacher_ids
+
     async def _preview(
         self, session, attacker, target, teacher_name: str | list[str]
     ) -> AttackPreview:
@@ -535,6 +729,33 @@ class AttackService:
             if teacher.status is not TeacherStatus.ACTIVE:
                 raise InvalidTeacherState
             teachers.append(teacher)
+        return await self._preview_with_teachers(session, attacker, target, teachers)
+
+    async def _preview_by_teacher_ids(
+        self, session, attacker, target, teacher_ids: str
+    ) -> AttackPreview:
+        if attacker.id == target.id:
+            raise CannotAttackSelf
+        teachers = []
+        for teacher_id in self._parse_teacher_ids(teacher_ids):
+            teacher = await self.teachers.get_owned_for_update(
+                session, attacker.id, teacher_id
+            )
+            if teacher is None:
+                raise TeacherNotOwned
+            if teacher.current_hp <= 0:
+                await session.delete(teacher)
+                raise InvalidTeacherState
+            if teacher.status is TeacherStatus.RECOVERING:
+                raise TeacherInHospital
+            if teacher.status is not TeacherStatus.ACTIVE:
+                raise InvalidTeacherState
+            teachers.append(teacher)
+        return await self._preview_with_teachers(session, attacker, target, teachers)
+
+    async def _preview_with_teachers(
+        self, session, attacker, target, teachers
+    ) -> AttackPreview:
         castle = await self.castle_service.battle_snapshot(session, target.id)
         resolved = [
             self.config.attack_rules.resolve(
@@ -582,6 +803,7 @@ class AttackService:
             estimated_castle_damage=damage,
             estimated_teacher_injury=injury,
             teacher_ids=",".join(str(teacher.id) for teacher in teachers),
+            teacher_emojis=tuple(teacher.teacher.emoji for teacher in teachers),
             **loot,
         )
 
