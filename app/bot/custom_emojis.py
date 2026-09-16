@@ -171,6 +171,11 @@ def strip_custom_emoji_fallbacks(text: str) -> str:
     return " ".join(text.split())
 
 
+def strip_custom_emoji_fallback(text: str, source: str) -> str:
+    """Remove only the fallback represented by an explicitly chosen icon."""
+    return " ".join(text.replace(source, "").split())
+
+
 def custom_emoji_entities(text: str) -> list[MessageEntity]:
     """Build Telegram custom-emoji entities using UTF-16 offsets."""
     entities: list[MessageEntity] = []
@@ -257,9 +262,23 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
                 if not getattr(button, "icon_custom_emoji_id", None):
                     button.icon_custom_emoji_id = CUSTOM_EMOJI_IDS[source]
                 # Both inline and reply buttons have a dedicated icon slot.
-                # Remove textual fallbacks so exactly one premium emoji is
-                # rendered. Incoming handlers accept the plain labels below.
-                button.text = strip_custom_emoji_fallbacks(text)
+                # If a caller selected the icon explicitly, only remove that
+                # icon's textual fallback. This lets labels such as
+                # "💎 الماس ➜ 🪙 سکه" show both currencies correctly.
+                explicit_icon_id = getattr(button, "icon_custom_emoji_id", None)
+                explicit_source = next(
+                    (
+                        emoji
+                        for emoji, emoji_id in CUSTOM_EMOJI_IDS.items()
+                        if emoji_id == explicit_icon_id
+                    ),
+                    None,
+                )
+                button.text = (
+                    strip_custom_emoji_fallback(text, explicit_source)
+                    if explicit_source is not None
+                    else strip_custom_emoji_fallbacks(text)
+                )
 
 
 async def _send_message_with_reply_fallback(

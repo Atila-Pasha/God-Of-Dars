@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     TELEGRAM_RETRY_AFTER_MAX: int = Field(default=3, ge=0)
     WORKER_COUNT: int = Field(default=4, ge=1)
     NOTIFICATION_WORKER_COUNT: int = Field(default=4, ge=1)
+    NOTIFICATION_SEND_CONCURRENCY: int = Field(default=20, ge=1)
     WORKER_POLL_INTERVAL: float = Field(default=2.0, gt=0)
     WORKER_BATCH_SIZE: int = Field(default=100, ge=1)
     ATTACK_MAX_RETRIES: int = Field(default=3, ge=0)

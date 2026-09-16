@@ -56,6 +56,9 @@ settings below; do not run multiple polling replicas with the same token.
   sum below PostgreSQL's available connections, including workers and admin.
 - `WORKER_COUNT`: parallel attack resolvers.
 - `NOTIFICATION_WORKER_COUNT`: parallel durable notification senders.
+- `NOTIFICATION_SEND_CONCURRENCY`: concurrent notification sends per worker;
+  keep this at or below `TELEGRAM_API_CONCURRENCY` unless the global Telegram
+  limiter is intentionally serving as the final queue.
 - `GROUP_USER_CACHE_*`: bounded cache that avoids a user lookup for every group
   message.
 

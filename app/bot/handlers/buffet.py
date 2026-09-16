@@ -65,9 +65,17 @@ BUFFET_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "buffet"
 )
 RESOURCE_LABELS = {
-    ResourceType.COIN: "طلا",
+    ResourceType.COIN: "سکه",
     ResourceType.DIAMOND: "الماس",
 }
+RESOURCE_EMOJIS = {
+    ResourceType.COIN: "🪙",
+    ResourceType.DIAMOND: "💎",
+}
+
+
+def _resource_display(resource: ResourceType) -> str:
+    return f"{RESOURCE_EMOJIS[resource]} {RESOURCE_LABELS[resource]}"
 
 
 async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
@@ -177,7 +185,7 @@ async def group_purchase_message(
 
 
 def _resource_text(resources) -> str:
-    return f"🪙 طلا: {resources.coin}\n💎 الماس: {resources.diamond}"
+    return f"🪙 سکه: {resources.coin}\n💎 الماس: {resources.diamond}"
 
 
 @router.message(F.text == BUFFET_LABEL)
@@ -378,9 +386,9 @@ async def buffet_callback(
         await state.update_data(source=source.value, target=target.value)
         await callback.answer()
         await callback.message.answer(
-            f"چه مقدار {RESOURCE_LABELS[source]} می‌خواهید تبدیل کنید؟\n"
-            f"هر {option.source_amount} {RESOURCE_LABELS[source]} = "
-            f"{option.target_amount} {RESOURCE_LABELS[target]}\n"
+            f"چه مقدار {_resource_display(source)} می‌خواهید تبدیل کنید؟\n"
+            f"هر {option.source_amount} {_resource_display(source)} = "
+            f"{option.target_amount} {_resource_display(target)}\n"
             f"مقدار باید مضربی از {option.source_amount} باشد.\n"
             f"مثال: {option.source_amount}",
             reply_markup=buffet_cancel_keyboard(),
@@ -587,8 +595,8 @@ async def buffet_exchange_message(
     await state.clear()
     await message.answer(
         f"✅ تبدیل انجام شد.\n"
-        f"مصرف‌شده: {amount} {RESOURCE_LABELS[source]}\n"
-        f"دریافت‌شده: {result.packages * result.conversion.target_amount} {RESOURCE_LABELS[target]}\n\n"
+        f"مصرف‌شده: {amount} {_resource_display(source)}\n"
+        f"دریافت‌شده: {result.packages * result.conversion.target_amount} {_resource_display(target)}\n\n"
         "موجودی جدید:\n" + _resource_text(resources),
         reply_markup=main_menu_keyboard(),
     )

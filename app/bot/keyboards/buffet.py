@@ -16,12 +16,8 @@ from app.core.game_logic import BuffetConversion
 from app.models.shield import Shield
 from app.models.user_shield import UserShield
 
-RESOURCE_LABELS = {"COIN": "طلا", "DIAMOND": "الماس"}
-RESOURCE_CUSTOM_EMOJI_IDS = {
-    "COIN": "5765076709556623066",
-    "DIAMOND": "5462902520215002477",
-    "BANANA": "5091424266138682339",
-}
+RESOURCE_LABELS = {"COIN": "سکه", "DIAMOND": "الماس"}
+RESOURCE_EMOJIS = {"COIN": "🪙", "DIAMOND": "💎"}
 
 
 def buffet_keyboard(options: tuple[BuffetConversion, ...]) -> InlineKeyboardMarkup:
@@ -35,8 +31,17 @@ def buffet_keyboard(options: tuple[BuffetConversion, ...]) -> InlineKeyboardMark
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f">> {RESOURCE_LABELS[option.target.value]} ",
-                    icon_custom_emoji_id=RESOURCE_CUSTOM_EMOJI_IDS[option.source.value],
+                    text=(
+                        f"{RESOURCE_EMOJIS[option.source.value]} "
+                        f"{RESOURCE_LABELS[option.source.value]} ➜ "
+                        f"{RESOURCE_EMOJIS[option.target.value]} "
+                        f"{RESOURCE_LABELS[option.target.value]}"
+                    ),
+                    # The generic custom-emoji decorator cannot infer the
+                    # source when both currencies are present in the label.
+                    icon_custom_emoji_id=premium_emoji_id(
+                        RESOURCE_EMOJIS[option.source.value]
+                    ),
                     callback_data=callback_data,
                 ),
             ]
