@@ -269,15 +269,21 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
                 explicit_source = next(
                     (
                         emoji
-                        for emoji, emoji_id in CUSTOM_EMOJI_IDS.items()
-                        if emoji_id == explicit_icon_id
+                        for emoji, emoji_id in sorted(
+                            CUSTOM_EMOJI_IDS.items(),
+                            key=lambda item: len(item[0]),
+                            reverse=True,
+                        )
+                        if emoji_id == explicit_icon_id and emoji in text
                     ),
                     None,
                 )
                 button.text = (
-                    strip_custom_emoji_fallback(text, explicit_source)
+                    strip_custom_emoji_fallback(
+                        text, explicit_source or source
+                    )
                     if explicit_source is not None
-                    else strip_custom_emoji_fallbacks(text)
+                    else strip_custom_emoji_fallback(text, source)
                 )
 
 
