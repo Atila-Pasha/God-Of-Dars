@@ -61,7 +61,7 @@ def buffet_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔄 تبدیل منابع")],
-            [KeyboardButton(text="🛡 خرید سپر")],
+            [KeyboardButton(text="🛡 فهرست سپرها")],
             [KeyboardButton(text="👨‍🏫 خرید دبیر")],
             [KeyboardButton(text="بازگشت به منو اصلی")],
         ],
