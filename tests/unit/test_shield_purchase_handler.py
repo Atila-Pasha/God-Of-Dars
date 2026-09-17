@@ -43,7 +43,13 @@ async def test_stale_group_reply_is_retried_without_reply_target() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "button_text",
-    ("🛡 فهرست سپرها", "🛡 خرید سپر", "🛡 فهرست سپر ها"),
+    (
+        "🛡 فهرست سپرها",
+        "🛡 فهرست سپر ها",
+        "🛡  فهرست سپر ها",
+        "🛡 خرید سپر",
+        "فهرست سپر ها",
+    ),
 )
 async def test_buffet_shield_buttons_open_catalog(
     monkeypatch: pytest.MonkeyPatch, button_text: str

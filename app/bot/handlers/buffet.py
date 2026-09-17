@@ -238,7 +238,9 @@ async def buffet_conversion_message(
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
-@router.message(F.text.in_({"🛡 فهرست سپرها", "🛡 خرید سپر", "🛡 فهرست سپر ها"}))
+@router.message(
+    F.text.regexp(r"^\s*(?:🛡\s*)?(?:فهرست\s+سپر\s*ها|خرید\s+سپر)\s*$")
+)
 async def buffet_shields_message(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
