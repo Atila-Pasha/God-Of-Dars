@@ -64,10 +64,6 @@ teacher_service = TeacherService()
 BUFFET_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "buffet"
 )
-RESOURCE_LABELS = {
-    ResourceType.COIN: "سکه",
-    ResourceType.DIAMOND: "الماس",
-}
 RESOURCE_EMOJIS = {
     ResourceType.COIN: "🪙",
     ResourceType.DIAMOND: "💎",
@@ -75,7 +71,7 @@ RESOURCE_EMOJIS = {
 
 
 def _resource_display(resource: ResourceType) -> str:
-    return f"{RESOURCE_EMOJIS[resource]} {RESOURCE_LABELS[resource]}"
+    return RESOURCE_EMOJIS[resource]
 
 
 async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
@@ -185,7 +181,7 @@ async def group_purchase_message(
 
 
 def _resource_text(resources) -> str:
-    return f"🪙 سکه: {resources.coin}\n💎 الماس: {resources.diamond}"
+    return f"🪙: {resources.coin}\n💎: {resources.diamond}"
 
 
 @router.message(F.text == BUFFET_LABEL)
