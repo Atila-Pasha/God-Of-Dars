@@ -42,6 +42,7 @@ ALLOWED_GROUP_COMMANDS = frozenset(
     }
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
+GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "اطلاعات", "معرفی")
 
 
 class GroupAccessMiddleware(BaseMiddleware):
@@ -218,20 +219,49 @@ class GroupAccessMiddleware(BaseMiddleware):
     def _message_is_allowed(message: Message) -> bool:
         text = (message.text or "").strip()
         if not text:
-            return True
-        # Attack is intentionally a plain-text group action. Keep it explicit
-        # here so future group restrictions cannot silently swallow it.
-        if text.startswith(("حمله", "خرید", "اطلاعات", "معرفی")):
+            return False
+        # These are intentionally plain-text group commands. Require a word
+        # boundary so ordinary messages such as "حملهای..." are not commands.
+        if any(
+            text == prefix or text.startswith(f"{prefix} ")
+            for prefix in GROUP_COMMAND_PREFIXES
+        ):
             return True
         if text.startswith("/"):
             command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
             return command.removeprefix("/").casefold() in ALLOWED_GROUP_COMMANDS
-        return text not in MENU_SECTION_LABELS
+        if text in MENU_SECTION_LABELS:
+            return False
+        # Group question answers are sent as replies to the published question.
+        # Other free-form text must never enter feature handlers.
+        if getattr(message, "reply_to_message", None) is not None:
+            return True
+        return text.startswith("برترین ") and any(
+            text == phrase
+            for phrase in (
+                "برترین فرمانده",
+                "برترین دانش آموز",
+                "برترین دانش آموزش",
+                "برترین مبارز",
+                "برترین فرمانده روزانه",
+                "برترین فرمانده هفتگی",
+                "برترین فرمانده ماهانه",
+                "برترین دانش آموز روزانه",
+                "برترین دانش آموز هفتگی",
+                "برترین دانش آموز ماهانه",
+                "برترین دانش آموزش روزانه",
+                "برترین دانش آموزش هفتگی",
+                "برترین دانش آموزش ماهانه",
+                "برترین مبارز روزانه",
+                "برترین مبارز هفتگی",
+                "برترین مبارز ماهانه",
+            )
+        )
 
     @staticmethod
     def _callback_is_allowed(callback: CallbackQuery) -> bool:
         data = callback.data or ""
-        if data in ALLOWED_GROUP_CALLBACKS:
+        if data in ALLOWED_GROUP_CALLBACKS or data.startswith("channel:"):
             return True
         return data.startswith(
             (

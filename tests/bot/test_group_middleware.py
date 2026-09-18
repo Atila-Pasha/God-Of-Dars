@@ -29,8 +29,22 @@ def test_group_policy_allows_leaderboard_phrases() -> None:
         assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
 
 
-def test_group_policy_allows_plain_text_for_question_answers() -> None:
-    assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="تهران"))
+def test_group_policy_ignores_unrelated_plain_text() -> None:
+    assert not GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="تهران"))
+
+
+def test_group_policy_allows_replies_for_group_question_answers() -> None:
+    assert GroupAccessMiddleware._message_is_allowed(
+        SimpleNamespace(
+            text="تهران",
+            reply_to_message=SimpleNamespace(message_id=123),
+        )
+    )
+
+
+def test_group_policy_allows_membership_check_callback() -> None:
+    callback = SimpleNamespace(data="channel:check")
+    assert GroupAccessMiddleware._callback_is_allowed(callback)
 
 
 def test_group_policy_runs_before_subscription_middleware() -> None:
