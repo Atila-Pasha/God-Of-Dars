@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
 from admin import keyboards
+from admin.handlers import button_labels
+from app.bot.custom_emojis import _decorate_markup
 
 
 def labels(markup) -> list[str]:
@@ -22,6 +24,16 @@ def test_main_menu_is_a_small_section_dashboard() -> None:
     ]
     assert markup.resize_keyboard is True
     assert markup.is_persistent is True
+
+
+def test_main_routes_accept_text_returned_by_premium_icon_buttons() -> None:
+    markup = keyboards.main()
+    source_labels = labels(markup)
+
+    _decorate_markup({"reply_markup": markup})
+
+    for source, telegram_text in zip(source_labels, labels(markup), strict=True):
+        assert telegram_text in button_labels(source)
 
 
 def test_each_section_has_a_direct_home_action() -> None:

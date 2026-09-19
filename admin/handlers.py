@@ -35,6 +35,7 @@ from admin.states import (
     UserStates,
 )
 from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
+from app.bot.custom_emojis import strip_custom_emoji_fallbacks
 from app.bot.group_question_publisher import GroupQuestionPublisher
 from app.bot.middlewares.subscription import invalidate_channels_cache
 from app.bot.utils.telegram import safe_edit_reply_markup, safe_edit_text
@@ -68,6 +69,15 @@ user_repository = UserRepository()
 chance_service = ChanceService()
 logger = logging.getLogger(__name__)
 group_question_publisher = GroupQuestionPublisher()
+
+
+def button_labels(*values: str) -> set[str]:
+    """Accept both source labels and Telegram's premium-icon button text."""
+    return {
+        label
+        for value in values
+        for label in (value, strip_custom_emoji_fallbacks(value))
+    }
 
 
 @router.message(Command("daily_quests"))
@@ -191,14 +201,14 @@ async def start(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.text.in_({"لغو", "❌ لغو", "🏠 منوی اصلی"}))
+@router.message(F.text.in_(button_labels("لغو", "❌ لغو", "🏠 منوی اصلی")))
 async def cancel(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
         await message.answer("به منوی اصلی برگشتید.", reply_markup=keyboards.main())
 
 
-@router.message(F.text == "👥 کاربران و گزارش‌ها")
+@router.message(F.text.in_(button_labels("👥 کاربران و گزارش‌ها")))
 async def users_section(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -208,7 +218,7 @@ async def users_section(message: Message, state: FSMContext) -> None:
         )
 
 
-@router.message(F.text == "🎮 محتوای بازی")
+@router.message(F.text.in_(button_labels("🎮 محتوای بازی")))
 async def content_section(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -218,7 +228,7 @@ async def content_section(message: Message, state: FSMContext) -> None:
         )
 
 
-@router.message(F.text == "📤 ارسال و جایزه")
+@router.message(F.text.in_(button_labels("📤 ارسال و جایزه")))
 async def publishing_section(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -228,7 +238,7 @@ async def publishing_section(message: Message, state: FSMContext) -> None:
         )
 
 
-@router.message(F.text == "⚙️ تنظیمات ربات")
+@router.message(F.text.in_(button_labels("⚙️ تنظیمات ربات")))
 async def settings_section(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -321,7 +331,9 @@ async def _expire_box_later(
         await cleanup_session.commit()
 
 
-@router.message(F.text.in_({"ارسال جعبه شانس", "🎁 ارسال جعبه شانس", "🎁 جعبه شانس"}))
+@router.message(
+    F.text.in_(button_labels("ارسال جعبه شانس", "🎁 ارسال جعبه شانس", "🎁 جعبه شانس"))
+)
 async def chance_box_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceBoxStates.section)
@@ -454,7 +466,9 @@ async def chance_box_publish(
     )
 
 
-@router.message(F.text.in_({"ارسال کارت شانس", "🃏 ارسال کارت شانس", "🃏 کارت شانس"}))
+@router.message(
+    F.text.in_(button_labels("ارسال کارت شانس", "🃏 ارسال کارت شانس", "🃏 کارت شانس"))
+)
 async def chance_card_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceCardStates.value)
@@ -577,7 +591,9 @@ def channel_settings_text(channels) -> str:
 
 
 @router.message(
-    F.text.in_({"مدیریت قفل کانال", "📢 مدیریت قفل کانال", "📢 قفل عضویت کانال"})
+    F.text.in_(
+        button_labels("مدیریت قفل کانال", "📢 مدیریت قفل کانال", "📢 قفل عضویت کانال")
+    )
 )
 async def channel_settings(
     message: Message, state: FSMContext, session: AsyncSession
@@ -735,7 +751,7 @@ def user_teachers_text(user, teachers) -> str:
     return "\n\n".join(lines)
 
 
-@router.message(F.text.in_({"پیام همگانی", "📣 پیام همگانی"}))
+@router.message(F.text.in_(button_labels("پیام همگانی", "📣 پیام همگانی")))
 async def broadcast_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -842,7 +858,9 @@ async def broadcast_send(
     )
 
 
-@router.message(F.text.in_({"مدیریت کاربران", "👤 مدیریت کاربران", "🔎 جستجوی کاربر"}))
+@router.message(
+    F.text.in_(button_labels("مدیریت کاربران", "👤 مدیریت کاربران", "🔎 جستجوی کاربر"))
+)
 async def users(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(UserStates.search)
@@ -853,7 +871,9 @@ async def users(message: Message, state: FSMContext) -> None:
 
 
 @router.message(
-    F.text.in_({"آمار کاربران ربات", "📊 آمار کاربران ربات", "📊 آمار کاربران"})
+    F.text.in_(
+        button_labels("آمار کاربران ربات", "📊 آمار کاربران ربات", "📊 آمار کاربران")
+    )
 )
 async def bot_user_stats(
     message: Message, state: FSMContext, session: AsyncSession
@@ -1063,7 +1083,9 @@ async def save_resources(
 
 
 @router.message(
-    F.text.in_({"ساخت سؤال روزانه", "❓ ساخت سؤال روزانه", "❓ سؤال روزانه"})
+    F.text.in_(
+        button_labels("ساخت سؤال روزانه", "❓ ساخت سؤال روزانه", "❓ سؤال روزانه")
+    )
 )
 async def question_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
@@ -1076,7 +1098,9 @@ async def question_start(message: Message, state: FSMContext) -> None:
         )
 
 
-@router.message(F.text.in_({"ساخت سؤال گروهی", "👥 ساخت سؤال گروهی", "👥 سؤال گروهی"}))
+@router.message(
+    F.text.in_(button_labels("ساخت سؤال گروهی", "👥 ساخت سؤال گروهی", "👥 سؤال گروهی"))
+)
 async def group_question_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -1090,11 +1114,11 @@ async def group_question_start(message: Message, state: FSMContext) -> None:
 
 @router.message(
     F.text.in_(
-        {
+        button_labels(
             "مدیریت فعالیت‌های روزانه",
             "🎯 مدیریت فعالیت‌های روزانه",
             "🎯 فعالیت‌های روزانه",
-        }
+        )
     )
 )
 async def daily_quest_start(
@@ -1690,7 +1714,9 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
     )
 
 
-@router.message(F.text.in_({"مدیریت دبیرها", "👨‍🏫 مدیریت دبیرها", "👨‍🏫 دبیرها"}))
+@router.message(
+    F.text.in_(button_labels("مدیریت دبیرها", "👨‍🏫 مدیریت دبیرها", "👨‍🏫 دبیرها"))
+)
 async def teachers(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message):
         return
@@ -1718,7 +1744,7 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
 
 
 @router.message(Command("teacher"))
-@router.message(F.text == "➕ دبیر جدید")
+@router.message(F.text.in_(button_labels("➕ دبیر جدید")))
 async def teacher_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -2016,7 +2042,7 @@ async def teacher_edit_value(
     )
 
 
-@router.message(F.text.in_({"مدیریت سپرها", "🛡 مدیریت سپرها", "🛡 سپرها"}))
+@router.message(F.text.in_(button_labels("مدیریت سپرها", "🛡 مدیریت سپرها", "🛡 سپرها")))
 async def shields(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message):
         return
@@ -2043,7 +2069,7 @@ async def shields(message: Message, state: FSMContext, session: AsyncSession) ->
 
 
 @router.message(Command("shield"))
-@router.message(F.text == "➕ سپر جدید")
+@router.message(F.text.in_(button_labels("➕ سپر جدید")))
 async def shield_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
@@ -2323,7 +2349,13 @@ async def shield_edit_value(
 
 
 @router.message(
-    F.text.in_({"مدیریت پک‌های مطالعه", "📖 مدیریت پک‌های مطالعه", "📖 پک‌های مطالعه"})
+    F.text.in_(
+        button_labels(
+            "مدیریت پک‌های مطالعه",
+            "📖 مدیریت پک‌های مطالعه",
+            "📖 پک‌های مطالعه",
+        )
+    )
 )
 async def study_packs_admin(
     message: Message, state: FSMContext, session: AsyncSession
@@ -2354,7 +2386,7 @@ async def study_packs_admin(
 
 
 @router.message(Command("study_pack"))
-@router.message(F.text == "➕ پک مطالعه جدید")
+@router.message(F.text.in_(button_labels("➕ پک مطالعه جدید")))
 async def study_pack_start(message: Message, state: FSMContext) -> None:
     if not allowed(message):
         return
