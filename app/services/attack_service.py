@@ -92,6 +92,14 @@ class RandomAttackPreview:
     reroll_coin_cost: int
 
 
+@dataclass(frozen=True)
+class AttackTargetPreview:
+    id: int
+    telegram_user_id: int
+    first_name: str
+    username: str | None
+
+
 class AttackService:
     def __init__(self, *, config: GameConfig | None = None) -> None:
         self.config = config or game_config
@@ -231,6 +239,109 @@ class AttackService:
         if target is None or not target.is_active:
             raise AttackTargetNotRegistered
         return await self._preview(session, attacker, target, teacher_name)
+
+    async def available_attack_teachers(
+        self, session: AsyncSession, *, attacker_telegram_id: int
+    ) -> list[UserTeacher]:
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        owned = await self.teacher_service.owned(session, attacker.id)
+        return [
+            teacher
+            for teacher in owned
+            if teacher.current_hp > 0 and teacher.status is TeacherStatus.ACTIVE
+        ]
+
+    async def target_preview(
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        identifier: str,
+    ) -> AttackTargetPreview:
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        normalized = identifier.strip()
+        if normalized.isdecimal():
+            target = await self.users.get_by_telegram_user_id(
+                session, int(normalized)
+            )
+            if target is not None and not target.is_active:
+                target = None
+        else:
+            target = await self.users.get_active_by_username(session, normalized)
+        if target is None:
+            raise AttackTargetNotRegistered
+        if target.id == attacker.id:
+            raise CannotAttackSelf
+        return AttackTargetPreview(
+            id=target.id,
+            telegram_user_id=target.telegram_user_id,
+            first_name=target.first_name,
+            username=target.username,
+        )
+
+    async def preview_by_teacher_ids(
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        target_id: int,
+        teacher_ids: list[int],
+    ) -> AttackPreview:
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        target = await self.users.get_active_by_id(session, target_id)
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        if target is None:
+            raise AttackTargetNotRegistered
+        unique_ids = list(dict.fromkeys(teacher_ids))
+        if not unique_ids:
+            raise TeacherNotOwned
+        if len(unique_ids) > self.config.max_attack_teachers:
+            raise TeacherLimitReached
+        return await self._preview_by_teacher_ids(
+            session, attacker, target, ",".join(map(str, unique_ids))
+        )
+
+    async def prepare_random_preview_by_teacher_ids(
+        self,
+        session: AsyncSession,
+        *,
+        attacker_telegram_id: int,
+        teacher_ids: list[int],
+    ) -> RandomAttackPreview:
+        attacker = await self.users.get_by_telegram_user_id(
+            session, attacker_telegram_id
+        )
+        if attacker is None or not attacker.is_active:
+            raise AttackerNotRegistered
+        unique_ids = list(dict.fromkeys(teacher_ids))
+        if not unique_ids:
+            raise TeacherNotOwned
+        if len(unique_ids) > self.config.max_attack_teachers:
+            raise TeacherLimitReached
+        teachers = await self.available_attack_teachers(
+            session, attacker_telegram_id=attacker_telegram_id
+        )
+        names_by_id = {teacher.id: teacher.teacher.name for teacher in teachers}
+        try:
+            names = [names_by_id[teacher_id] for teacher_id in unique_ids]
+        except KeyError as exc:
+            raise TeacherNotOwned from exc
+        return await self.prepare_random_preview(
+            session,
+            attacker_telegram_id=attacker_telegram_id,
+            teacher_name=names,
+        )
 
     async def preview_random(
         self,

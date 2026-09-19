@@ -3,6 +3,7 @@ from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, MessageEntity
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -369,7 +370,8 @@ async def school_handler(message: Message, session: AsyncSession) -> None:
 
 
 @router.message(F.text == "بازگشت به منو اصلی")
-async def school_back_message(message: Message) -> None:
+async def school_back_message(message: Message, state: FSMContext) -> None:
+    await state.clear()
     await message.answer(
         "به منوی اصلی برگشتید.",
         reply_markup=main_menu_keyboard(),

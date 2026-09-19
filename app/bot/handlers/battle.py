@@ -1,10 +1,13 @@
 from contextlib import suppress
 from datetime import UTC, datetime
+from typing import Literal
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
+    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -13,8 +16,14 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import AttackConfirmationCallback, RandomAttackCallback
+from app.bot.callbacks import (
+    AttackConfirmationCallback,
+    AttackMenuCallback,
+    RandomAttackCallback,
+)
 from app.bot.custom_emojis import custom_emoji_entity
+from app.bot.keyboards.main_menu import section_back_keyboard
+from app.bot.states import AttackMenuStates
 from app.bot.utils.attack import teacher_phrase
 from app.bot.utils.telegram import schedule_message_deletion
 from app.services.attack_service import (
@@ -41,6 +50,7 @@ from app.services.school_errors import (
 
 router = Router(name="battle")
 attack_service = AttackService()
+MAX_ATTACK_TEACHERS = attack_service.config.max_attack_teachers
 
 
 def _attack_text(result: AttackResult) -> str:
@@ -213,6 +223,110 @@ def _random_attack_confirmation_keyboard(
     )
 
 
+def _teacher_selection_keyboard(
+    teachers, *, mode: Literal["random", "id"], selected_ids: list[int]
+) -> InlineKeyboardMarkup:
+    selected = set(selected_ids)
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=("✅ " if teacher.id in selected else "⬜️ ")
+                + f"{teacher.teacher.name} (❤️ {teacher.current_hp})",
+                callback_data=AttackMenuCallback(
+                    action="toggle",
+                    mode=mode,
+                    teacher_id=teacher.id,
+                ).pack(),
+            )
+        ]
+        for teacher in teachers
+    ]
+    submit_text = (
+        f"🎲 حمله رندوم ({len(selected)}/{MAX_ATTACK_TEACHERS})"
+        if mode == "random"
+        else f"⚔️ پیش‌نمایش حمله ({len(selected)}/{MAX_ATTACK_TEACHERS})"
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=submit_text,
+                callback_data=AttackMenuCallback(
+                    action="submit", mode=mode
+                ).pack(),
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _attack_type_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🎲 حمله رندوم",
+                    callback_data=AttackMenuCallback(
+                        action="choose", mode="random"
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="🎯 حمله با آیدی",
+                    callback_data=AttackMenuCallback(
+                        action="choose", mode="id"
+                    ).pack(),
+                ),
+            ]
+        ]
+    )
+
+
+async def _show_teacher_selection(
+    target: Message | CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+    *,
+    mode: Literal["random", "id"],
+) -> None:
+    if target.from_user is None:
+        return
+    try:
+        teachers = await attack_service.available_attack_teachers(
+            session, attacker_telegram_id=target.from_user.id
+        )
+    except SchoolError as error:
+        message = target.message if isinstance(target, CallbackQuery) else target
+        if isinstance(message, Message):
+            await _report_error(message, error)
+        return
+    if not teachers:
+        message = target.message if isinstance(target, CallbackQuery) else target
+        if isinstance(message, Message):
+            await message.answer(
+                "دبیر فعال و سالمی برای حمله ندارید. ابتدا دبیرتان را فعال یا درمان کنید."
+            )
+        return
+    data = await state.get_data()
+    selected_ids = [
+        teacher_id
+        for teacher_id in data.get("selected_teacher_ids", [])
+        if any(teacher.id == teacher_id for teacher in teachers)
+    ]
+    await state.update_data(mode=mode, selected_teacher_ids=selected_ids)
+    await state.set_state(AttackMenuStates.selecting_teachers)
+    text = (
+        "👨‍🏫 دبیرهای حمله را انتخاب کنید.\n"
+        f"می‌توانید هم‌زمان تا {MAX_ATTACK_TEACHERS} دبیر را تیک بزنید."
+    )
+    markup = _teacher_selection_keyboard(
+        teachers, mode=mode, selected_ids=selected_ids
+    )
+    if isinstance(target, CallbackQuery):
+        if isinstance(target.message, Message):
+            await target.message.edit_text(text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
+
+
 async def _send_result(message: Message, result: AttackResult) -> None:
     await message.answer(_attack_text(result))
     bot = message.bot
@@ -268,6 +382,201 @@ async def attack_help_handler(message: Message) -> None:
     await message.answer(
         _attack_help_text(group=message.chat.type in {"group", "supergroup"})
     )
+
+
+@router.message(F.chat.type == "private", F.text == "حمله")
+async def attack_menu_handler(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer(
+        "⚔️ وارد بخش حمله شدید.",
+        reply_markup=section_back_keyboard(),
+    )
+    await message.answer(
+        "انتخاب نوع حمله\n\nیکی از روش‌های زیر را انتخاب کنید:",
+        reply_markup=_attack_type_keyboard(),
+    )
+
+
+@router.message(F.chat.type == "private", F.text == "حمله رندوم")
+async def random_attack_menu_handler(
+    message: Message, session: AsyncSession, state: FSMContext
+) -> None:
+    await state.clear()
+    await state.update_data(mode="random", selected_teacher_ids=[])
+    await message.answer(
+        "برای بازگشت، دکمه زیر را بزنید.", reply_markup=section_back_keyboard()
+    )
+    await _show_teacher_selection(message, session, state, mode="random")
+
+
+@router.message(F.chat.type == "private", F.text == "حمله با آیدی")
+async def id_attack_menu_handler(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(AttackMenuStates.waiting_target)
+    await message.answer(
+        "🎯 آیدی کاربر هدف را بفرستید.\n\n"
+        "می‌توانید نام کاربری مثل @player یا آیدی عددی تلگرام را وارد کنید.",
+        reply_markup=section_back_keyboard(),
+    )
+
+
+@router.message(AttackMenuStates.waiting_target)
+async def attack_target_handler(
+    message: Message, session: AsyncSession, state: FSMContext
+) -> None:
+    if message.from_user is None or not message.text:
+        return
+    try:
+        target = await attack_service.target_preview(
+            session,
+            attacker_telegram_id=message.from_user.id,
+            identifier=message.text,
+        )
+    except SchoolError as error:
+        await _report_error(message, error)
+        return
+    await state.update_data(
+        mode="id",
+        target_id=target.id,
+        selected_teacher_ids=[],
+    )
+    username = f"@{target.username}" if target.username else "ثبت نشده"
+    await message.answer(
+        "🎯 پیش‌نمایش هدف حمله\n\n"
+        f"👤 نام: {target.first_name}\n"
+        f"🆔 نام کاربری: {username}\n"
+        f"🔢 آیدی تلگرام: {target.telegram_user_id}\n\n"
+        "برای ادامه، دبیرهای حمله را انتخاب کنید.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="👨‍🏫 انتخاب دبیرها و حمله",
+                        callback_data=AttackMenuCallback(
+                            action="target_teachers", mode="id"
+                        ).pack(),
+                    )
+                ]
+            ]
+        ),
+    )
+
+
+@router.callback_query(AttackMenuCallback.filter())
+async def attack_menu_callback_handler(
+    callback: CallbackQuery,
+    callback_data: AttackMenuCallback,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    data = await state.get_data()
+    if callback_data.action == "choose":
+        await state.clear()
+        await state.update_data(
+            mode=callback_data.mode, selected_teacher_ids=[]
+        )
+        if callback_data.mode == "random":
+            await callback.answer()
+            await _show_teacher_selection(callback, session, state, mode="random")
+        else:
+            await state.set_state(AttackMenuStates.waiting_target)
+            await callback.message.edit_text(
+                "🎯 آیدی کاربر هدف را بفرستید.\n\n"
+                "می‌توانید نام کاربری مثل @player یا آیدی عددی تلگرام را وارد کنید."
+            )
+            await callback.answer()
+        return
+    if data.get("mode") != callback_data.mode:
+        await callback.answer(
+            "این منوی حمله دیگر معتبر نیست؛ دوباره از منوی اصلی وارد شوید.",
+            show_alert=True,
+        )
+        return
+    if callback_data.action == "target_teachers":
+        await callback.answer()
+        await _show_teacher_selection(
+            callback, session, state, mode=callback_data.mode
+        )
+        return
+
+    try:
+        teachers = await attack_service.available_attack_teachers(
+            session, attacker_telegram_id=callback.from_user.id
+        )
+    except SchoolError as error:
+        await callback.answer()
+        await _report_error(callback.message, error)
+        return
+    available_ids = {teacher.id for teacher in teachers}
+    selected_ids = [
+        teacher_id
+        for teacher_id in data.get("selected_teacher_ids", [])
+        if teacher_id in available_ids
+    ]
+
+    if callback_data.action == "toggle":
+        if callback_data.teacher_id not in available_ids:
+            await callback.answer("این دبیر دیگر آماده حمله نیست.", show_alert=True)
+            return
+        if callback_data.teacher_id in selected_ids:
+            selected_ids.remove(callback_data.teacher_id)
+        elif len(selected_ids) >= MAX_ATTACK_TEACHERS:
+            await callback.answer(
+                f"حداکثر {MAX_ATTACK_TEACHERS} دبیر را می‌توانید انتخاب کنید.",
+                show_alert=True,
+            )
+            return
+        else:
+            selected_ids.append(callback_data.teacher_id)
+        await state.update_data(selected_teacher_ids=selected_ids)
+        await callback.message.edit_reply_markup(
+            reply_markup=_teacher_selection_keyboard(
+                teachers, mode=callback_data.mode, selected_ids=selected_ids
+            )
+        )
+        await callback.answer()
+        return
+
+    if not selected_ids:
+        await callback.answer("حداقل یک دبیر را انتخاب کنید.", show_alert=True)
+        return
+    await callback.answer()
+    try:
+        if callback_data.mode == "random":
+            selection = await attack_service.prepare_random_preview_by_teacher_ids(
+                session,
+                attacker_telegram_id=callback.from_user.id,
+                teacher_ids=selected_ids,
+            )
+            text, entities = _random_attack_preview_content(selection)
+            keyboard = _random_attack_confirmation_keyboard(
+                selection, source_message_id=0
+            )
+        else:
+            target_id = data.get("target_id")
+            if not isinstance(target_id, int):
+                await callback.message.answer(
+                    "هدف حمله مشخص نیست؛ دوباره از منوی حمله شروع کنید."
+                )
+                return
+            preview = await attack_service.preview_by_teacher_ids(
+                session,
+                attacker_telegram_id=callback.from_user.id,
+                target_id=target_id,
+                teacher_ids=selected_ids,
+            )
+            text, entities = _preview_content(preview)
+            keyboard = _attack_confirmation_keyboard(preview, source_message_id=0)
+    except SchoolError as error:
+        await _report_error(callback.message, error)
+        return
+    await state.clear()
+    with suppress(TelegramAPIError):
+        await callback.message.delete()
+    await callback.message.answer(text, reply_markup=keyboard, entities=entities)
 
 
 @router.message(F.text.regexp(r"^\s*حمله(?:\s+\S.*)?$"))

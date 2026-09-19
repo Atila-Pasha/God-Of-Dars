@@ -85,6 +85,12 @@ class RandomAttackCallback(CallbackData, prefix="random_attack"):
     source_message_id: int = 0
 
 
+class AttackMenuCallback(CallbackData, prefix="attack_menu"):
+    action: Literal["choose", "target_teachers", "toggle", "submit"]
+    mode: Literal["random", "id"]
+    teacher_id: int = 0
+
+
 class LibraryCallback(CallbackData, prefix="library"):
     action: Literal["daily", "group", "study", "teachers", "back", "cancel"]
 

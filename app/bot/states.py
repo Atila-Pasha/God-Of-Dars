@@ -7,3 +7,8 @@ class BuffetStates(StatesGroup):
 
 class ChanceCardStates(StatesGroup):
     waiting_captcha = State()
+
+
+class AttackMenuStates(StatesGroup):
+    waiting_target = State()
+    selecting_teachers = State()
