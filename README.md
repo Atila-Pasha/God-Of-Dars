@@ -5,9 +5,9 @@ runtime contains the main bot, an optional admin bot, PostgreSQL-backed job
 workers, and durable notification delivery. There is no HTTP API or public
 network port.
 
-The private server-backup integration uses Google Drive only to create and
-rotate encrypted database backup files. See the [Privacy Policy](PRIVACY.md)
-for details.
+The private server-backup integration uses Dropbox only to create and rotate
+encrypted database backup files. See the [Privacy Policy](PRIVACY.md) for
+details.
 
 ## Requirements
 

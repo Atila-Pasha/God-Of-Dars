@@ -3,7 +3,7 @@ set -eu
 
 project_dir=${GODOFDARS_PROJECT_DIR:-/opt/godofdars}
 backup_root=${GODOFDARS_BACKUP_ROOT:-/opt/godofdars-backup/automated}
-remote=${GODOFDARS_BACKUP_REMOTE:-gdrive_crypt:}
+remote=${GODOFDARS_BACKUP_REMOTE:-dropbox_crypt:}
 
 cd "$project_dir"
 
@@ -64,10 +64,7 @@ rclone copy "$upload_dir" "$remote" --checksum
 rclone check "$upload_dir" "$remote" --one-way
 
 # A successful sync keeps exactly the newly verified archive and checksum.
-# Delete superseded Drive objects permanently so they do not consume quota in
-# Google Drive Trash.
-rclone sync "$upload_dir" "$remote" --checksum --delete-after \
-    --drive-use-trash=false
+rclone sync "$upload_dir" "$remote" --checksum --delete-after
 
 install -d -m 700 "$backup_root/current"
 rclone sync "$upload_dir" "$backup_root/current" --checksum --delete-after
