@@ -35,9 +35,10 @@ timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 bundle_name="godofdars-postgres-$timestamp"
 bundle_dir="$pending_dir/$bundle_name"
 upload_dir="$pending_dir/upload"
+verify_dir="$pending_dir/verify"
 archive="$upload_dir/$bundle_name.tar.gz"
 
-install -d -m 700 "$bundle_dir" "$upload_dir"
+install -d -m 700 "$bundle_dir" "$upload_dir" "$verify_dir"
 
 docker compose exec -T postgres \
     pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
@@ -59,9 +60,17 @@ gzip -t "$archive"
 sha256sum "$archive" > "$archive.sha256"
 chmod -R go-rwx "$pending_dir"
 
-# Upload and verify the new backup before removing any older remote backup.
+# Upload and download the new backup before removing any older remote backup.
+# Dropbox and the encrypted remote do not expose a common content hash, so a
+# byte-for-byte comparison of the downloaded files provides end-to-end
+# verification instead of falling back to size-only checks.
 rclone copy "$upload_dir" "$remote" --checksum
-rclone check "$upload_dir" "$remote" --one-way
+rclone copyto "$remote$bundle_name.tar.gz" \
+    "$verify_dir/$bundle_name.tar.gz"
+rclone copyto "$remote$bundle_name.tar.gz.sha256" \
+    "$verify_dir/$bundle_name.tar.gz.sha256"
+cmp "$archive" "$verify_dir/$bundle_name.tar.gz"
+cmp "$archive.sha256" "$verify_dir/$bundle_name.tar.gz.sha256"
 
 # A successful sync keeps exactly the newly verified archive and checksum.
 rclone sync "$upload_dir" "$remote" --checksum --delete-after
