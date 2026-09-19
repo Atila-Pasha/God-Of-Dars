@@ -230,8 +230,11 @@ def _teacher_selection_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=("✅ " if teacher.id in selected else "⬜️ ")
-                + f"{teacher.teacher.name} (❤️ {teacher.current_hp})",
+                # Keep these as standard Unicode status marks. A heart here
+                # was promoted to the premium hospital icon by the global
+                # keyboard decorator and visually replaced the selection tick.
+                text=("☑️ " if teacher.id in selected else "⬜️ ")
+                + f"{teacher.teacher.name} (جان: {teacher.current_hp})",
                 callback_data=AttackMenuCallback(
                     action="toggle",
                     mode=mode,
@@ -250,9 +253,7 @@ def _teacher_selection_keyboard(
         [
             InlineKeyboardButton(
                 text=submit_text,
-                callback_data=AttackMenuCallback(
-                    action="submit", mode=mode
-                ).pack(),
+                callback_data=AttackMenuCallback(action="submit", mode=mode).pack(),
             )
         ]
     )
@@ -271,9 +272,7 @@ def _attack_type_keyboard() -> InlineKeyboardMarkup:
                 ),
                 InlineKeyboardButton(
                     text="🎯 حمله با آیدی",
-                    callback_data=AttackMenuCallback(
-                        action="choose", mode="id"
-                    ).pack(),
+                    callback_data=AttackMenuCallback(action="choose", mode="id").pack(),
                 ),
             ]
         ]
@@ -317,9 +316,7 @@ async def _show_teacher_selection(
         "👨‍🏫 دبیرهای حمله را انتخاب کنید.\n"
         f"می‌توانید هم‌زمان تا {MAX_ATTACK_TEACHERS} دبیر را تیک بزنید."
     )
-    markup = _teacher_selection_keyboard(
-        teachers, mode=mode, selected_ids=selected_ids
-    )
+    markup = _teacher_selection_keyboard(teachers, mode=mode, selected_ids=selected_ids)
     if isinstance(target, CallbackQuery):
         if isinstance(target.message, Message):
             await target.message.edit_text(text, reply_markup=markup)
@@ -475,9 +472,7 @@ async def attack_menu_callback_handler(
     data = await state.get_data()
     if callback_data.action == "choose":
         await state.clear()
-        await state.update_data(
-            mode=callback_data.mode, selected_teacher_ids=[]
-        )
+        await state.update_data(mode=callback_data.mode, selected_teacher_ids=[])
         if callback_data.mode == "random":
             await callback.answer()
             await _show_teacher_selection(callback, session, state, mode="random")
@@ -497,9 +492,7 @@ async def attack_menu_callback_handler(
         return
     if callback_data.action == "target_teachers":
         await callback.answer()
-        await _show_teacher_selection(
-            callback, session, state, mode=callback_data.mode
-        )
+        await _show_teacher_selection(callback, session, state, mode=callback_data.mode)
         return
 
     try:

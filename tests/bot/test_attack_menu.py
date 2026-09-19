@@ -5,6 +5,7 @@ import pytest
 from aiogram.types import Message
 
 from app.bot.callbacks import AttackMenuCallback
+from app.bot.custom_emojis import _decorate_markup
 from app.bot.handlers import battle
 from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.services.attack_service import AttackTargetPreview
@@ -66,9 +67,7 @@ async def test_id_attack_accepts_username_and_shows_target_preview(
 
     await battle.attack_target_handler(message, AsyncMock(), state)
 
-    resolve.assert_awaited_once_with(
-        ANY, attacker_telegram_id=42, identifier="@target"
-    )
+    resolve.assert_awaited_once_with(ANY, attacker_telegram_id=42, identifier="@target")
     state.update_data.assert_awaited_once_with(
         mode="id", target_id=7, selected_teacher_ids=[]
     )
@@ -85,10 +84,14 @@ def test_teacher_selection_keyboard_marks_multiple_teachers() -> None:
         selected_ids=[1, 3],
     )
 
-    assert keyboard.inline_keyboard[0][0].text.startswith("✅")
+    assert keyboard.inline_keyboard[0][0].text.startswith("☑️")
     assert keyboard.inline_keyboard[1][0].text.startswith("⬜️")
-    assert keyboard.inline_keyboard[2][0].text.startswith("✅")
+    assert keyboard.inline_keyboard[2][0].text.startswith("☑️")
     assert "2/4" in keyboard.inline_keyboard[-1][0].text
+
+    _decorate_markup({"reply_markup": keyboard})
+    teacher_buttons = [row[0] for row in keyboard.inline_keyboard[:-1]]
+    assert all(button.icon_custom_emoji_id is None for button in teacher_buttons)
 
 
 @pytest.mark.asyncio
@@ -125,9 +128,7 @@ async def test_fifth_teacher_cannot_be_selected(monkeypatch) -> None:
     )
     data = AttackMenuCallback(action="toggle", mode="random", teacher_id=5)
 
-    await battle.attack_menu_callback_handler(
-        callback, data, AsyncMock(), state
-    )
+    await battle.attack_menu_callback_handler(callback, data, AsyncMock(), state)
 
     assert callback.answer.await_args.kwargs["show_alert"] is True
     assert "حداکثر 4" in callback.answer.await_args.args[0]
