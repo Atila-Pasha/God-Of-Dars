@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the GodOfDars database backup every day
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Tehran
+Persistent=true
+AccuracySec=1min
+Unit=godofdars-backup.service
+
+[Install]
+WantedBy=timers.target

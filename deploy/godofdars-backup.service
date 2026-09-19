@@ -1,0 +1,14 @@
+[Unit]
+Description=Create and upload the verified GodOfDars PostgreSQL backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/godofdars
+Environment=RCLONE_CONFIG=/root/.config/rclone/rclone.conf
+ExecStart=/usr/bin/flock -n /run/godofdars-backup.lock /opt/godofdars/scripts/backup_postgres_to_dropbox.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
