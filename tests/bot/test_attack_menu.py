@@ -6,6 +6,7 @@ from aiogram.types import Message
 
 from app.bot.callbacks import AttackMenuCallback
 from app.bot.handlers import battle
+from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.services.attack_service import AttackTargetPreview
 
 
@@ -15,6 +16,17 @@ def teacher(teacher_id: int, name: str = "افلاطون") -> SimpleNamespace:
         current_hp=80,
         teacher=SimpleNamespace(name=name),
     )
+
+
+def test_main_menu_attack_button_has_custom_sword_icon() -> None:
+    attack_button = next(
+        button
+        for row in main_menu_keyboard().keyboard
+        for button in row
+        if button.text == "حمله"
+    )
+
+    assert attack_button.icon_custom_emoji_id == "5823192436024813346"
 
 
 @pytest.mark.asyncio

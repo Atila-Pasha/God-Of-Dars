@@ -7,7 +7,7 @@ MENU_SECTIONS = (
     ("معدن منابع", "mine", "5823474022670671455"),
     ("پروفایل", "profile", "5825647731388981287"),
     ("فعالیت‌های روزانه", "daily", "5825898080737697438"),
-    ("حمله", "attack", ""),
+    ("حمله", "attack", "5823192436024813346"),
 )
 
 MENU_SECTION_KEYS = frozenset(section for _, section, _ in MENU_SECTIONS)
