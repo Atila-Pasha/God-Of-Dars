@@ -63,3 +63,10 @@ class BotSettingsRepository:
         await session.delete(channel)
         await session.flush()
         return True
+
+    async def clear_channels(self, session: AsyncSession) -> int:
+        channels = await self.list_channels(session)
+        for channel in channels:
+            await session.delete(channel)
+        await session.flush()
+        return len(channels)

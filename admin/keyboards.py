@@ -6,6 +6,15 @@ from aiogram.types import (
 )
 
 
+def _reply(rows: list[list[str]], placeholder: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=label) for label in row] for row in rows],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder=placeholder,
+    )
+
+
 def daily_quest_dates() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -128,46 +137,112 @@ def daily_quest_edit_fields(quest_id: int) -> InlineKeyboardMarkup:
 
 
 def main() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="👤 مدیریت کاربران"),
-                KeyboardButton(text="👨‍🏫 مدیریت دبیرها"),
-            ],
-            [KeyboardButton(text="📊 آمار کاربران ربات")],
-            [KeyboardButton(text="🛡 مدیریت سپرها")],
-            [KeyboardButton(text="📢 مدیریت قفل کانال")],
-            [
-                KeyboardButton(text="🎁 ارسال جعبه شانس"),
-                KeyboardButton(text="🃏 ارسال کارت شانس"),
-            ],
-            [
-                KeyboardButton(text="❓ ساخت سؤال روزانه"),
-                KeyboardButton(text="👥 ساخت سؤال گروهی"),
-            ],
-            [KeyboardButton(text="🎯 مدیریت فعالیت‌های روزانه")],
-            [KeyboardButton(text="📖 مدیریت پک‌های مطالعه")],
-            [KeyboardButton(text="📣 پیام همگانی")],
-            [KeyboardButton(text="❌ لغو")],
+    return _reply(
+        [
+            ["👥 کاربران و گزارش‌ها", "🎮 محتوای بازی"],
+            ["📤 ارسال و جایزه", "⚙️ تنظیمات ربات"],
         ],
-        resize_keyboard=True,
+        "یک بخش مدیریتی را انتخاب کنید",
+    )
+
+
+def users_menu() -> ReplyKeyboardMarkup:
+    return _reply(
+        [
+            ["🔎 جستجوی کاربر", "📊 آمار کاربران"],
+            ["🏠 منوی اصلی"],
+        ],
+        "کاربر را جستجو کنید یا آمار را ببینید",
+    )
+
+
+def content_menu() -> ReplyKeyboardMarkup:
+    return _reply(
+        [
+            ["👨‍🏫 دبیرها", "🛡 سپرها"],
+            ["📖 پک‌های مطالعه", "🎯 فعالیت‌های روزانه"],
+            ["❓ سؤال روزانه", "👥 سؤال گروهی"],
+            ["➕ دبیر جدید", "➕ سپر جدید"],
+            ["➕ پک مطالعه جدید"],
+            ["🏠 منوی اصلی"],
+        ],
+        "محتوا را مدیریت یا مورد جدیدی ایجاد کنید",
+    )
+
+
+def publishing_menu() -> ReplyKeyboardMarkup:
+    return _reply(
+        [
+            ["📣 پیام همگانی"],
+            ["🎁 جعبه شانس", "🃏 کارت شانس"],
+            ["🏠 منوی اصلی"],
+        ],
+        "نوع ارسال را انتخاب کنید",
+    )
+
+
+def settings_menu() -> ReplyKeyboardMarkup:
+    return _reply(
+        [
+            ["📢 قفل عضویت کانال"],
+            ["🏠 منوی اصلی"],
+        ],
+        "تنظیم موردنظر را انتخاب کنید",
     )
 
 
 def chance_box_sections() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="📦 ارسال به بخش ۱"),
-                KeyboardButton(text="📦 ارسال به بخش ۲"),
-            ],
-            [
-                KeyboardButton(text="📦 ارسال به بخش ۳"),
-                KeyboardButton(text="📦 ارسال به بخش ۴"),
-            ],
-            [KeyboardButton(text="❌ لغو")],
+    return _reply(
+        [
+            ["📦 ارسال به بخش ۱", "📦 ارسال به بخش ۲"],
+            ["📦 ارسال به بخش ۳", "📦 ارسال به بخش ۴"],
+            ["❌ لغو"],
         ],
-        resize_keyboard=True,
+        "بخش مقصد جعبه را انتخاب کنید",
+    )
+
+
+def channel_actions(channels) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="➕ افزودن کانال", callback_data="admin_channel:add"
+            )
+        ]
+    ]
+    rows.extend(
+        [
+            InlineKeyboardButton(
+                text=f"🗑 حذف {item.username or item.telegram_id}",
+                callback_data=f"admin_channel:delete:{item.id}",
+            )
+        ]
+        for item in channels
+    )
+    if channels:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🧹 حذف همه کانال‌ها",
+                    callback_data="admin_channel:clear_confirm",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def channel_clear_confirmation() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ بله، حذف شوند", callback_data="admin_channel:clear"
+                ),
+                InlineKeyboardButton(
+                    text="↩️ انصراف", callback_data="admin_channel:refresh"
+                ),
+            ]
+        ]
     )
 
 
@@ -317,9 +392,7 @@ def shield_edit_fields(shield_id: int) -> InlineKeyboardMarkup:
 
 
 def cancel_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="❌ لغو")]], resize_keyboard=True
-    )
+    return _reply([["❌ لغو"]], "اطلاعات خواسته‌شده را بفرستید")
 
 
 def study_pack_actions(pack_id: int) -> InlineKeyboardMarkup:

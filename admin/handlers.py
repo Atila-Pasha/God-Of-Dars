@@ -178,6 +178,66 @@ def allowed(message: Message | CallbackQuery) -> bool:
     )
 
 
+@router.message(CommandStart())
+@router.message(Command("admin"))
+async def start(message: Message, state: FSMContext) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    await message.answer(
+        "🧭 پنل مدیریت GodOfDars\n\n"
+        "عملیات در چهار بخش مرتب شده‌اند؛ یک بخش را انتخاب کنید.",
+        reply_markup=keyboards.main(),
+    )
+
+
+@router.message(F.text.in_({"لغو", "❌ لغو", "🏠 منوی اصلی"}))
+async def cancel(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await message.answer("به منوی اصلی برگشتید.", reply_markup=keyboards.main())
+
+
+@router.message(F.text == "👥 کاربران و گزارش‌ها")
+async def users_section(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await message.answer(
+            "👥 کاربران و گزارش‌ها\n\nجستجو، منابع و وضعیت کاربران را مدیریت کنید.",
+            reply_markup=keyboards.users_menu(),
+        )
+
+
+@router.message(F.text == "🎮 محتوای بازی")
+async def content_section(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await message.answer(
+            "🎮 محتوای بازی\n\nدبیرها، سپرها، پک‌ها، سؤال‌ها و فعالیت‌ها اینجا هستند.",
+            reply_markup=keyboards.content_menu(),
+        )
+
+
+@router.message(F.text == "📤 ارسال و جایزه")
+async def publishing_section(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await message.answer(
+            "📤 ارسال و جایزه\n\nپیام یا جایزه را برای کاربران و گروه‌ها ارسال کنید.",
+            reply_markup=keyboards.publishing_menu(),
+        )
+
+
+@router.message(F.text == "⚙️ تنظیمات ربات")
+async def settings_section(message: Message, state: FSMContext) -> None:
+    if allowed(message):
+        await state.clear()
+        await message.answer(
+            "⚙️ تنظیمات ربات\n\nتنظیمات عمومی و قفل عضویت را مدیریت کنید.",
+            reply_markup=keyboards.settings_menu(),
+        )
+
+
 def number(value: str, label: str, *, minimum: int = 0) -> int:
     # Telegram admins often use Persian/Arabic digits or thousand separators.
     normalized = str.maketrans(
@@ -261,7 +321,7 @@ async def _expire_box_later(
         await cleanup_session.commit()
 
 
-@router.message(F.text.in_({"ارسال جعبه شانس", "🎁 ارسال جعبه شانس"}))
+@router.message(F.text.in_({"ارسال جعبه شانس", "🎁 ارسال جعبه شانس", "🎁 جعبه شانس"}))
 async def chance_box_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceBoxStates.section)
@@ -390,16 +450,17 @@ async def chance_box_publish(
     await state.clear()
     await message.answer(
         f"✅ ارسال جعبه‌ها تمام شد.\nموفق: {sent}\nناموفق: {failed}",
-        reply_markup=keyboards.main(),
+        reply_markup=keyboards.publishing_menu(),
     )
 
 
-@router.message(F.text.in_({"ارسال کارت شانس", "🃏 ارسال کارت شانس"}))
+@router.message(F.text.in_({"ارسال کارت شانس", "🃏 ارسال کارت شانس", "🃏 کارت شانس"}))
 async def chance_card_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChanceCardStates.value)
         await message.answer(
-            "پاداش کارت همگانی را وارد کنید؛ نمونه: طلا 100 یا الماس 5"
+            "پاداش کارت همگانی را وارد کنید؛ نمونه: طلا 100 یا الماس 5",
+            reply_markup=keyboards.cancel_keyboard(),
         )
 
 
@@ -496,11 +557,28 @@ async def chance_card_send(
     await state.clear()
     await message.answer(
         f"✅ کارت شانس همگانی ارسال شد.\nموفق: {sent}\nناموفق: {failed}",
-        reply_markup=keyboards.main(),
+        reply_markup=keyboards.publishing_menu(),
     )
 
 
-@router.message(F.text.in_({"مدیریت قفل کانال", "📢 مدیریت قفل کانال"}))
+def channel_settings_text(channels) -> str:
+    current = (
+        "\n".join(
+            f"{index}. {item.username or item.telegram_id}"
+            for index, item in enumerate(channels, start=1)
+        )
+        or "هیچ کانالی ثبت نشده و قفل خاموش است."
+    )
+    return (
+        "📢 قفل عضویت کانال\n\n"
+        f"کانال‌های فعال:\n{current}\n\n"
+        "برای افزودن یا حذف، از دکمه‌های زیر استفاده کنید."
+    )
+
+
+@router.message(
+    F.text.in_({"مدیریت قفل کانال", "📢 مدیریت قفل کانال", "📢 قفل عضویت کانال"})
+)
 async def channel_settings(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
@@ -508,26 +586,79 @@ async def channel_settings(
         return
     await state.clear()
     channels = await bot_settings_repository.list_channels(session)
-    channel = (
-        "\n".join(
-            f"{item.id}) {item.username or item.telegram_id}" for item in channels
-        )
-        or "خاموش"
-    )
     await message.answer(
-        f"📢 قفل کانال\n\nکانال فعلی: {channel}\n"
-        "برای افزودن کانال، یوزرنیم (مثلاً @mychannel) یا شناسه عددی را بفرستید.\n"
-        "برای حذف، «حذف شماره» مثل «حذف 2» را بفرستید.",
-        reply_markup=keyboards.main(),
+        channel_settings_text(channels),
+        reply_markup=keyboards.channel_actions(channels),
     )
-    await state.set_state(ChannelStates.value)
+
+
+@router.callback_query(F.data.startswith("admin_channel:"))
+async def channel_callback(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    if (
+        not allowed(callback)
+        or not callback.data
+        or not isinstance(callback.message, Message)
+    ):
+        return
+    parts = callback.data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    if action == "add":
+        await state.clear()
+        await state.set_state(ChannelStates.value)
+        await callback.message.answer(
+            "یوزرنیم کانال مثل @mychannel یا شناسه عددی را بفرستید:",
+            reply_markup=keyboards.cancel_keyboard(),
+        )
+        await callback.answer()
+        return
+    if action == "clear_confirm":
+        await safe_edit_text(
+            callback.message,
+            "⚠️ همهٔ کانال‌های قفل عضویت حذف شوند؟",
+            reply_markup=keyboards.channel_clear_confirmation(),
+        )
+        await callback.answer()
+        return
+    if action == "clear":
+        await bot_settings_repository.clear_channel(session)
+        await bot_settings_repository.clear_channels(session)
+        await session.commit()
+        invalidate_channels_cache()
+        await callback.answer("همهٔ کانال‌ها حذف شدند.")
+    elif action == "delete" and len(parts) == 3:
+        try:
+            channel_id = int(parts[2])
+        except ValueError:
+            await callback.answer("شناسه کانال نامعتبر است.", show_alert=True)
+            return
+        removed = await bot_settings_repository.remove_channel(session, channel_id)
+        if removed:
+            await session.commit()
+            invalidate_channels_cache()
+        await callback.answer("کانال حذف شد." if removed else "کانال پیدا نشد.")
+    elif action != "refresh":
+        await callback.answer("عملیات نامعتبر است.", show_alert=True)
+        return
+    channels = await bot_settings_repository.list_channels(session)
+    await safe_edit_text(
+        callback.message,
+        channel_settings_text(channels),
+        reply_markup=keyboards.channel_actions(channels),
+    )
+    if action == "refresh":
+        await callback.answer()
 
 
 @router.message(Command("channel_add"))
 async def channel_add_command(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(ChannelStates.value)
-        await message.answer("یوزرنیم یا شناسه عددی کانال را بفرستید:")
+        await message.answer(
+            "یوزرنیم یا شناسه عددی کانال را بفرستید:",
+            reply_markup=keyboards.cancel_keyboard(),
+        )
 
 
 @router.message(Command("channel_remove"))
@@ -536,10 +667,13 @@ async def channel_remove_command(
 ) -> None:
     if allowed(message):
         await bot_settings_repository.clear_channel(session)
+        await bot_settings_repository.clear_channels(session)
         await session.commit()
         invalidate_channels_cache()
         await state.clear()
-        await message.answer("✅ قفل کانال حذف شد.", reply_markup=keyboards.main())
+        await message.answer(
+            "✅ قفل کانال حذف شد.", reply_markup=keyboards.settings_menu()
+        )
 
 
 @router.message(ChannelStates.value)
@@ -552,6 +686,7 @@ async def channel_value(
     if value.casefold() in {"حذف", "delete", "off", "خاموش"}:
         # Old singleton values are also cleared for a complete off switch.
         await bot_settings_repository.clear_channel(session)
+        await bot_settings_repository.clear_channels(session)
         await session.commit()
         invalidate_channels_cache()
         result = "قفل کانال حذف شد."
@@ -572,7 +707,7 @@ async def channel_value(
         invalidate_channels_cache()
         result = f"کانال {value} به قفل‌ها اضافه شد."
     await state.clear()
-    await message.answer("✅ " + result, reply_markup=keyboards.main())
+    await message.answer("✅ " + result, reply_markup=keyboards.settings_menu())
 
 
 def user_text(user) -> str:
@@ -600,29 +735,14 @@ def user_teachers_text(user, teachers) -> str:
     return "\n\n".join(lines)
 
 
-@router.message(CommandStart())
-@router.message(Command("admin"))
-async def start(message: Message, state: FSMContext) -> None:
-    if not allowed(message):
-        return
-    await state.clear()
-    await message.answer("پنل مدیریت آماده است.", reply_markup=keyboards.main())
-
-
-@router.message(F.text.in_({"لغو", "❌ لغو"}))
-async def cancel(message: Message, state: FSMContext) -> None:
-    if allowed(message):
-        await state.clear()
-        await message.answer("لغو شد.", reply_markup=keyboards.main())
-
-
 @router.message(F.text.in_({"پیام همگانی", "📣 پیام همگانی"}))
 async def broadcast_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
         await state.set_state(BroadcastStates.content)
         await message.answer(
-            "پیام همگانی را بفرستید.\nمی‌توانید فقط متن، یا عکس همراه کپشن ارسال کنید."
+            "پیام همگانی را بفرستید.\nمی‌توانید فقط متن، یا عکس همراه کپشن ارسال کنید.",
+            reply_markup=keyboards.cancel_keyboard(),
         )
 
 
@@ -640,7 +760,8 @@ async def broadcast_send(
     if not total_recipients:
         await state.clear()
         await message.answer(
-            "هیچ کاربری برای ارسال پیام وجود ندارد.", reply_markup=keyboards.main()
+            "هیچ کاربری برای ارسال پیام وجود ندارد.",
+            reply_markup=keyboards.publishing_menu(),
         )
         return
 
@@ -650,7 +771,7 @@ async def broadcast_send(
     await session.commit()
     await message.answer(
         f"📣 ارسال پیام برای {total_recipients} کاربر شروع شد؛ لطفاً صبر کنید...",
-        reply_markup=keyboards.main(),
+        reply_markup=keyboards.publishing_menu(),
     )
 
     main_session = AiohttpSession(
@@ -717,20 +838,23 @@ async def broadcast_send(
 
     await message.answer(
         f"✅ پیام همگانی تمام شد.\nموفق: {sent}\nناموفق: {failed}",
-        reply_markup=keyboards.main(),
+        reply_markup=keyboards.publishing_menu(),
     )
 
 
-@router.message(F.text.in_({"مدیریت کاربران", "👤 مدیریت کاربران"}))
+@router.message(F.text.in_({"مدیریت کاربران", "👤 مدیریت کاربران", "🔎 جستجوی کاربر"}))
 async def users(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.set_state(UserStates.search)
         await message.answer(
-            "شناسه تلگرام، شناسه داخلی یا نام کاربری کاربر را بفرستید:"
+            "شناسه تلگرام، شناسه داخلی یا نام کاربری کاربر را بفرستید:",
+            reply_markup=keyboards.cancel_keyboard(),
         )
 
 
-@router.message(F.text.in_({"آمار کاربران ربات", "📊 آمار کاربران ربات"}))
+@router.message(
+    F.text.in_({"آمار کاربران ربات", "📊 آمار کاربران ربات", "📊 آمار کاربران"})
+)
 async def bot_user_stats(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
@@ -757,7 +881,7 @@ async def bot_user_stats(
         f"✅ کاربران فعال: {active}\n"
         f"⛔ کاربران غیرفعال: {total - active}\n"
         f"🆕 ثبت‌نام امروز: {new_today}",
-        reply_markup=keyboards.main(),
+        reply_markup=keyboards.users_menu(),
     )
 
 
@@ -777,6 +901,9 @@ async def user_search(
             user_text(user),
             reply_markup=keyboards.user_actions(user.id, user.is_active),
         )
+    await message.answer(
+        f"✅ {len(found)} نتیجه پیدا شد.", reply_markup=keyboards.users_menu()
+    )
 
 
 @router.callback_query(F.data.startswith("user:"))
@@ -912,11 +1039,12 @@ async def save_resources(
     )
     await state.clear()
     if user is None:
-        await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.main())
+        await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.users_menu())
         return
     amounts = f"🪙 {data['coin']} سکه و 💎 {data['diamond']} الماس"
     await message.answer(
-        "منابع با موفقیت اضافه شد.\n" + user_text(user), reply_markup=keyboards.main()
+        "منابع با موفقیت اضافه شد.\n" + user_text(user),
+        reply_markup=keyboards.users_menu(),
     )
     try:
         main_session = AiohttpSession(
@@ -934,25 +1062,41 @@ async def save_resources(
         await message.answer("منابع اضافه شد، اما ارسال اعلان برای کاربر ممکن نبود.")
 
 
-@router.message(F.text.in_({"ساخت سؤال روزانه", "❓ ساخت سؤال روزانه"}))
+@router.message(
+    F.text.in_({"ساخت سؤال روزانه", "❓ ساخت سؤال روزانه", "❓ سؤال روزانه"})
+)
 async def question_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
         await state.update_data(scope="daily")
         await state.set_state(QuestionStates.text)
-        await message.answer("متن سؤال روزانه را بفرستید:")
+        await message.answer(
+            "متن سؤال روزانه را بفرستید:",
+            reply_markup=keyboards.cancel_keyboard(),
+        )
 
 
-@router.message(F.text.in_({"ساخت سؤال گروهی", "👥 ساخت سؤال گروهی"}))
+@router.message(F.text.in_({"ساخت سؤال گروهی", "👥 ساخت سؤال گروهی", "👥 سؤال گروهی"}))
 async def group_question_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
         await state.update_data(scope="group")
         await state.set_state(QuestionStates.text)
-        await message.answer("متن سؤال گروهی را بفرستید:")
+        await message.answer(
+            "متن سؤال گروهی را بفرستید:",
+            reply_markup=keyboards.cancel_keyboard(),
+        )
 
 
-@router.message(F.text.in_({"مدیریت فعالیت‌های روزانه", "🎯 مدیریت فعالیت‌های روزانه"}))
+@router.message(
+    F.text.in_(
+        {
+            "مدیریت فعالیت‌های روزانه",
+            "🎯 مدیریت فعالیت‌های روزانه",
+            "🎯 فعالیت‌های روزانه",
+        }
+    )
+)
 async def daily_quest_start(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
@@ -1072,7 +1216,8 @@ async def daily_quest_callback(
         await callback.answer("لغو شد.")
         if callback.message:
             await callback.message.answer(
-                "عملیات فعالیت روزانه لغو شد.", reply_markup=keyboards.main()
+                "عملیات فعالیت روزانه لغو شد.",
+                reply_markup=keyboards.content_menu(),
             )
         return
     if action == "date":
@@ -1163,7 +1308,9 @@ async def daily_quest_edit_value(
         "channel",
     }:
         await state.clear()
-        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        await message.answer(
+            "فلو ویرایش منقضی شد.", reply_markup=keyboards.content_menu()
+        )
         return
     try:
         raw = message.text.strip()
@@ -1204,7 +1351,7 @@ async def daily_quest_edit_value(
         await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
         return
     await state.clear()
-    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.content_menu())
     await message.answer(
         f"ویرایش فعالیت «{quest.title}»\nیک مورد دیگر را انتخاب کنید:",
         reply_markup=keyboards.daily_quest_edit_fields(quest.id),
@@ -1346,7 +1493,7 @@ async def daily_quest_create(
         await message.answer(
             "اطلاعات ساخت فعالیت ناقص یا منقضی شده است. "
             "لطفاً از منوی مدیریت فعالیت‌های روزانه دوباره شروع کنید.",
-            reply_markup=keyboards.main(),
+            reply_markup=keyboards.content_menu(),
         )
         return
     raw_date = data.get("activity_date")
@@ -1368,11 +1515,13 @@ async def daily_quest_create(
         await state.clear()
         await message.answer(
             f"ساخت فعالیت انجام نشد: {exc}\nلطفاً دوباره از منوی مدیریت شروع کنید.",
-            reply_markup=keyboards.main(),
+            reply_markup=keyboards.content_menu(),
         )
         return
     await state.clear()
-    await message.answer(f"فعالیت #{quest.id} ساخته شد.", reply_markup=keyboards.main())
+    await message.answer(
+        f"فعالیت #{quest.id} ساخته شد.", reply_markup=keyboards.content_menu()
+    )
 
 
 @router.message(DailyQuestStates.channel)
@@ -1384,7 +1533,7 @@ async def daily_quest_channel(
     channel = message.text.strip()
     if channel in {"لغو", "❌ لغو"}:
         await state.clear()
-        await message.answer("لغو شد.", reply_markup=keyboards.main())
+        await message.answer("لغو شد.", reply_markup=keyboards.content_menu())
         return
     try:
         identifier, invite_link = subscription_service.parse_daily_channel(channel)
@@ -1514,14 +1663,14 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
             await state.clear()
             await message.answer(
                 "هیچ گروه فعال و ثبت‌شده‌ای برای ارسال سؤال وجود ندارد.",
-                reply_markup=keyboards.main(),
+                reply_markup=keyboards.content_menu(),
             )
             return
         await state.clear()
         await message.answer(
             f"✅ سؤال گروهی ساخته و ارسال شد.\nشناسه: {result.question.id}\n"
             f"گروه‌های موفق: {len(result.sent_chat_ids)}\nگروه‌های ناموفق: {len(result.failed_chat_ids)}",
-            reply_markup=keyboards.main(),
+            reply_markup=keyboards.content_menu(),
         )
         return
 
@@ -1536,11 +1685,12 @@ async def q_banana(message: Message, state: FSMContext, session: AsyncSession) -
     )
     await state.clear()
     await message.answer(
-        f"✅ سؤال روزانه ساخته شد. شناسه: {question.id}", reply_markup=keyboards.main()
+        f"✅ سؤال روزانه ساخته شد. شناسه: {question.id}",
+        reply_markup=keyboards.content_menu(),
     )
 
 
-@router.message(F.text.in_({"مدیریت دبیرها", "👨‍🏫 مدیریت دبیرها"}))
+@router.message(F.text.in_({"مدیریت دبیرها", "👨‍🏫 مدیریت دبیرها", "👨‍🏫 دبیرها"}))
 async def teachers(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message):
         return
@@ -1562,17 +1712,19 @@ async def teachers(message: Message, state: FSMContext, session: AsyncSession) -
             reply_markup=keyboards.teacher_actions(teacher.id),
         )
     await message.answer(
-        "برای ساخت دبیر جدید، /teacher را بفرستید.", reply_markup=keyboards.main()
+        "برای ساخت دبیر، دکمهٔ «➕ دبیر جدید» را بزنید.",
+        reply_markup=keyboards.content_menu(),
     )
 
 
 @router.message(Command("teacher"))
+@router.message(F.text == "➕ دبیر جدید")
 async def teacher_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
         await state.update_data(mode="create")
         await state.set_state(TeacherStates.name)
-        await message.answer("نام دبیر:")
+        await message.answer("نام دبیر:", reply_markup=keyboards.cancel_keyboard())
 
 
 async def teacher_value(
@@ -1724,12 +1876,12 @@ async def t_emoji(message: Message, state: FSMContext, session: AsyncSession) ->
     )
     if teacher is None:
         await state.clear()
-        await message.answer("دبیر پیدا نشد.", reply_markup=keyboards.main())
+        await message.answer("دبیر پیدا نشد.", reply_markup=keyboards.content_menu())
         return
     await state.clear()
     await message.answer(
         f"✅ دبیر «{teacher.name}» با شناسه {teacher.id} {'ویرایش شد' if mode == 'edit' else 'ساخته شد'}.",
-        reply_markup=keyboards.main(),
+        reply_markup=keyboards.content_menu(),
     )
 
 
@@ -1786,7 +1938,8 @@ async def teacher_callback(
     elif action == "done":
         await state.clear()
         await callback.message.answer(
-            f"ویرایش دبیر «{teacher.name}» تمام شد.", reply_markup=keyboards.main()
+            f"ویرایش دبیر «{teacher.name}» تمام شد.",
+            reply_markup=keyboards.content_menu(),
         )
     else:
         await callback.answer("عملیات ویرایش معتبر نیست.", show_alert=True)
@@ -1805,7 +1958,9 @@ async def teacher_edit_value(
     teacher_id = data.get("edit_id")
     if field not in TEACHER_EDIT_PROMPTS or teacher_id is None:
         await state.clear()
-        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        await message.answer(
+            "فلو ویرایش منقضی شد.", reply_markup=keyboards.content_menu()
+        )
         return
     try:
         edit_value: object
@@ -1854,14 +2009,14 @@ async def teacher_edit_value(
         await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
         return
     await state.clear()
-    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.content_menu())
     await message.answer(
         f"ویرایش دبیر «{teacher.name}»\nیک مورد دیگر را برای تغییر انتخاب کنید:",
         reply_markup=keyboards.teacher_edit_fields(teacher.id),
     )
 
 
-@router.message(F.text.in_({"مدیریت سپرها", "🛡 مدیریت سپرها"}))
+@router.message(F.text.in_({"مدیریت سپرها", "🛡 مدیریت سپرها", "🛡 سپرها"}))
 async def shields(message: Message, state: FSMContext, session: AsyncSession) -> None:
     if not allowed(message):
         return
@@ -1882,17 +2037,19 @@ async def shields(message: Message, state: FSMContext, session: AsyncSession) ->
             reply_markup=keyboards.shield_actions(shield.id),
         )
     await message.answer(
-        "برای ساخت سپر جدید، /shield را بفرستید.", reply_markup=keyboards.main()
+        "برای ساخت سپر، دکمهٔ «➕ سپر جدید» را بزنید.",
+        reply_markup=keyboards.content_menu(),
     )
 
 
 @router.message(Command("shield"))
+@router.message(F.text == "➕ سپر جدید")
 async def shield_start(message: Message, state: FSMContext) -> None:
     if allowed(message):
         await state.clear()
         await state.update_data(mode="create")
         await state.set_state(ShieldStates.name)
-        await message.answer("نام سپر:")
+        await message.answer("نام سپر:", reply_markup=keyboards.cancel_keyboard())
 
 
 async def shield_value(
@@ -2029,16 +2186,18 @@ async def s_description(
         )
     except ValueError as exc:
         await state.clear()
-        await message.answer(f"خطا در ذخیره سپر: {exc}", reply_markup=keyboards.main())
+        await message.answer(
+            f"خطا در ذخیره سپر: {exc}", reply_markup=keyboards.content_menu()
+        )
         return
     if shield is None:
         await state.clear()
-        await message.answer("سپر پیدا نشد.", reply_markup=keyboards.main())
+        await message.answer("سپر پیدا نشد.", reply_markup=keyboards.content_menu())
         return
     await state.clear()
     await message.answer(
         f"✅ سپر «{shield.name}» با شناسه {shield.id} ذخیره شد.",
-        reply_markup=keyboards.main(),
+        reply_markup=keyboards.content_menu(),
     )
 
 
@@ -2095,7 +2254,8 @@ async def shield_callback(
     elif action == "done":
         await state.clear()
         await callback.message.answer(
-            f"ویرایش سپر «{shield.name}» تمام شد.", reply_markup=keyboards.main()
+            f"ویرایش سپر «{shield.name}» تمام شد.",
+            reply_markup=keyboards.content_menu(),
         )
     else:
         await callback.answer("عملیات ویرایش معتبر نیست.", show_alert=True)
@@ -2114,7 +2274,9 @@ async def shield_edit_value(
     shield_id = data.get("edit_id")
     if field not in SHIELD_EDIT_PROMPTS or shield_id is None:
         await state.clear()
-        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        await message.answer(
+            "فلو ویرایش منقضی شد.", reply_markup=keyboards.content_menu()
+        )
         return
     raw_value = message.text.strip()
     try:
@@ -2153,14 +2315,16 @@ async def shield_edit_value(
         await message.answer(str(exc), reply_markup=keyboards.cancel_keyboard())
         return
     await state.clear()
-    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.content_menu())
     await message.answer(
         f"ویرایش سپر «{shield.name}»\nیک مورد دیگر را برای تغییر انتخاب کنید:",
         reply_markup=keyboards.shield_edit_fields(shield.id),
     )
 
 
-@router.message(F.text.in_({"مدیریت پک‌های مطالعه", "📖 مدیریت پک‌های مطالعه"}))
+@router.message(
+    F.text.in_({"مدیریت پک‌های مطالعه", "📖 مدیریت پک‌های مطالعه", "📖 پک‌های مطالعه"})
+)
 async def study_packs_admin(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
@@ -2184,19 +2348,23 @@ async def study_packs_admin(
             reply_markup=keyboards.study_pack_actions(pack.id),
         )
     await message.answer(
-        "برای ساخت پک جدید، /study_pack را بفرستید.",
-        reply_markup=keyboards.main(),
+        "برای ساخت پک، دکمهٔ «➕ پک مطالعه جدید» را بزنید.",
+        reply_markup=keyboards.content_menu(),
     )
 
 
 @router.message(Command("study_pack"))
+@router.message(F.text == "➕ پک مطالعه جدید")
 async def study_pack_start(message: Message, state: FSMContext) -> None:
     if not allowed(message):
         return
     await state.clear()
     await state.update_data(mode="create")
     await state.set_state(StudyPackStates.key)
-    await message.answer("کلید یکتا (لاتین، بدون فاصله):")
+    await message.answer(
+        "کلید یکتا (لاتین، بدون فاصله):",
+        reply_markup=keyboards.cancel_keyboard(),
+    )
 
 
 @router.message(StudyPackStates.key)
@@ -2283,7 +2451,7 @@ async def study_pack_save(
     await session.flush()
     await state.clear()
     await message.answer(
-        f"✅ پک «{pack.name}» ساخته شد.", reply_markup=keyboards.main()
+        f"✅ پک «{pack.name}» ساخته شد.", reply_markup=keyboards.content_menu()
     )
 
 
@@ -2352,7 +2520,7 @@ async def study_pack_callback(
     elif action == "done":
         await state.clear()
         await callback.message.answer(
-            "ویرایش پک تمام شد.", reply_markup=keyboards.main()
+            "ویرایش پک تمام شد.", reply_markup=keyboards.content_menu()
         )
     else:
         await callback.answer("عملیات معتبر نیست.", show_alert=True)
@@ -2377,7 +2545,9 @@ async def study_pack_edit_value(
         "reward_amount",
     }:
         await state.clear()
-        await message.answer("فلو ویرایش منقضی شد.", reply_markup=keyboards.main())
+        await message.answer(
+            "فلو ویرایش منقضی شد.", reply_markup=keyboards.content_menu()
+        )
         return
     raw_value = message.text.strip()
     try:
@@ -2417,7 +2587,7 @@ async def study_pack_edit_value(
     setattr(pack, field, edit_value)
     await session.flush()
     await state.clear()
-    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.main())
+    await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.content_menu())
     await message.answer(
         f"ویرایش پک «{pack.name}»\nیک مورد دیگر را انتخاب کنید:",
         reply_markup=keyboards.study_pack_edit_fields(pack.id),
