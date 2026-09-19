@@ -64,7 +64,10 @@ rclone copy "$upload_dir" "$remote" --checksum
 rclone check "$upload_dir" "$remote" --one-way
 
 # A successful sync keeps exactly the newly verified archive and checksum.
-rclone sync "$upload_dir" "$remote" --checksum --delete-after
+# Delete superseded Drive objects permanently so they do not consume quota in
+# Google Drive Trash.
+rclone sync "$upload_dir" "$remote" --checksum --delete-after \
+    --drive-use-trash=false
 
 install -d -m 700 "$backup_root/current"
 rclone sync "$upload_dir" "$backup_root/current" --checksum --delete-after
