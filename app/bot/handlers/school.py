@@ -424,10 +424,22 @@ async def castle_callback_handler(
             user = await _user(session, callback.from_user.id)
             castle = await castle_service.snapshot(session, user.id)
             upgrade = castle_service.config.castle_upgrade(castle.level)
+            banana_reward = castle_service.config.upgrade_banana_reward(
+                upgrade.diamond_cost
+            )
             await _send_or_edit(
                 callback,
                 f"⬆️ ارتقای دژ\n\n"
+                f"سطح: {_number(castle.level)} → {_number(castle.level + 1)}\n"
                 f"هزینه: {_number(upgrade.diamond_cost)} الماس\n"
+                "\n📈 بعد از ارتقا:\n"
+                f"❤️ استحکام: {_number(castle.strength)} → "
+                f"{_number(castle.strength + upgrade.strength_delta)} "
+                f"(+{_number(upgrade.strength_delta)})\n"
+                f"🛡 قدرت دفاع: {_number(castle.defense_power)} → "
+                f"{_number(castle.defense_power + upgrade.defense_delta)} "
+                f"(+{_number(upgrade.defense_delta)})\n"
+                f"🍌 پاداش ارتقا: {_number(banana_reward)} موز\n\n"
                 "آیا می‌خواهی ارتقای دژ را انجام بدهم؟",
                 reply_markup=confirmation_keyboard(
                     action="castle_upgrade", target_id=0
@@ -552,11 +564,22 @@ async def teacher_callback_handler(
                 session, user.id, callback_data.teacher_id
             )
             upgrade_cost = teacher_service.upgrade_cost(owned)
+            current_damage = teacher_service.damage(owned)
+            next_damage = teacher_service.config.teacher_damage(
+                owned.teacher.id,
+                owned.level + 1,
+                owned.teacher.damage,
+            )
+            banana_reward = teacher_service.config.upgrade_banana_reward(upgrade_cost)
             await _send_or_edit(
                 callback,
                 f"⬆️ ارتقای دبیر {owned.teacher.name}\n\n"
                 f"ارتقا از سطح {_number(owned.level)} به {_number(owned.level + 1)}\n"
                 f"هزینه: {_number(upgrade_cost)} الماس\n"
+                "\n📈 بعد از ارتقا:\n"
+                f"⚔️ قدرت دبیر: {_number(current_damage)} → "
+                f"{_number(next_damage)} (+{_number(next_damage - current_damage)})\n"
+                f"🍌 پاداش ارتقا: {_number(banana_reward)} موز\n\n"
                 "آیا می‌خواهی دبیر را ارتقا بدهم؟",
                 reply_markup=confirmation_keyboard(
                     action="teacher_upgrade", target_id=owned.id

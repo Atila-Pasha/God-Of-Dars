@@ -101,7 +101,7 @@ class AdminService:
     ) -> User | None:
         """Grant resources and record each grant as an auditable transaction."""
         if banana != 0:
-            raise ValueError("XP فقط از طریق حمله دریافت می‌شود")
+            raise ValueError("موز فقط از طریق حمله دریافت می‌شود")
         if min(coin, diamond, banana) < 0:
             raise ValueError("resource values cannot be negative")
         result = await session.execute(

@@ -7,6 +7,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
@@ -16,6 +17,8 @@ from app.bot.keyboards.main_menu import (
 )
 from app.bot.keyboards.profile import level_confirmation_keyboard, profile_keyboard
 from app.bot.utils.telegram import safe_edit_text
+from app.models.shield import Shield
+from app.models.teacher import Teacher
 from app.repositories.profile import ProfileSnapshot
 from app.services.level_service import LevelService
 from app.services.profile_service import ProfileNotFound, ProfileService
@@ -273,17 +276,64 @@ async def _show_level_upgrade(target: CallbackQuery, session: AsyncSession) -> N
     cost = level_service.upgrade_cost(snapshot.user.level)
     resources = snapshot.user.resources
     xp = resources.banana if resources else 0
+    next_level = snapshot.user.level + 1
+    unlocks = await _level_unlocks(session, next_level)
     text = (
         f"⬆️ ارتقای سطح فرمانده\n\n"
         f"سطح فعلی: {_number(snapshot.user.level)}\n"
-        f"سطح بعدی: {_number(snapshot.user.level + 1)}\n"
+        f"سطح بعدی: {_number(next_level)}\n"
         f"هزینه: {_number(cost)} موز\n"
         f"موز شما: {_number(xp)}\n\n"
+        "🎁 با رسیدن به این سطح:\n"
+        f"{unlocks}\n\n"
         "آیا ارتقای سطح را تأیید می‌کنی؟"
     )
     await safe_edit_text(
         target.message, text, reply_markup=level_confirmation_keyboard()
     )
+
+
+async def _level_unlocks(session: AsyncSession, next_level: int) -> str:
+    """Describe every configured feature unlocked at one player level."""
+    lines: list[str] = []
+    config = level_service.config
+
+    previous_slots = config.teacher_slots(next_level - 1)
+    next_slots = config.teacher_slots(next_level)
+    if next_slots > previous_slots:
+        lines.append(
+            f"• ظرفیت دبیرها از {_number(previous_slots)} به "
+            f"{_number(next_slots)} می‌رسد."
+        )
+
+    teacher_result = await session.execute(
+        select(Teacher.name)
+        .where(Teacher.is_active.is_(True), Teacher.unlock_level == next_level)
+        .order_by(Teacher.id)
+    )
+    teacher_names = list(teacher_result.scalars().all())
+    if teacher_names:
+        lines.append(f"• دبیر جدید: {'، '.join(teacher_names)}")
+
+    shield_result = await session.execute(
+        select(Shield.name)
+        .where(Shield.is_active.is_(True), Shield.unlock_level == next_level)
+        .order_by(Shield.id)
+    )
+    shield_names = list(shield_result.scalars().all())
+    if shield_names:
+        lines.append(f"• سپر جدید: {'، '.join(shield_names)}")
+
+    mine_levels = sorted(
+        level
+        for level, values in config.mine_levels.items()
+        if values.required_player_level == next_level
+    )
+    if mine_levels:
+        rendered = "، ".join(_number(level) for level in mine_levels)
+        lines.append(f"• امکان ارتقای معدن به سطح {rendered}")
+
+    return "\n".join(lines) if lines else "• قابلیت تازه‌ای در این سطح باز نمی‌شود."
 
 
 @router.message(Command("profile"))
@@ -423,7 +473,7 @@ async def level_confirmation_handler(
         await _show_profile_section(callback, session, "profile")
         await callback.message.answer(f"سطح شما به {user.level} رسید.")
     except InsufficientCoins:
-        await callback.message.answer("XP کافی ندارید.")
+        await callback.message.answer("موز کافی ندارید.")
     except MaxLevelReached:
         await callback.message.answer("به بالاترین سطح تنظیم‌شده رسیده‌اید.")
     except (OperationNotConfigured, SchoolUserNotFound, UserInactiveError):

@@ -47,6 +47,9 @@ def _mine_text(snapshot) -> str:
 
 def _upgrade_text(snapshot, next_level) -> str:
     current = snapshot.production
+    banana_reward = mine_service.config.upgrade_banana_reward(
+        next_level.diamond_cost or 0
+    )
     return (
         "⬆️ پیش‌نمایش ارتقای معدن\n\n"
         f"سطح فعلی: {snapshot.level}\n"
@@ -57,6 +60,7 @@ def _upgrade_text(snapshot, next_level) -> str:
         f"💎 الماس: {next_level.diamond_per_minute} "
         f"(تغییر: {next_level.diamond_per_minute - current.diamond_per_minute:+d})\n\n"
         f"💎 هزینه ارتقا: {next_level.diamond_cost} الماس\n\n"
+        f"🍌 پاداش ارتقا: {banana_reward} موز\n\n"
         "آیا ارتقای معدن را تأیید می‌کنی؟"
     )
 
@@ -117,7 +121,7 @@ async def mine_callback(
             )
         elif callback_data.action == "collect":
             snapshot, amounts = await mine_service.collect(session, user.id)
-            labels = ("طلا", "الماس", "XP")
+            labels = ("طلا", "الماس", "موز")
             collected = "، ".join(
                 f"{amount} {label}"
                 for label, amount in zip(labels, amounts, strict=True)

@@ -114,7 +114,7 @@ class GroupQuestionPublisher:
         labels = (
             ("coin_reward", "سکه"),
             ("diamond_reward", "الماس"),
-            ("banana_reward", "XP"),
+            ("banana_reward", "موز"),
         )
         for field, label in labels:
             amount = getattr(question, field, 0) or 0
