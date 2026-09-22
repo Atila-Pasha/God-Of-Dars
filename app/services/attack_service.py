@@ -29,6 +29,7 @@ from app.services.school_errors import (
     InvalidTeacherState,
     RandomAttackSelectionExpired,
     RandomOpponentNotFound,
+    TargetProtectedByShield,
     TeacherInHospital,
     TeacherLimitReached,
     TeacherNotOwned,
@@ -51,6 +52,7 @@ class AttackResult:
     loot_coin: int
     loot_diamond: int
     loot_banana: int
+    blocked_by_shield: bool = False
 
 
 @dataclass(frozen=True)
@@ -269,9 +271,7 @@ class AttackService:
             raise AttackerNotRegistered
         normalized = identifier.strip()
         if normalized.isdecimal():
-            target = await self.users.get_by_telegram_user_id(
-                session, int(normalized)
-            )
+            target = await self.users.get_by_telegram_user_id(session, int(normalized))
             if target is not None and not target.is_active:
                 target = None
         else:
@@ -280,6 +280,7 @@ class AttackService:
             raise AttackTargetNotRegistered
         if target.id == attacker.id:
             raise CannotAttackSelf
+        await self._ensure_target_attackable(session, target.id)
         return AttackTargetPreview(
             id=target.id,
             telegram_user_id=target.telegram_user_id,
@@ -526,6 +527,7 @@ class AttackService:
         )
         await lock_attack_dependencies(session, (attacker, target))
         await self._ensure_no_active_attack(session, attacker.id)
+        await self._ensure_target_attackable(session, target.id)
         selected_ids = teacher_ids or [teacher_id]
         if len(dict.fromkeys(selected_ids)) > self.config.max_attack_teachers:
             raise TeacherLimitReached
@@ -563,6 +565,7 @@ class AttackService:
         )
         await lock_attack_dependencies(session, (attacker, target))
         await self._ensure_no_active_attack(session, attacker.id)
+        await self._ensure_target_attackable(session, target.id)
 
         selected_ids = list(dict.fromkeys(teacher_ids))
         if not selected_ids:
@@ -676,6 +679,32 @@ class AttackService:
         )
         teacher_name = teacher.teacher.name if teacher is not None else "دبیر"
         teacher_ability = teacher.teacher.ability_text if teacher is not None else None
+        if await self.castle_service.shield_service.has_active_shield(
+            session, target.id
+        ):
+            now = datetime.now(UTC)
+            attack.status = AttackStatus.RESOLVED
+            attack.resolved_at = now
+            attack.result_damage = 0
+            attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
+            attack.is_successful = False
+            await session.flush()
+            return AttackResult(
+                attack=attack,
+                attacker_telegram_id=attacker.telegram_user_id,
+                attacker_name=attacker.first_name,
+                target_name=target.first_name,
+                target_telegram_id=target.telegram_user_id,
+                teacher_name=teacher_name,
+                ability_text=teacher_ability,
+                castle_damage=0,
+                teacher_injury=0,
+                castle_strength_after=target_castle.strength,
+                loot_coin=0,
+                loot_diamond=0,
+                loot_banana=0,
+                blocked_by_shield=True,
+            )
         castle_damage, injury = self.config.attack_rules.resolve(
             attack.teacher_damage_snapshot,
             attack.target_defense_power_snapshot,
@@ -867,6 +896,7 @@ class AttackService:
     async def _preview_with_teachers(
         self, session, attacker, target, teachers
     ) -> AttackPreview:
+        await self._ensure_target_attackable(session, target.id)
         castle = await self.castle_service.battle_snapshot(session, target.id)
         resolved = [
             self.config.attack_rules.resolve(
@@ -1002,6 +1032,7 @@ class AttackService:
             if teacher.status is not TeacherStatus.ACTIVE:
                 raise InvalidTeacherState
         _, castles = await lock_attack_dependencies(session, (attacker, target))
+        await self._ensure_target_attackable(session, target.id)
         target_castle = castles.get(target.id)
         if target_castle is None:
             raise AttackTargetNotRegistered
@@ -1113,6 +1144,14 @@ class AttackService:
             castle_strength_after=last_castle.castle_strength_after,
             **total_loot,
         )
+
+    async def _ensure_target_attackable(
+        self, session: AsyncSession, target_id: int
+    ) -> None:
+        if await self.castle_service.shield_service.has_active_shield(
+            session, target_id
+        ):
+            raise TargetProtectedByShield
 
     def _loot(
         self,

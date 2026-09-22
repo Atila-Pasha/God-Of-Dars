@@ -26,6 +26,11 @@ notification_service = NotificationService()
 
 
 def _result_text(result) -> str:
+    if result.blocked_by_shield:
+        return (
+            f"🛡 حمله به دژ «{result.target_name}» به‌دلیل فعال بودن سپر "
+            "متوقف شد.\n\nهیچ آسیبی وارد نشد و غنیمت یا XP حمله‌ای تعلق نگرفت."
+        )
     injury = (
         f"🩹 آسیب دبیر: {result.teacher_injury}"
         if result.teacher_injury

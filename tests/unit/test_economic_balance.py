@@ -1,5 +1,11 @@
+from importlib import import_module
+
 from app.core.enums import ResourceType
 from app.core.game_logic import game_config
+
+catalog = import_module(
+    "app.db.migrations.versions.20260923_balanced_study_and_shields"
+)
 
 
 def test_mine_and_castle_progression_do_not_outgrow_high_level_income() -> None:
@@ -31,3 +37,24 @@ def test_upgrade_xp_reward_is_capped() -> None:
             game_config.upgrade_banana_reward(cost)
             <= game_config.upgrade_banana_maximum
         )
+
+
+def test_study_rewards_remain_below_active_mine_income() -> None:
+    for _key, _name, duration, resource, amount in catalog.STUDY_PACKS:
+        if resource == ResourceType.COIN.value:
+            assert amount <= game_config.mine_level(1).coin_per_minute * duration * 2
+        else:
+            # Diamond study is a deliberately slow bootstrap path before the
+            # player's mine starts producing diamonds.
+            assert amount / duration <= 0.05
+
+
+def test_full_protection_shields_cost_at_least_their_mine_window() -> None:
+    for _name, price, resource, level, duration, _description in catalog.SHIELDS:
+        mine = game_config.mine_level(level)
+        production = (
+            mine.coin_per_minute
+            if resource == ResourceType.COIN.value
+            else mine.diamond_per_minute
+        )
+        assert price >= production * duration

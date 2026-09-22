@@ -182,7 +182,7 @@ class ShieldService:
     async def consume_for_attack(
         self, session: AsyncSession, user_id: int, incoming_damage: int
     ) -> ShieldMitigation:
-        """Apply the active timed shield without consuming its remaining duration."""
+        """Block an attack completely while a timed shield is active."""
         return await self.mitigate_attack(
             session, user_id, incoming_damage, for_update=True
         )
@@ -195,7 +195,7 @@ class ShieldService:
         *,
         for_update: bool = False,
     ) -> ShieldMitigation:
-        """Calculate mitigation from the user's active shield."""
+        """Return complete protection when the user has an active timed shield."""
         if incoming_damage < 0:
             raise GameConfigurationError("Incoming damage cannot be negative")
         now = datetime.now(UTC)
@@ -217,11 +217,7 @@ class ShieldService:
         if active is None:
             return ShieldMitigation(incoming_damage, 0, incoming_damage)
         self.validate(active.shield)
-        return self.config.apply_shield(
-            incoming_damage,
-            reduction_percent=active.shield.reduction_percent,
-            flat_absorption=active.shield.flat_absorption,
-        )
+        return ShieldMitigation(incoming_damage, incoming_damage, 0)
 
 
 class ShieldAdminService:

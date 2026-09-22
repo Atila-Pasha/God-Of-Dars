@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -7,7 +7,7 @@ from app.bot.utils.attack import teacher_phrase
 from app.core.enums import ResourceType
 from app.core.game_logic import AttackRules, CastleRepairRules, GameConfig
 from app.services.attack_service import AttackService
-from app.services.school_errors import CannotAttackSelf
+from app.services.school_errors import CannotAttackSelf, TargetProtectedByShield
 
 
 @pytest.mark.parametrize(
@@ -85,6 +85,26 @@ async def test_tampered_confirmation_cannot_schedule_self_attack():
             target_id=7,
             teacher_ids=[3],
         )
+
+
+@pytest.mark.asyncio
+async def test_attack_preview_rejects_a_target_with_an_active_shield():
+    service = AttackService()
+    service.castle_service.shield_service = SimpleNamespace(
+        has_active_shield=AsyncMock(return_value=True)
+    )
+
+    with pytest.raises(TargetProtectedByShield):
+        await service._preview_with_teachers(
+            SimpleNamespace(),
+            SimpleNamespace(id=1),
+            SimpleNamespace(id=2),
+            [],
+        )
+
+    service.castle_service.shield_service.has_active_shield.assert_awaited_once_with(
+        ANY, 2
+    )
 
 
 def test_loot_is_capped_by_teacher_power_not_target_wealth():

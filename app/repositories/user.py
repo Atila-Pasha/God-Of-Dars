@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from secrets import randbelow
 
 from sqlalchemy import func, select
@@ -8,6 +9,7 @@ from app.models.castle import Castle
 from app.models.defense import Defense
 from app.models.resource import Resource
 from app.models.user import User
+from app.models.user_shield import UserShield
 
 
 class UserRepository:
@@ -79,9 +81,23 @@ class UserRepository:
         self, session: AsyncSession, *, level: int, exclude_user_id: int
     ) -> list[int]:
         """Return populated levels nearest to a player without scanning users."""
+        now = datetime.now(UTC)
+        active_shield = (
+            select(UserShield.id)
+            .where(
+                UserShield.user_id == User.id,
+                UserShield.active_until.is_not(None),
+                UserShield.active_until > now,
+            )
+            .exists()
+        )
         result = await session.scalars(
             select(User.level)
-            .where(User.is_active.is_(True), User.id != exclude_user_id)
+            .where(
+                User.is_active.is_(True),
+                User.id != exclude_user_id,
+                ~active_shield,
+            )
             .group_by(User.level)
             .order_by(func.abs(User.level - level), User.level)
         )
@@ -105,6 +121,13 @@ class UserRepository:
             User.is_active.is_(True),
             User.level == level,
             User.id != exclude_user_id,
+            ~select(UserShield.id)
+            .where(
+                UserShield.user_id == User.id,
+                UserShield.active_until.is_not(None),
+                UserShield.active_until > datetime.now(UTC),
+            )
+            .exists(),
         ]
         if exclude_target_id is not None:
             conditions.append(User.id != exclude_target_id)

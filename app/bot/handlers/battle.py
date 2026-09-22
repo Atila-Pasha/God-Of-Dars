@@ -44,6 +44,7 @@ from app.services.school_errors import (
     SchoolError,
     SchoolUserNotFound,
     ShieldAlreadyActive,
+    TargetProtectedByShield,
     TeacherInHospital,
     TeacherNotOwned,
 )
@@ -54,6 +55,12 @@ MAX_ATTACK_TEACHERS = attack_service.config.max_attack_teachers
 
 
 def _attack_text(result: AttackResult) -> str:
+    if result.blocked_by_shield:
+        return (
+            f"🛡 حملهٔ بازیکن «{result.attacker_name}» به دژ «{result.target_name}» "
+            "به‌دلیل فعال بودن سپر دفاعی متوقف شد.\n\n"
+            "هیچ آسیبی وارد نشد و غنیمت یا XP حمله‌ای تعلق نگرفت."
+        )
     teacher_state = (
         f"🩹 آسیب دبیر: {result.teacher_injury}"
         if result.teacher_injury
@@ -352,7 +359,7 @@ async def _report_error(message: Message, error: Exception) -> None:
         await message.answer(
             "⚔️ حمله فعال دارید؛ پس از پایان آن می‌توانید دوباره حمله کنید."
         )
-    elif isinstance(error, ShieldAlreadyActive):
+    elif isinstance(error, (ShieldAlreadyActive, TargetProtectedByShield)):
         await message.answer(
             "🛡 این بازیکن سپر فعال دارد و فعلاً نمی‌توان به او حمله کرد."
         )

@@ -112,6 +112,10 @@ class ShieldAlreadyActive(SchoolError):
     """The player cannot activate another shield while one is protecting them."""
 
 
+class TargetProtectedByShield(SchoolError):
+    """The target cannot be attacked while their timed shield is active."""
+
+
 class MineNotFound(SchoolError):
     pass
 

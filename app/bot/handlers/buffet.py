@@ -150,8 +150,7 @@ async def group_purchase_message(
                 f"🛒 خرید سپر «{shield.name}»\n\n"
                 f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
                 f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
-                f"کاهش آسیب: {shield.reduction_percent}٪ + "
-                f"{shield.flat_absorption} جذب ثابت\n\n"
+                "اثر: جلوگیری کامل از حمله در مدت محافظت\n\n"
                 "آیا خرید را تأیید می‌کنید؟",
                 reply_markup=shield_purchase_confirmation(shield),
                 reply_to_message_id=message.message_id,
@@ -234,9 +233,7 @@ async def buffet_conversion_message(
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
 
 
-@router.message(
-    F.text.regexp(r"^\s*(?:🛡\s*)?(?:فهرست\s+سپر\s*ها|خرید\s+سپر)\s*$")
-)
+@router.message(F.text.regexp(r"^\s*(?:🛡\s*)?(?:فهرست\s+سپر\s*ها|خرید\s+سپر)\s*$"))
 async def buffet_shields_message(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
@@ -348,8 +345,7 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
         for shield in catalog:
             lines.append(
                 f"\n🛡 {shield.name} — {shield.purchase_price} {_shield_currency(shield)}"
-                f"\nمدت: {shield.duration_minutes} دقیقه — کاهش "
-                f"{shield.reduction_percent}٪ + {shield.flat_absorption} جذب"
+                f"\nمدت: {shield.duration_minutes} دقیقه — جلوگیری کامل از حمله"
                 + (f"\n{shield.description}" if shield.description else "")
             )
     reply_markup = (
@@ -453,8 +449,7 @@ async def shield_callback(
                 f"🛒 خرید سپر «{shield.name}»\n\n"
                 f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
                 f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
-                f"کاهش آسیب: {shield.reduction_percent}٪ + "
-                f"{shield.flat_absorption} جذب ثابت\n\n"
+                "اثر: جلوگیری کامل از حمله در مدت محافظت\n\n"
                 "آیا خرید را تأیید می‌کنید؟",
                 reply_markup=shield_purchase_confirmation(shield),
             )
