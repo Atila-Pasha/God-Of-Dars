@@ -1939,7 +1939,11 @@ async def teacher_callback(
     if action == "delete":
         deleted, teacher = await service.delete_teacher(session, teacher_id)
         await callback.answer(
-            "حذف شد." if deleted else "این دبیر استفاده شده؛ غیرفعال شد.",
+            (
+                "دبیر و مالکیت آن از همهٔ کاربران حذف شد."
+                if deleted
+                else "دبیر پیدا نشد."
+            ),
             show_alert=True,
         )
         await safe_edit_reply_markup(callback.message, reply_markup=None)

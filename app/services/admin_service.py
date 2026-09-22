@@ -202,15 +202,23 @@ class AdminService:
     async def delete_teacher(
         self, session: AsyncSession, teacher_id: int
     ) -> tuple[bool, Teacher | None]:
-        teacher = await self.get_teacher(session, teacher_id)
+        result = await session.execute(
+            select(Teacher)
+            .where(Teacher.id == teacher_id)
+            .options(selectinload(Teacher.owned_by_users))
+            .with_for_update()
+        )
+        teacher = result.scalars().unique().one_or_none()
         if teacher is None:
             return False, None
-        # Existing ownership has RESTRICT FKs. Deactivate instead of risking a
-        # failed transaction and preserve historical battle data.
-        if teacher.owned_by_users:
-            teacher.is_active = False
-            await session.flush()
-            return False, teacher
+
+        # User ownership has a RESTRICT foreign key to the catalog. Remove all
+        # ownership rows first; attacks and recoveries retain their snapshots
+        # and detach through their ON DELETE SET NULL foreign keys.
+        teacher.is_active = False
+        for owned_teacher in teacher.owned_by_users:
+            await session.delete(owned_teacher)
+        await session.flush()
         await session.delete(teacher)
         await session.flush()
         return True, teacher
