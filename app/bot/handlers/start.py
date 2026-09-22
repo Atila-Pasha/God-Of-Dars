@@ -53,6 +53,13 @@ USER_ERROR_MESSAGE = "در آماده‌سازی حساب شما مشکلی پی
 BANNED_USER_MESSAGE = "حساب شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید."
 MAIN_MENU_MESSAGE = "🏫 به بازی خوش آمدید! یکی از بخش‌های زیر را انتخاب کنید:"
 RETURNING_USER_MESSAGE = "سلام دوباره فرمانده! 👑"
+FIRST_LOGIN_GUIDE = (
+    "🚀 قدم اولت رو این‌طوری بردار:\n\n"
+    "اول برو بخش «⛏ معدن منابع» و یک‌بار بازش کن تا معدنت فعال بشه و "
+    "تولید طلا شروع بشه.\n"
+    "بعد که ۲۰۰ طلا جمع کردی، برو «🍽 بوفه» و یکی از دبیرهای شروع، "
+    "«براتی» یا «عمارلو»، رو بخر."
+)
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
 HELP_MENU_TEXT = "📖 راهنمای کدام بخش را می‌خواهی فرمانده؟"
 HELP_TEXTS = {
@@ -185,11 +192,8 @@ async def _initialize_and_show_menu(
             # bot when quest storage is unavailable or being migrated.
             logger.exception("Could not record daily login for user %s", user.id)
 
-    greeting = (
-        MAIN_MENU_MESSAGE
-        if getattr(user, "_was_created", False) is True
-        else RETURNING_USER_MESSAGE
-    )
+    is_first_login = getattr(user, "_was_created", False) is True
+    greeting = MAIN_MENU_MESSAGE if is_first_login else RETURNING_USER_MESSAGE
     if isinstance(target, CallbackQuery) or hasattr(target, "message"):
         if target.message is None:
             return False
@@ -207,6 +211,12 @@ async def _initialize_and_show_menu(
         except TelegramAPIError:
             logger.exception("Could not send main menu message")
             return False
+    if is_first_login:
+        if isinstance(target, CallbackQuery) or hasattr(target, "message"):
+            if target.message is not None:
+                await target.message.answer(FIRST_LOGIN_GUIDE)
+        else:
+            await target.answer(FIRST_LOGIN_GUIDE)
     if isinstance(target, CallbackQuery) or hasattr(target, "message"):
         if target.message is not None:
             await target.message.answer(

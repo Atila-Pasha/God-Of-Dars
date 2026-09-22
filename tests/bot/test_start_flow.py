@@ -38,6 +38,43 @@ async def test_start_member_initializes_user_and_shows_menu(monkeypatch) -> None
 
 
 @pytest.mark.asyncio
+async def test_first_login_explains_how_to_activate_mine_and_buy_teacher(
+    monkeypatch,
+) -> None:
+    message = SimpleNamespace(
+        from_user=telegram_user(),
+        bot=AsyncMock(),
+        answer=AsyncMock(),
+    )
+    session = AsyncMock()
+    monkeypatch.setattr(
+        start.subscription_service, "is_member", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(
+        start.user_service,
+        "get_or_create_from_telegram",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                id=1,
+                is_active=True,
+                _was_created=True,
+            )
+        ),
+    )
+
+    await start.start_handler(message, session)
+
+    assert message.answer.await_count == 3
+    guide = message.answer.await_args_list[1].args[0]
+    assert guide == start.FIRST_LOGIN_GUIDE
+    assert "معدن منابع" in guide
+    assert "۲۰۰ طلا" in guide
+    assert "براتی" in guide
+    assert "عمارلو" in guide
+    assert "راهنمای کدام بخش" in message.answer.await_args_list[2].args[0]
+
+
+@pytest.mark.asyncio
 async def test_start_non_member_shows_join_keyboard(monkeypatch) -> None:
     message = SimpleNamespace(
         from_user=telegram_user(),
