@@ -190,7 +190,8 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
     try:
         await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
         await message.answer(
-            "🍽 بوفه\n\nاز بخش‌های زیر یکی را انتخاب کنید:",
+            "🍽 بازار و بوفه\n━━━━━━━━━━━━━━━━━━\n\n"
+            "دبیر بخر، سپر بردار یا منابع رو تبدیل کن؛ انتخاب با توئه 👇",
             reply_markup=buffet_menu_keyboard(),
         )
     except (UserInactiveError, SchoolUserNotFound):
@@ -200,7 +201,10 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
 async def _buffet_menu_view(
     target: Message | CallbackQuery, session: AsyncSession
 ) -> None:
-    text = "🍽 بوفه\n\nاز بخش‌های زیر یکی را انتخاب کنید:"
+    text = (
+        "🍽 بازار و بوفه\n━━━━━━━━━━━━━━━━━━\n\n"
+        "دبیر بخر، سپر بردار یا منابع رو تبدیل کن؛ انتخاب با توئه 👇"
+    )
     if isinstance(target, CallbackQuery) and target.message is not None:
         # Reply keyboards cannot be attached to editMessageText. Send a fresh
         # message so Telegram replaces the user's keyboard at the bottom.
@@ -224,7 +228,7 @@ async def buffet_conversion_message(
         if resources is None:
             raise UserInactiveError
         await message.answer(
-            "🔄 تبدیل منابع\n\nموجودی فعلی شما:\n"
+            "🔄 صرافی منابع\n━━━━━━━━━━━━━━━━━━\n\nموجودی فعلی تو:\n"
             + _resource_text(resources)
             + "\n\nیک تبدیل را انتخاب کنید:",
             reply_markup=buffet_keyboard(buffet_service.options()),
@@ -276,7 +280,10 @@ async def _teacher_shop_view(
         session, target.from_user.id
     )
     catalog = await teacher_service.public_teachers(session)
-    text = "👨‍🏫 خرید دبیر\n\nدبیر موردنظر را انتخاب کنید:"
+    text = (
+        "👨‍🏫 بازار نقل‌وانتقال دبیرها\n━━━━━━━━━━━━━━━━━━\n\n"
+        "عضو بعدی تیم رویایی‌ات رو انتخاب کن 👇"
+    )
     markup = teacher_catalog_page_keyboard(
         catalog,
         player_level=user.level,
@@ -306,7 +313,7 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
     if resources is None:
         raise UserInactiveError
     text = (
-        "🔄 تبدیل منابع\n\nموجودی فعلی شما:\n"
+        "🔄 صرافی منابع\n━━━━━━━━━━━━━━━━━━\n\nموجودی فعلی تو:\n"
         + _resource_text(resources)
         + "\n\nیک تبدیل را انتخاب کنید:"
     )
@@ -323,7 +330,7 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     )
     owned = await shield_service.list_owned(session, user.id)
     catalog = await shield_service.catalog(session, player_level=user.level)
-    lines = [f"🛡 سپرهای بوفه\n\n🎖 سطح شما: {user.level}"]
+    lines = [f"🛡 زرادخانهٔ سپرها\n━━━━━━━━━━━━━━━━━━\n\n🎖 سطح فرمانده: {user.level}"]
     if owned:
         lines.append("\n📦 موجودی شما:")
         for item in owned:

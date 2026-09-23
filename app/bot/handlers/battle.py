@@ -57,9 +57,10 @@ MAX_ATTACK_TEACHERS = attack_service.config.max_attack_teachers
 def _attack_text(result: AttackResult) -> str:
     if result.blocked_by_shield:
         return (
-            f"🛡 حملهٔ بازیکن «{result.attacker_name}» به دژ «{result.target_name}» "
-            "به‌دلیل فعال بودن سپر دفاعی متوقف شد.\n\n"
-            "هیچ آسیبی وارد نشد و غنیمت یا XP حمله‌ای تعلق نگرفت."
+            "🛡 سپر دفاعی | حمله خنثی شد\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            f"حملهٔ «{result.attacker_name}» به دژ «{result.target_name}» پشت سپر متوقف شد.\n\n"
+            "✨ دژ سالم موند؛ هیچ خسارت، غنیمت یا XP ثبت نشد."
         )
     teacher_state = (
         f"🩹 آسیب دبیر: {result.teacher_injury}"
@@ -67,8 +68,10 @@ def _attack_text(result: AttackResult) -> str:
         else "🛡 دژ نتوانست به دبیر آسیب بزند."
     )
     return (
-        f"⚔️ بازیکن «{result.attacker_name}» با {teacher_phrase(result.teacher_name)} "
-        f"به دژ «{result.target_name}» حمله کرد!\n\n"
+        "⚔️ گزارش نهایی نبرد\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"🔥 «{result.attacker_name}» با {teacher_phrase(result.teacher_name)} به دژ "
+        f"«{result.target_name}» یورش برد!\n\n"
         f"✨ توانایی دبیر: {result.ability_text or 'بدون توانایی ثبت‌شده'}\n"
         f"💥 تخریب دژ: {result.castle_damage}\n"
         f"🏰 قدرت باقی‌مانده دژ: {result.castle_strength_after}\n"
@@ -95,7 +98,8 @@ def _teacher_icons(preview: AttackPreview) -> tuple[str, list[MessageEntity]]:
 def _preview_content(preview: AttackPreview) -> tuple[str, list[MessageEntity]]:
     teacher_icons, entities = _teacher_icons(preview)
     text = (
-        f"{teacher_icons} پیش‌نمایش حمله با {teacher_phrase(preview.teacher_name)}\n\n"
+        f"{teacher_icons} پیش‌نمایش حمله با {teacher_phrase(preview.teacher_name)}\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
         f"🎯 هدف: {preview.target_name}\n"
         f"⚔️ قدرت حمله دبیر: {preview.teacher_damage}\n"
         f"✨ توانایی دبیر: {preview.ability_text or 'بدون توانایی ثبت‌شده'}\n"
@@ -106,7 +110,7 @@ def _preview_content(preview: AttackPreview) -> tuple[str, list[MessageEntity]]:
         f"🪙 سکه: {preview.loot_coin}\n"
         f"💎 الماس: {preview.loot_diamond}\n"
         f"🍌 موز: {preview.loot_banana}\n\n"
-        "آیا حمله را تأیید می‌کنی؟"
+        "🔥 فرمان حمله رو صادر می‌کنی؟"
     )
     return text, entities
 
@@ -177,7 +181,7 @@ def _random_attack_preview_content(
     remaining_minutes = max(1, (remaining_seconds + 59) // 60)
     text, entities = _preview_content(selection.preview)
     return (
-        text.removesuffix("آیا حمله را تأیید می‌کنی؟")
+        text.removesuffix("🔥 فرمان حمله رو صادر می‌کنی؟")
         + "🎲 این حریف برای شما انتخاب شده است.\n"
         + f"🔒 انتخاب تا حدود {remaining_minutes} دقیقه ثابت می‌ماند.\n"
         + f"♻️ دیدن حریف دیگر: {selection.reroll_coin_cost} سکه\n\n"

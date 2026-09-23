@@ -7,8 +7,13 @@ class ChannelCallback(CallbackData, prefix="channel"):
     action: Literal["check"]
 
 
+class FirstLoginCallback(CallbackData, prefix="first_login"):
+    action: Literal["confirm"]
+
+
 class HelpCallback(CallbackData, prefix="help"):
     section: Literal[
+        "overview",
         "attack",
         "school",
         "buffet",

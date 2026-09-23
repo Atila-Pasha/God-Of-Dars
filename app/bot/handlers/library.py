@@ -154,7 +154,11 @@ async def _user_id(session: AsyncSession, message: Message | CallbackQuery) -> i
 
 
 async def _show_library(target: Message | CallbackQuery) -> None:
-    text = "📚 کتابخانه\n\nیکی از بخش‌های کتابخانه را انتخاب کنید:"
+    text = (
+        "📚 کتابخانهٔ دانش\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها رو بشناس 👇"
+    )
     if isinstance(target, CallbackQuery):
         if target.message is not None:
             target_message = cast(Message, target.message)
@@ -189,19 +193,23 @@ async def _notify_callback(callback: CallbackQuery, text: str) -> None:
 
 def _teacher_list_text(page: int, page_count: int) -> str:
     return (
-        f"👨‍🏫 معرفی دبیرها\n\nصفحه {page + 1} از {page_count}\nیک دبیر را انتخاب کنید:"
+        "👨‍🏫 تالار معرفی دبیرها\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"صفحه {page + 1} از {page_count}\n\n"
+        "برای دیدن پروندهٔ کامل، یک دبیر رو انتخاب کن 👇"
     )
 
 
 def _teacher_detail_content(teacher) -> tuple[str, list]:
     icon, entity = custom_emoji_entity(teacher.emoji, fallback="👨‍🏫")
     text = (
-        f"{icon} {teacher.name}\n\n"
+        f"{icon} پروندهٔ دبیر | {teacher.name}\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
         f"⚔️ آسیب پایه: {teacher.damage}\n"
         f"❤️ حداکثر جان: {teacher.max_hp}\n"
         f"🪙 قیمت خرید: {teacher.purchase_price} "
         f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
-        f"💎 هزینه پایه ارتقا (سطح ۱ به ۲): {teacher.upgrade_price} الماس\n"
+        f"💎 هزینه پایه (سطح 1 به 2): {teacher.upgrade_price} الماس\n"
         f"🎖 سطح بازشدن: {teacher.unlock_level}\n\n"
         f"✨ توانایی: {teacher.ability_text or 'تنظیم نشده'}\n"
         f"📝 توضیحات: {teacher.description or 'توضیحی ثبت نشده است.'}"

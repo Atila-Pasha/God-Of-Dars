@@ -29,7 +29,10 @@ DAILY_LABEL = next(
 async def _show(target, session: AsyncSession, user_id: int):
     quests = await service.list(session, service.today(), active_only=True)
     if not quests:
-        text = "🎯 فعالیت‌های روزانه\n\nامروز فعالیتی تعریف نشده است."
+        text = (
+            "🎯 مأموریت‌های امروز\n━━━━━━━━━━━━━━━━━━\n\n"
+            "امروز مأموریتی تعریف نشده؛ برای فرمان بعدی آماده بمون ⚡"
+        )
         markup = None
     else:
         progresses = []
@@ -65,13 +68,17 @@ async def _show(target, session: AsyncSession, user_id: int):
             progress.quest = quest
             progresses.append(progress)
         if not progresses:
-            text = "🎯 فعالیت‌های روزانه\n\nامروز فعالیت قابل بررسی‌ای تعریف نشده است."
+            text = (
+                "🎯 مأموریت‌های امروز\n━━━━━━━━━━━━━━━━━━\n\n"
+                "امروز مأموریت قابل بررسی‌ای وجود نداره."
+            )
             markup = None
         else:
             lines = [
-                "🎯 فعالیت‌های روزانه",
+                "🎯 مأموریت‌های امروز",
+                "━━━━━━━━━━━━━━━━━━",
                 "",
-                "فعالیت‌های امروز را کامل کن و جایزه بگیر:",
+                "چالش‌ها رو کامل کن و جایزه‌ها رو درو کن 👇",
             ]
             for progress in progresses:
                 quest = progress.quest

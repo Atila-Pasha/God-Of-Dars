@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.callbacks import ChannelCallback
+from app.bot.callbacks import ChannelCallback, FirstLoginCallback
 from app.services.subscription_service import SubscriptionService
 
 
@@ -26,3 +26,16 @@ def join_channel_keyboard(
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def first_login_guide_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ فهمیدم؛ بزن بریم!",
+                    callback_data=FirstLoginCallback(action="confirm").pack(),
+                )
+            ]
+        ]
+    )

@@ -8,7 +8,7 @@ from aiogram.types import User as TelegramUser
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import ChannelCallback, HelpCallback
+from app.bot.callbacks import ChannelCallback, FirstLoginCallback, HelpCallback
 from app.bot.keyboards.help import help_keyboard
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
@@ -16,7 +16,7 @@ from app.bot.keyboards.main_menu import (
     NON_SCHOOL_MENU_SECTION_LABELS,
     main_menu_keyboard,
 )
-from app.bot.keyboards.start import join_channel_keyboard
+from app.bot.keyboards.start import first_login_guide_keyboard, join_channel_keyboard
 from app.bot.middlewares.subscription import refresh_channels, subscription_service
 from app.bot.utils.telegram import safe_edit_text
 from app.services.daily_quest_service import DailyQuestService
@@ -51,20 +51,67 @@ MEMBERSHIP_ERROR_MESSAGE = (
 )
 USER_ERROR_MESSAGE = "در آماده‌سازی حساب شما مشکلی پیش آمد. لطفاً دوباره تلاش کنید."
 BANNED_USER_MESSAGE = "حساب شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید."
-MAIN_MENU_MESSAGE = "🏫 به بازی خوش آمدید! یکی از بخش‌های زیر را انتخاب کنید:"
-RETURNING_USER_MESSAGE = "سلام دوباره فرمانده! 👑"
+MAIN_MENU_MESSAGE = (
+    "🔥 به قلمرو «God of Dars» خوش اومدی، فرمانده!\n\n"
+    "مدرسه‌ات رو بساز، دبیرها رو قدرتمند کن و برای فتح رتبه‌بندی آماده شو.\n"
+    "از منوی پایین، اولین حرکتت رو انتخاب کن 👇"
+)
+RETURNING_USER_MESSAGE = (
+    "👑 فرمانده برگشت!\n\nقلمرو منتظر دستور توئه؛ حرکت بعدی رو انتخاب کن 👇"
+)
 FIRST_LOGIN_GUIDE = (
-    "🚀 قدم اولت رو این‌طوری بردار:\n\n"
-    "اول برو بخش «⛏ معدن منابع» و یک‌بار بازش کن تا معدنت فعال بشه و "
-    "تولید طلا شروع بشه.\n"
-    "بعد که ۲۰۰ طلا جمع کردی، برو «🍽 بوفه» و یکی از دبیرهای شروع، "
-    "«براتی» یا «عمارلو»، رو بخر."
+    "🚀 مأموریت شروع | ساخت اولین تیم\n"
+    "━━━━━━━━━━━━━━━━━━\n\n"
+    "1️⃣ وارد «⛏ معدن منابع» شو تا معدن فعال و تولید طلا آغاز بشه.\n\n"
+    "2️⃣ وقتی ۲۰۰ طلا جمع کردی، وارد «🍽 بوفه» شو و یکی از دبیرهای "
+    "شروع، «براتی» یا «عمارلو»، رو بخر.\n\n"
+    "3️⃣ دبیرت رو در «🏫 مدرسه من» فعال کن و بعد برای اولین نبرد برو!\n\n"
+    "آماده‌ای فرمانده؟ دکمهٔ زیر رو بزن ⚡"
 )
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
-HELP_MENU_TEXT = "📖 راهنمای کدام بخش را می‌خواهی فرمانده؟"
+HELP_MENU_TEXT = (
+    "📖 مرکز فرماندهی و راهنما\n"
+    "━━━━━━━━━━━━━━━━━━\n"
+    "راهنمای کدام بخش رو می‌خوای، فرمانده؟\n"
+    "برای شروع، «راهنمای کامل بازی» رو بخون یا مستقیم سراغ بخش موردنظرت برو 👇"
+)
 HELP_TEXTS = {
+    "overview": (
+        "🧭 راهنمای کامل God of Dars\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "🎯 هدف بازی\n"
+        "منابع جمع کن، دبیر بخر و ارتقا بده، دژت رو قوی کن، به حریف‌ها حمله کن "
+        "و در جدول برترین‌ها بالا برو.\n\n"
+        "🚀 شروع سریع\n"
+        "1. «معدن منابع» رو باز کن تا تولید شروع بشه.\n"
+        "2. منابع آماده رو مرتب جمع کن و معدن رو ارتقا بده.\n"
+        "3. با ۲۰۰ طلا از «بوفه» یک دبیر شروع بخر.\n"
+        "4. در «مدرسه من» دبیرها، دژ و بیمارستان رو مدیریت کن.\n"
+        "5. از بخش «حمله» حریف انتخاب کن و با حداکثر تعداد مجاز دبیر حمله کن.\n\n"
+        "🏫 مدرسه من\n"
+        "دژ خط دفاعی توئه. استحکام و دفاعش رو ارتقا بده و آسیب‌ها رو تعمیر کن. "
+        "دبیرهای مصدوم یا غیرفعال از بیمارستان درمان و دوباره فعال می‌شن.\n\n"
+        "🍽 بوفه\n"
+        "محل خرید دبیر و سپر و تبدیل منابعه. سطح هر آیتم، قیمت و ظرفیت دبیرها رو "
+        "قبل از خرید بررسی کن. سپر در مدت فعال‌بودن جلوی حمله رو می‌گیره.\n\n"
+        "📚 کتابخانه\n"
+        "به سؤال روزانه پاسخ بده، مطالعهٔ زمان‌دار شروع کن و مشخصات همهٔ دبیرها رو "
+        "ببین. سؤال‌های گروهی هم با Reply پاسخ داده می‌شن.\n\n"
+        "⚔️ حمله\n"
+        "حملهٔ رندوم یا با آیدی انتخاب کن، دبیرهای سالم و فعال رو بچین و پیش‌نمایش "
+        "خسارت و غنیمت رو قبل از تأیید ببین. حمله بعد از شروع زمان می‌بره.\n\n"
+        "🎯 فعالیت‌های روزانه\n"
+        "مأموریت‌های روز رو کامل کن و بعد از تکمیل، جایزهٔ هر مورد رو دریافت کن.\n\n"
+        "🧙 پروفایل و پیشرفت\n"
+        "منابع، آمار جنگ، دانش و دعوت‌ها رو ببین. موز، شرط اصلی بالا بردن سطح "
+        "فرمانده است؛ افزایش سطح ظرفیت‌ها و امکانات جدید رو باز می‌کنه.\n\n"
+        "👥 دعوت و رتبه‌بندی\n"
+        "با /referral لینک اختصاصی بگیر. از /leaderboard هم رتبهٔ فرمانده‌ها، "
+        "دانش‌آموزها و مبارزها رو در بازه‌های روزانه، هفتگی و ماهانه ببین.\n\n"
+        "💡 هرجا گیر کردی، از همین منو راهنمای همان بخش رو باز کن."
+    ),
     "attack": (
-        "⚔️ راهنمای حمله\n\n"
+        "⚔️ راهنمای میدان نبرد\n━━━━━━━━━━━━━━━━━━\n\n"
         "در خصوصی: حمله {نام‌کاربری هدف} {اسم دبیر}\n"
         "مثال: حمله @player فراهانی\n\n"
         "در گروه: روی پیام هدف Reply بزن و بنویس:\n"
@@ -74,13 +121,13 @@ HELP_TEXTS = {
         "مثال: حمله رندوم فراهانی"
     ),
     "school": (
-        "🏫 راهنمای مدرسه و دبیرها\n\n"
+        "🏫 راهنمای مدرسه و دبیرها\n━━━━━━━━━━━━━━━━━━\n\n"
         "از «مدرسه من» دبیرهای خودت، بیمارستان و دژ را مدیریت کن.\n"
         "برای خرید دبیر از «بوفه» وارد بخش «خرید دبیر» شو.\n"
         "اگر ظرفیت دبیرها پر باشد، یک دبیر را بفروش یا سطح فرمانده را افزایش بده."
     ),
     "buffet": (
-        "🍽 راهنمای بوفه و خرید\n\n"
+        "🍽 راهنمای بوفه و خرید\n━━━━━━━━━━━━━━━━━━\n\n"
         "در بوفه می‌توانی دبیر و سپر بخری یا منابع را تبدیل کنی.\n"
         "برای خرید دبیر بنویس:\n"
         "خرید {اسم دبیر}\n\n"
@@ -88,11 +135,13 @@ HELP_TEXTS = {
         "خرید سپر {اسم سپر}"
     ),
     "library": (
-        "📚 راهنمای کتابخانه\n\n"
-        "از بخش «کتابخانه» سؤال روزانه، سؤال گروهی، مطالعه و فهرست دبیرها را ببین."
+        "📚 راهنمای کتابخانه\n━━━━━━━━━━━━━━━━━━\n\n"
+        "از بخش «کتابخانه» سؤال روزانه، مطالعه و فهرست دبیرها رو ببین.\n"
+        "برای سؤال روزانه فقط یک فرصت پاسخ داری. مطالعهٔ زمان‌دار رو شروع کن و بعد "
+        "از پایان زمان پاداشت رو بگیر. در گروه، پاسخ سؤال گروهی رو با Reply بفرست."
     ),
     "profile": (
-        "🧙 راهنمای پروفایل\n\n"
+        "🧙 راهنمای پروفایل\n━━━━━━━━━━━━━━━━━━\n\n"
         "/profile — منوی پروفایل\n"
         "/stat — اطلاعات پروفایل\n"
         "/war — آمار جنگ\n"
@@ -100,12 +149,15 @@ HELP_TEXTS = {
         "/knowledge — دانش و دعوت‌ها"
     ),
     "mine": (
-        "⛏ راهنمای معدن منابع\n\n"
-        "از معدن منابع، طلا و الماس تولیدشده را برداشت کن و معدن را ارتقا بده."
+        "⛏ راهنمای معدن منابع\n━━━━━━━━━━━━━━━━━━\n\n"
+        "اولین بار با بازکردن معدن، تولید منابع فعال می‌شه. طلا و الماس آماده رو "
+        "مرتب برداشت کن. ارتقای معدن سرعت تولید رو بیشتر می‌کنه و به سطح فرمانده و "
+        "الماس نیاز داره."
     ),
     "referral": (
-        "👥 راهنمای دعوت دوستان\n\n"
-        "با /referral لینک دعوت اختصاصی خودت را بگیر و دوستانت را دعوت کن."
+        "👥 راهنمای دعوت دوستان\n━━━━━━━━━━━━━━━━━━\n\n"
+        "با /referral لینک اختصاصی خودت رو بگیر و برای دوست‌هات بفرست. هر دعوت "
+        "موفق در بخش دانش پروفایل ثبت می‌شه."
     ),
 }
 
@@ -214,9 +266,13 @@ async def _initialize_and_show_menu(
     if is_first_login:
         if isinstance(target, CallbackQuery) or hasattr(target, "message"):
             if target.message is not None:
-                await target.message.answer(FIRST_LOGIN_GUIDE)
+                await target.message.answer(
+                    FIRST_LOGIN_GUIDE, reply_markup=first_login_guide_keyboard()
+                )
         else:
-            await target.answer(FIRST_LOGIN_GUIDE)
+            await target.answer(
+                FIRST_LOGIN_GUIDE, reply_markup=first_login_guide_keyboard()
+            )
     if isinstance(target, CallbackQuery) or hasattr(target, "message"):
         if target.message is not None:
             await target.message.answer(
@@ -277,6 +333,23 @@ async def start_handler(
 @router.message(Command("help"))
 async def help_handler(message: Message) -> None:
     await message.answer(HELP_MENU_TEXT, reply_markup=help_keyboard())
+
+
+@router.callback_query(FirstLoginCallback.filter())
+async def first_login_confirmation_handler(
+    callback: CallbackQuery, callback_data: FirstLoginCallback
+) -> None:
+    if callback_data.action != "confirm":
+        await callback.answer()
+        return
+    if callback.message is not None:
+        await safe_edit_text(
+            callback.message,
+            "✅ مأموریت شروع فعال شد!\n\n"
+            "اولین مقصد: «⛏ معدن منابع» — برو که قلمرو منتظرته، فرمانده 🔥",
+            reply_markup=None,
+        )
+    await callback.answer("آماده‌ایم؛ بزن بریم! 🚀")
 
 
 @router.callback_query(HelpCallback.filter())

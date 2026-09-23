@@ -71,7 +71,46 @@ async def test_first_login_explains_how_to_activate_mine_and_buy_teacher(
     assert "۲۰۰ طلا" in guide
     assert "براتی" in guide
     assert "عمارلو" in guide
+    assert (
+        message.answer.await_args_list[1]
+        .kwargs["reply_markup"]
+        .inline_keyboard[0][0]
+        .callback_data
+        == "first_login:confirm"
+    )
     assert "راهنمای کدام بخش" in message.answer.await_args_list[2].args[0]
+
+
+@pytest.mark.asyncio
+async def test_first_login_confirmation_replaces_guide() -> None:
+    callback = SimpleNamespace(
+        message=SimpleNamespace(edit_text=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    callback_data = SimpleNamespace(action="confirm")
+
+    await start.first_login_confirmation_handler(callback, callback_data)
+
+    assert "مأموریت شروع فعال شد" in callback.message.edit_text.await_args.args[0]
+    assert callback.message.edit_text.await_args.kwargs["reply_markup"] is None
+    callback.answer.assert_awaited_once()
+
+
+def test_help_has_complete_overview() -> None:
+    overview = start.HELP_TEXTS["overview"]
+
+    for section in (
+        "معدن",
+        "مدرسه من",
+        "بوفه",
+        "کتابخانه",
+        "حمله",
+        "فعالیت‌های روزانه",
+        "پروفایل",
+        "دعوت",
+        "رتبه‌بندی",
+    ):
+        assert section in overview
 
 
 @pytest.mark.asyncio

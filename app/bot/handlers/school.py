@@ -187,11 +187,12 @@ async def _school_view(
     castle = await castle_service.snapshot(session, user.id)
     capacity = await teacher_service.capacity(session, user.id)
     text = (
-        " 🏫 مدرسه من \n\n"
-        f"🎖 سطح بازیکن: {_number(user.level)}\n"
+        "🏫 ستاد فرماندهی مدرسه\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎖 سطح فرمانده: {_number(user.level)}\n"
         f"🏰 سطح دژ: {_number(castle.level)}\n"
         f"🛡 قدرت دفاعی: {_number(castle.strength)}\n\n"
-        "📚 وضعیت دبیرها\n\n"
+        "👨‍🏫 ظرفیت تیم دبیرها\n"
         f"{_progress_bar(capacity.owned, capacity.available)}  "
         f"{_number(capacity.owned)} / {_number(capacity.available)} "
         f"({_progress_percent(capacity.owned, capacity.available)})"
@@ -211,12 +212,13 @@ async def _castle_view(
     user = await _user(session, target.from_user.id)
     castle = await castle_service.snapshot(session, user.id)
     text = (
-        " 🏰 دژ مدرسه \n\n"
+        "🏰 دژ مدرسه | خط مقدم دفاع\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
         f"✨ سطح دژ: {_number(castle.level)}\n"
         f"⚔️ سلامت دژ: {_number(castle.strength)} / "
         f"{_number(castle_service.config.castle_max_strength(castle.level))}\n"
         f"🛡 قدرت سیستم دفاعی: {_number(castle.defense_power)}\n\n"
-        "🏗️ وضعیت دفاعی\n"
+        "🏗️ توان دفاعی نهایی\n"
         f"قدرت کلی: {_number(castle.strength + castle.defense_power)} واحد"
     )
     castle_model = await castle_service.repository.get_by_user(
@@ -249,7 +251,9 @@ async def _teachers_view(
     teachers = await teacher_service.owned(session, user.id)
     catalog = await teacher_service.catalog(session, user.id)
     text_lines = [
-        "👨‍🏫 دبیرهای من \n\n",
+        "👨‍🏫 تیم دبیرهای من",
+        "━━━━━━━━━━━━━━━━━━",
+        "",
         f"🎖 سطح شما: {_number(user.level)}",
         "",
         "📊 ظرفیت استفاده‌شده",
@@ -294,10 +298,11 @@ async def _teacher_view(
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
     icon, icon_entity = _teacher_icon(teacher)
     text = (
-        f"{icon} {teacher.teacher.name}\n\n"
-        f"🎖 Level: {_number(teacher.level)}\n"
-        f"⚔️ Damage: {damage_text}\n"
-        f"❤️ HP: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
+        f"{icon} پروندهٔ عملیاتی | {teacher.teacher.name}\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎖 سطح: {_number(teacher.level)}\n"
+        f"⚔️ قدرت ضربه: {damage_text}\n"
+        f"❤️ جان: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
         f"   {_number(teacher.current_hp)} / {_number(teacher.teacher.max_hp)} "
         f"({_progress_percent(teacher.current_hp, teacher.teacher.max_hp)})\n"
         f"📌 وضعیت: {_status(teacher)}\n"
@@ -324,7 +329,8 @@ async def _hospital_view(
     user = await _user(session, target.from_user.id)
     patients = await hospital_service.patients(session, user.id)
     lines = [
-        "🏥 بیمارستان مدرسه \n\n",
+        "🏥 بیمارستان مدرسه",
+        "━━━━━━━━━━━━━━━━━━",
         "",
     ]
     if not patients:

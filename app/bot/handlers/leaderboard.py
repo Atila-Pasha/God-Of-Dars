@@ -31,7 +31,10 @@ router = Router(name="leaderboard")
 leaderboards = LeaderboardService()
 users = UserService()
 
-LEADERBOARD_MENU_TEXT = "🏆 برترین‌ها\n\nدسته‌بندی موردنظر را انتخاب کن:"
+LEADERBOARD_MENU_TEXT = (
+    "🏆 تالار قهرمانان\n━━━━━━━━━━━━━━━━━━\n\n"
+    "اسم چه کسی باید بالای جدول بدرخشه؟ دسته‌بندی رو انتخاب کن 👇"
+)
 _GROUP_CATEGORY_PHRASES: dict[str, LeaderboardKind] = {
     "برترین فرمانده": "commander",
     "برترین دانش آموز": "student",

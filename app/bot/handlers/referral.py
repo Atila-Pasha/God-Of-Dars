@@ -43,8 +43,8 @@ async def referral_handler(message: Message, session: AsyncSession) -> None:
         invite_link = await _invite_link(message, user.id)
         link_text = invite_link or "لینک دعوت فعلاً قابل تولید نیست."
         await message.answer(
-            "👥 دعوت دوستان\n\n"
-            "دوستت را دعوت کن و با هم بازی کنید.\n\n"
+            "👥 اتحاد فرمانده‌ها\n━━━━━━━━━━━━━━━━━━\n\n"
+            "دوستت رو به قلمرو دعوت کن و کنار هم قدرتمندتر بشید.\n\n"
             f"🔗 لینک اختصاصی شما:\n{link_text}\n\n"
             f"👤 تعداد دعوت‌های ثبت‌شده: {count}",
             reply_markup=referral_keyboard(invite_link),

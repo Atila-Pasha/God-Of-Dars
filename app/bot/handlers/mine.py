@@ -34,7 +34,8 @@ MINE_LABEL = next(
 def _mine_text(snapshot) -> str:
     production = snapshot.production
     return (
-        "⛏ معدن منابع\n\n"
+        "⛏ معدن فرماندهی\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
         f"🏗 سطح معدن: {snapshot.level}\n"
         f"⚙️ تولید فعلی: هر دقیقه {production.coin_per_minute} طلا، "
         f"{production.diamond_per_minute} الماس\n"
@@ -51,7 +52,8 @@ def _upgrade_text(snapshot, next_level) -> str:
         next_level.diamond_cost or 0
     )
     return (
-        "⬆️ پیش‌نمایش ارتقای معدن\n\n"
+        "⬆️ ارتقای معدن | پیش‌نمایش\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
         f"سطح فعلی: {snapshot.level}\n"
         f"سطح بعدی: {snapshot.level + 1}\n\n"
         "📈 تولید جدید در هر دقیقه:\n"
@@ -61,7 +63,7 @@ def _upgrade_text(snapshot, next_level) -> str:
         f"(تغییر: {next_level.diamond_per_minute - current.diamond_per_minute:+d})\n\n"
         f"💎 هزینه ارتقا: {next_level.diamond_cost} الماس\n\n"
         f"🍌 پاداش ارتقا: {banana_reward} موز\n\n"
-        "آیا ارتقای معدن را تأیید می‌کنی؟"
+        "🔥 آماده‌ای تولید معدن رو یک پله منفجر کنی؟"
     )
 
 
