@@ -279,9 +279,7 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
                     None,
                 )
                 button.text = (
-                    strip_custom_emoji_fallback(
-                        text, explicit_source or source
-                    )
+                    strip_custom_emoji_fallback(text, explicit_source or source)
                     if explicit_source is not None
                     else strip_custom_emoji_fallback(text, source)
                 )

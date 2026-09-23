@@ -1142,7 +1142,9 @@ class AttackService:
             castle_damage=total_damage,
             teacher_injury=total_injury,
             castle_strength_after=last_castle.castle_strength_after,
-            **total_loot,
+            loot_coin=total_loot["loot_coin"],
+            loot_diamond=total_loot["loot_diamond"],
+            loot_banana=total_loot["loot_banana"],
         )
 
     async def _ensure_target_attackable(
