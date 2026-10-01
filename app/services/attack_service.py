@@ -53,6 +53,9 @@ class AttackResult:
     loot_diamond: int
     loot_banana: int
     blocked_by_shield: bool = False
+    teacher_details: tuple[tuple[str, str | None, str | None], ...] = ()
+    castle_strength_before: int = 0
+    source_chat_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +76,7 @@ class AttackPreview:
     loot_banana: int
     teacher_ids: str = ""
     teacher_emojis: tuple[str | None, ...] = ()
+    teacher_details: tuple[tuple[str, str | None, str | None], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -481,6 +485,7 @@ class AttackService:
         *,
         attacker_telegram_id: int,
         version: int,
+        source_chat_id: int | None = None,
     ) -> AttackLaunch:
         """Launch exactly the target and teachers retained in the selection."""
         attacker = await self.users.get_by_telegram_user_id(
@@ -501,6 +506,7 @@ class AttackService:
             attacker_telegram_id=attacker_telegram_id,
             target_id=selection.target_id,
             teacher_ids=teacher_ids,
+            source_chat_id=source_chat_id,
         )
         await session.delete(selection)
         return launch
@@ -549,6 +555,7 @@ class AttackService:
         target_id: int,
         teacher_ids: list[int],
         duration: timedelta = timedelta(minutes=2),
+        source_chat_id: int | None = None,
     ) -> AttackLaunch:
         attacker = await self.users.get_by_telegram_user_id(
             session, attacker_telegram_id
@@ -600,6 +607,10 @@ class AttackService:
                 status=AttackStatus.PENDING,
                 resolve_at=resolve_at,
                 attack_command_id=attack_command_id,
+                source_chat_id=source_chat_id,
+                teacher_name_snapshot=teacher.teacher.name,
+                teacher_emoji_snapshot=teacher.teacher.emoji,
+                teacher_ability_snapshot=teacher.teacher.ability_text,
                 teacher_damage_snapshot=self.teacher_service.damage(teacher),
                 target_castle_strength_snapshot=castle.strength,
                 target_defense_power_snapshot=castle.defense_power,
@@ -677,8 +688,15 @@ class AttackService:
             if attack.teacher_id is not None
             else None
         )
-        teacher_name = teacher.teacher.name if teacher is not None else "دبیر"
-        teacher_ability = teacher.teacher.ability_text if teacher is not None else None
+        teacher_name = attack.teacher_name_snapshot or (
+            teacher.teacher.name if teacher is not None else "دبیر"
+        )
+        teacher_ability = attack.teacher_ability_snapshot or (
+            teacher.teacher.ability_text if teacher is not None else None
+        )
+        teacher_icon = attack.teacher_emoji_snapshot or (
+            teacher.teacher.emoji if teacher is not None else None
+        )
         if await self.castle_service.shield_service.has_active_shield(
             session, target.id
         ):
@@ -688,6 +706,7 @@ class AttackService:
             attack.result_damage = 0
             attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
             attack.is_successful = False
+            attack.result_teacher_injury = 0
             await session.flush()
             return AttackResult(
                 attack=attack,
@@ -704,6 +723,9 @@ class AttackService:
                 loot_diamond=0,
                 loot_banana=0,
                 blocked_by_shield=True,
+                teacher_details=((teacher_name, teacher_ability, teacher_icon),),
+                castle_strength_before=attack.target_castle_strength_snapshot,
+                source_chat_id=attack.source_chat_id,
             )
         castle_damage, injury = self.config.attack_rules.resolve(
             attack.teacher_damage_snapshot,
@@ -730,6 +752,7 @@ class AttackService:
         attack.status = AttackStatus.RESOLVED
         attack.resolved_at = now
         attack.result_damage = castle_result.applied_damage
+        attack.result_teacher_injury = injury
         attack.loot_coin = loot["loot_coin"]
         attack.loot_diamond = loot["loot_diamond"]
         attack.loot_banana = 0
@@ -793,6 +816,9 @@ class AttackService:
             loot_coin=attack.loot_coin,
             loot_diamond=attack.loot_diamond,
             loot_banana=attack.loot_banana,
+            teacher_details=((teacher_name, teacher_ability, teacher_icon),),
+            castle_strength_before=attack.target_castle_strength_snapshot,
+            source_chat_id=attack.source_chat_id,
         )
 
     async def _selection_for_update(
@@ -945,6 +971,14 @@ class AttackService:
             estimated_teacher_injury=injury,
             teacher_ids=",".join(str(teacher.id) for teacher in teachers),
             teacher_emojis=tuple(teacher.teacher.emoji for teacher in teachers),
+            teacher_details=tuple(
+                (
+                    teacher.teacher.name,
+                    teacher.teacher.ability_text,
+                    teacher.teacher.emoji,
+                )
+                for teacher in teachers
+            ),
             **loot,
         )
 
@@ -1145,6 +1179,17 @@ class AttackService:
             loot_coin=total_loot["loot_coin"],
             loot_diamond=total_loot["loot_diamond"],
             loot_banana=total_loot["loot_banana"],
+            teacher_details=tuple(
+                (
+                    teacher.teacher.name,
+                    teacher.teacher.ability_text,
+                    teacher.teacher.emoji,
+                )
+                for teacher in teachers
+            ),
+            castle_strength_before=teacher_results[0][
+                0
+            ].target_castle_strength_snapshot,
         )
 
     async def _ensure_target_attackable(

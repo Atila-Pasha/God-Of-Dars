@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from aiogram import Bot
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError, SQLAlchemyError
+from sqlalchemy.orm import selectinload
 
-from app.bot.utils.attack import teacher_phrase
+from app.bot.banners import MARKDOWN_V2, attack_result_banner
 from app.core.config import settings
 from app.core.enums import AttackStatus
 from app.db.session import AsyncSessionLocal
 from app.models.attack import Attack
+from app.models.user_teacher import UserTeacher
 from app.repositories.user import UserRepository
 from app.services.attack_service import AttackService
 from app.services.level_service import LevelService
@@ -25,25 +28,49 @@ user_repository = UserRepository()
 notification_service = NotificationService()
 
 
-def _result_text(result) -> str:
-    if result.blocked_by_shield:
-        return (
-            f"🛡 حمله به دژ «{result.target_name}» به‌دلیل فعال بودن سپر "
-            "متوقف شد.\n\nهیچ آسیبی وارد نشد و غنیمت یا XP حمله‌ای تعلق نگرفت."
+def _result_text(result, *, recipient: str = "attacker") -> str:
+    return attack_result_banner(result, recipient=recipient)
+
+
+async def _command_result(session, result):
+    """Create one complete report after every teacher in a command has resolved."""
+    command_id = result.attack.attack_command_id
+    if command_id is None:
+        return result
+    records = list(
+        await session.scalars(
+            select(Attack)
+            .where(Attack.attack_command_id == command_id)
+            .options(selectinload(Attack.teacher).selectinload(UserTeacher.teacher))
+            .order_by(Attack.id)
         )
-    injury = (
-        f"🩹 آسیب دبیر: {result.teacher_injury}"
-        if result.teacher_injury
-        else "🛡 دژ نتوانست به دبیر آسیب بزند."
     )
-    return (
-        f"⚔️ حمله به دژ «{result.target_name}» تمام شد!\n\n"
-        f"👨‍🏫 {teacher_phrase(result.teacher_name)}\n"
-        f"💥 تخریب دژ: {result.castle_damage}\n"
-        f"🏰 قدرت باقی‌مانده دژ: {result.castle_strength_after}\n"
-        f"{injury}\n"
-        f"🎁 غنیمت: 🪙 {result.loot_coin}  💎 {result.loot_diamond}  "
-        f"🍌 موز {result.loot_banana}"
+    if not records or any(row.status is not AttackStatus.RESOLVED for row in records):
+        return None
+    details = tuple(
+        (
+            row.teacher_name_snapshot
+            or (row.teacher.teacher.name if row.teacher is not None else "دبیر"),
+            row.teacher_ability_snapshot
+            or (row.teacher.teacher.ability_text if row.teacher is not None else None),
+            row.teacher_emoji_snapshot
+            or (row.teacher.teacher.emoji if row.teacher is not None else None),
+        )
+        for row in records
+    )
+    return replace(
+        result,
+        teacher_name="، ".join(name for name, _, _ in details),
+        teacher_details=details,
+        castle_damage=sum(row.result_damage or 0 for row in records),
+        teacher_injury=sum(row.result_teacher_injury for row in records),
+        loot_coin=sum(row.loot_coin for row in records),
+        loot_diamond=sum(row.loot_diamond for row in records),
+        loot_banana=sum(row.loot_banana for row in records),
+        castle_strength_before=records[0].target_castle_strength_snapshot,
+        source_chat_id=records[0].source_chat_id,
+        blocked_by_shield=all((row.result_damage or 0) == 0 for row in records)
+        and result.blocked_by_shield,
     )
 
 
@@ -91,40 +118,68 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
         for attack_id in attack_ids:
             try:
                 async with session.begin():
+                    command_id = await session.scalar(
+                        select(Attack.attack_command_id).where(Attack.id == attack_id)
+                    )
+                    if command_id is not None:
+                        # Every worker resolving the same command takes this lock
+                        # before touching its row, so the final report is complete.
+                        await session.execute(
+                            select(
+                                func.pg_advisory_xact_lock(func.hashtext(command_id))
+                            )
+                        )
                     result = await AttackService().resolve_pending_attack(
                         session, attack_id
                     )
+                    if result is not None:
+                        result = await _command_result(session, result)
                     can_upgrade = result is not None and await _can_upgrade_level(
                         session, result.attacker_telegram_id
                     )
                     if result is not None:
+                        key = command_id or str(attack_id)
                         text = _result_text(result)
                         await notification_service.enqueue(
                             session,
                             notification_type="ATTACK_RESULT",
                             recipient_user_id=result.attack.attacker_id,
-                            idempotency_key=f"ATTACK_RESULT:{attack_id}:ATTACKER",
+                            idempotency_key=f"ATTACK_RESULT:{key}:ATTACKER",
                             payload={
                                 "chat_id": result.attacker_telegram_id,
                                 "text": text,
+                                "parse_mode": MARKDOWN_V2,
                             },
                         )
                         await notification_service.enqueue(
                             session,
                             notification_type="ATTACK_RESULT",
                             recipient_user_id=result.attack.target_id,
-                            idempotency_key=f"ATTACK_RESULT:{attack_id}:TARGET",
+                            idempotency_key=f"ATTACK_RESULT:{key}:TARGET",
                             payload={
                                 "chat_id": result.target_telegram_id,
-                                "text": f"🎯 شما مورد حمله قرار گرفتید!\n\n{text}",
+                                "text": _result_text(result, recipient="defender"),
+                                "parse_mode": MARKDOWN_V2,
                             },
                         )
+                        if result.source_chat_id is not None:
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="ATTACK_RESULT",
+                                recipient_user_id=result.attack.attacker_id,
+                                idempotency_key=f"ATTACK_RESULT:{key}:GROUP",
+                                payload={
+                                    "chat_id": result.source_chat_id,
+                                    "text": text,
+                                    "parse_mode": MARKDOWN_V2,
+                                },
+                            )
                         if can_upgrade:
                             await notification_service.enqueue(
                                 session,
                                 notification_type="LEVEL_UP_AVAILABLE",
                                 recipient_user_id=result.attack.attacker_id,
-                                idempotency_key=f"ATTACK_LEVEL_UP:{attack_id}:ATTACKER",
+                                idempotency_key=f"ATTACK_LEVEL_UP:{key}:ATTACKER",
                                 payload={
                                     "chat_id": result.attacker_telegram_id,
                                     "text": "🎉 موز کافی داری!\nالان می‌تونی سطح کاربریت رو بالا ببری.",

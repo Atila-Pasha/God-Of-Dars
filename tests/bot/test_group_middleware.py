@@ -8,7 +8,7 @@ from app.bot.middlewares.group import GroupAccessMiddleware
 from app.bot.middlewares.subscription import SubscriptionMiddleware
 
 
-def test_group_policy_allows_only_stat_and_attack_commands() -> None:
+def test_group_policy_allows_profile_aliases_and_god() -> None:
     assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="/stat"))
     assert GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/attack@my_bot")
@@ -16,9 +16,8 @@ def test_group_policy_allows_only_stat_and_attack_commands() -> None:
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/profile")
     )
-    assert not GroupAccessMiddleware._message_is_allowed(
-        SimpleNamespace(text="پروفایل")
-    )
+    for text in ("پروفایل", "اطلاعات پروفایل", "کاربر", "اطلاعات کاربر", "گاد"):
+        assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/leaderbord")
     )
@@ -45,6 +44,9 @@ def test_group_policy_allows_replies_for_group_question_answers() -> None:
 def test_group_policy_allows_membership_check_callback() -> None:
     callback = SimpleNamespace(data="channel:check")
     assert GroupAccessMiddleware._callback_is_allowed(callback)
+    assert GroupAccessMiddleware._callback_is_allowed(
+        SimpleNamespace(data="attack_menu:toggle:id:5")
+    )
 
 
 def test_group_policy_runs_before_subscription_middleware() -> None:

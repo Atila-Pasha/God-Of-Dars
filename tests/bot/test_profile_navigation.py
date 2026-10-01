@@ -70,6 +70,21 @@ async def test_profile_handler_shows_rich_live_stats(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "alias", ("پروفایل", "اطلاعات پروفایل", "کاربر", "اطلاعات کاربر")
+)
+async def test_profile_aliases_open_same_section(monkeypatch, alias) -> None:
+    show_section = AsyncMock()
+    monkeypatch.setattr(profile, "_show_profile_section", show_section)
+    message = SimpleNamespace(text=alias)
+    session = AsyncMock()
+
+    await profile.profile_handler(message, session)
+
+    show_section.assert_awaited_once_with(message, session, "profile")
+
+
+@pytest.mark.asyncio
 async def test_level_up_shows_compact_profile_details(monkeypatch) -> None:
     message = SimpleNamespace(answer=AsyncMock())
     callback = SimpleNamespace(

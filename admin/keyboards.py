@@ -262,6 +262,11 @@ def user_actions(user_id: int, active: bool) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="⬆️ افزایش لول", callback_data=f"user:level:{user_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="👨‍🏫 دبیرهای کاربر", callback_data=f"user:teachers:{user_id}"
                 )
             ],

@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.banners import MARKDOWN_V2, purchase_banner
 from app.bot.callbacks import (
     BuffetCallback,
     BuffetMenuCallback,
@@ -119,15 +120,12 @@ async def group_purchase_message(
         )
         if teacher is not None:
             await message.answer(
-                f"🛒 خرید دبیر «{teacher.name}»\n\n"
-                f"قیمت: {teacher.purchase_price} "
-                f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
-                f"سطح بازشدن: {teacher.unlock_level}\n\n"
-                "آیا خرید این دبیر را تأیید می‌کنید؟",
+                purchase_banner(teacher),
                 reply_markup=confirmation_keyboard(
                     action="teacher_buy", target_id=teacher.id, origin="buffet"
                 ),
                 reply_to_message_id=message.message_id,
+                parse_mode=MARKDOWN_V2,
             )
             return
 

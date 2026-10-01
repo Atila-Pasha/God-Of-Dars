@@ -347,6 +347,7 @@ async def _level_unlocks(session: AsyncSession, next_level: int) -> str:
 @router.message(Command("assets"))
 @router.message(Command("knowledge"))
 @router.message(F.text == PROFILE_LABEL)
+@router.message(F.text.in_({"پروفایل", "کاربر", "اطلاعات کاربر"}))
 @router.message(
     F.text.in_(
         {
@@ -368,6 +369,9 @@ async def profile_handler(message: Message, session: AsyncSession) -> None:
         )
         section = {
             "اطلاعات پروفایل": "profile",
+            "پروفایل": "profile",
+            "کاربر": "profile",
+            "اطلاعات کاربر": "profile",
             "اطلاعات جنگ": "war",
             "اطلاعات دارایی": "assets",
             "اطلاعات دانش": "knowledge",

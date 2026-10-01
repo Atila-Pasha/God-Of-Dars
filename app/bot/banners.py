@@ -1,0 +1,199 @@
+"""MarkdownV2 banners for teacher purchases and attacks."""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING
+
+from app.bot.custom_emojis import premium_emoji_id
+
+if TYPE_CHECKING:
+    from app.services.attack_service import AttackPreview, AttackResult
+
+MARKDOWN_V2 = "MarkdownV2"
+_SPECIAL = re.compile(r"([\\_*\[\]()~`>#+\-=|{}.!])")
+
+
+def escape(value: object) -> str:
+    return _SPECIAL.sub(r"\\\1", str(value))
+
+
+def bold(value: object) -> str:
+    return f"*{escape(value)}*"
+
+
+def quote(value: object) -> str:
+    return "\n".join(f">{escape(line)}" for line in str(value).splitlines())
+
+
+def emoji(emoji_id: str, fallback: str) -> str:
+    return f"![{fallback}](tg://emoji?id={emoji_id})"
+
+
+def _short(value: str, limit: int = 180) -> str:
+    normalized = " ".join(value.split())
+    return normalized if len(normalized) <= limit else normalized[: limit - 1] + "…"
+
+
+def teacher_icon(value: str | None) -> str:
+    fallback = value if value and not value.isdecimal() else "👨‍🏫"
+    emoji_id = premium_emoji_id(value) or premium_emoji_id("👨‍🏫")
+    return emoji(emoji_id, fallback) if emoji_id else fallback
+
+
+SWORD = emoji("5823192436024813346", "⚔️")
+TARGET = emoji("6032949275732742941", "🎯")
+FORCES = emoji("5825822115651133329", "👨‍🏫")
+DEFENSE = emoji("5825861861278490879", "🛡️")
+INJURY = emoji("5213455977919039650", "🩸")
+LOOT = emoji("5825832256068918886", "🎁")
+COIN = emoji("5825699971076202989", "🪙")
+BANANA = emoji("5902520589356113908", "🍌")
+DIAMOND = emoji("5825753314570018832", "💎")
+QUESTION = emoji("5935912783261470019", "❓")
+CONFIRM = emoji("5823388325188214894", "✅")
+FINISH = emoji("5825727141039317043", "🏰")
+REPORT = emoji("5825627287344651886", "📜")
+TEACHERS = emoji("5825625629487276345", "👨‍🏫")
+DAMAGE = emoji("5276032951342088188", "💥")
+CASTLE = emoji("5823403314624080082", "🏰")
+HEAL = emoji("5825570280243732195", "🩹")
+STAR = emoji("5825647731388981287", "⭐")
+SPARKLE = emoji("5825920844064366385", "✨")
+
+
+def purchase_banner(teacher: object) -> str:
+    resource = getattr(teacher.purchase_resource, "value", teacher.purchase_resource)
+    currency = "الماس" if resource == "DIAMOND" else "طلا"
+    currency_icon = DIAMOND if currency == "الماس" else COIN
+    ability = (
+        _short(str(teacher.ability_text or "توانایی ویژه‌ای ثبت نشده"))
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace("\\", "\\\\")
+        .replace("`", r"\`")
+    )
+    return (
+        f"{teacher_icon(teacher.emoji)} خرید دبیر «{bold(teacher.name)}»\n\n"
+        f"● توانایی دبیر: `﹙{ability}﹚`\n\n"
+        f"{currency_icon} {bold('قیمت')}: {escape(teacher.purchase_price)} {escape(currency)}\n"
+        f"{quote(f'سطح بازشدن: {teacher.unlock_level}')}\n\n"
+        f"{CONFIRM} {bold('آیا خرید این دبیر را تأیید می‌کنید؟')}"
+    )
+
+
+def _teacher_lines(
+    details: tuple[tuple[str, str | None, str | None], ...],
+    fallback_name: str,
+    fallback_emojis: tuple[str | None, ...] = (),
+) -> list[str]:
+    if not details:
+        names = [name.strip() for name in fallback_name.split("،") if name.strip()]
+        details = tuple(
+            (
+                name,
+                None,
+                fallback_emojis[index] if index < len(fallback_emojis) else None,
+            )
+            for index, name in enumerate(names)
+        )
+    return [
+        f"{teacher_icon(icon)} {bold(name)}\n"
+        f">{SPARKLE} توانایی دبیر: {escape(_short(ability or 'ثبت نشده'))}"
+        for name, ability, icon in details[:4]
+    ]
+
+
+def attack_preview_banner(preview: AttackPreview) -> str:
+    details = _teacher_lines(
+        preview.teacher_details, preview.teacher_name, preview.teacher_emojis
+    )
+    names = " + ".join(name for name, _, _ in preview.teacher_details) or (
+        preview.teacher_name.replace("،", " +")
+    )
+    return (
+        f"{SWORD} {bold('قربان! به این موارد توجه کنید:')}\n\n"
+        f"{TARGET} هدف: {bold(preview.target_name)}\n"
+        f"{FORCES} نیروهای تنظیم‌شده:\n{quote(names)}\n\n"
+        "╔════════════════════════╗\n"
+        + "\n\n".join(details)
+        + "\n╚════════════════════════╝\n\n"
+        f"{DEFENSE} دفاع دژ:\n>{escape(preview.defense_power)} DMG {DEFENSE}\n\n"
+        f"{INJURY} آسیب احتمالی دبیر:\n"
+        f">{escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
+        "─────────────────────────\n\n"
+        f"{LOOT} {bold('غنیمت')} احتمالی از منابع حریف:\n"
+        f"{COIN} {bold('طلا')}: {escape(preview.loot_coin)}\n"
+        f"{DIAMOND} {bold('الماس')}: {escape(preview.loot_diamond)}\n"
+        f"{BANANA} {bold('موز')}: {escape(preview.loot_banana)}\n\n"
+        f"{QUESTION} {bold('فرمان حمله رو صادر می‌کنی؟')}"
+    )
+
+
+def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -> str:
+    before = result.castle_strength_before or (
+        result.castle_strength_after + result.castle_damage
+    )
+    percent = min(100, round(result.castle_damage * 100 / before)) if before > 0 else 0
+    if result.blocked_by_shield:
+        outcome = "سپر دفاعی حمله را خنثی کرد؛ دژ سالم ماند."
+    elif percent >= 100:
+        outcome = (
+            "نیروها قلعهٔ دشمن را فتح کردند!"
+            if recipient != "defender"
+            else "دژت سقوط کرد؛ برای نبرد بعدی بازسازی‌اش کن."
+        )
+    elif percent >= 50:
+        outcome = (
+            "ضربهٔ سنگینی به دژ وارد شد."
+            if recipient != "defender"
+            else "دژت آسیب سنگینی دید؛ دفاعت را تقویت کن."
+        )
+    elif percent > 0:
+        outcome = (
+            "بخشی از دژ دشمن تخریب شد."
+            if recipient != "defender"
+            else "دژت آسیب دید، اما هنوز پابرجاست."
+        )
+    else:
+        outcome = (
+            "دژ دشمن مقاومت کرد."
+            if recipient != "defender"
+            else "دژت این حمله را دفع کرد."
+        )
+    headline = (
+        f"به قلعهٔ تو از طرف «{result.attacker_name}» حمله شد!"
+        if recipient == "defender"
+        else f"حمله به قلعهٔ «{result.target_name}» تمام شد!"
+    )
+    teacher_lines = "\n\n".join(
+        f">{teacher_icon(icon)} {escape(name)}"
+        for name, _ability, icon in (
+            result.teacher_details
+            or tuple(
+                (name.strip(), None, None) for name in result.teacher_name.split("،")
+            )
+        )[:4]
+        if name
+    )
+    closing = (
+        f"دژت را ترمیم کن، فرمانده {STAR}"
+        if recipient == "defender"
+        else f"“Keep going, commander\\.” {STAR}"
+    )
+    loot_label = "منابع ازدست‌رفته" if recipient == "defender" else "غنیمت‌های کسب‌شده"
+    return (
+        f"{FINISH} {bold(headline)} {FINISH}\n\n"
+        f"{REPORT} {bold('گزارش نتیجهٔ نبرد:')}\n"
+        f"{escape(outcome)} {FORCES}\n"
+        f"● میزان تخریب: {bold(f'{percent}%')}\n\n"
+        f"{TEACHERS} دبیرها:\n{teacher_lines}\n\n"
+        f"{DAMAGE} تخریب واردشده به قلعه:\n>{escape(result.castle_damage)} DMG {INJURY}\n\n"
+        f"{CASTLE} قدرت باقی‌ماندهٔ دژ:\n>{escape(result.castle_strength_after)} DMG {CASTLE}\n\n"
+        f"{HEAL} آسیب واردشده به دبیر:\n>{escape(result.teacher_injury)} HP {HEAL}\n\n"
+        f"{LOOT} {loot_label}:\n"
+        f">{COIN} طلا: {escape(result.loot_coin)}\n"
+        f">{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
+        f">{BANANA} موز: {escape(result.loot_banana)}\n\n"
+        f"{closing}"
+    )

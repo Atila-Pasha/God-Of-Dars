@@ -7,8 +7,14 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
-from aiogram.types import MessageEntity, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.types import (
+    Message,
+    MessageEntity,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
+from app.bot.utils.telegram import schedule_message_deletion
 from app.core.config import settings
 
 # The visible character is retained as a fallback. Telegram replaces it with
@@ -201,6 +207,8 @@ def custom_emoji_entities(text: str) -> list[MessageEntity]:
 
 
 def _decorate(kwargs: dict[str, Any], text_key: str, entities_key: str) -> None:
+    if kwargs.get("parse_mode") == "MarkdownV2":
+        return
     text = kwargs.get(text_key)
     if not isinstance(text, str):
         return
@@ -227,6 +235,11 @@ def _decorate_method(method: Any) -> None:
         and hasattr(method, "reply_to_message_id")
     ):
         method.reply_to_message_id = context[1]
+    if getattr(method, "parse_mode", None) == "MarkdownV2":
+        markup = getattr(method, "reply_markup", None)
+        if markup is not None:
+            _decorate_markup({"reply_markup": markup})
+        return
     if hasattr(method, "text") and isinstance(method.text, str):
         generated = custom_emoji_entities(method.text)
         if generated and not getattr(method, "entities", None):
@@ -250,6 +263,11 @@ def _decorate_markup(kwargs: dict[str, Any]) -> None:
             text = getattr(button, "text", None)
             if not isinstance(text, str):
                 continue
+            if hasattr(button, "style") and not getattr(button, "style", None):
+                if text.startswith("✅") or "تأیید" in text or "تایید" in text:
+                    button.style = "success"
+                elif text.startswith("❌") or text.startswith("⛔") or "لغو" in text:
+                    button.style = "danger"
             source = next(
                 (
                     item
@@ -346,7 +364,15 @@ def install() -> None:
         for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
             try:
                 async with _telegram_semaphore():
-                    return await original_call(self, method, *args, **kwargs)
+                    result = await original_call(self, method, *args, **kwargs)
+                    sent_messages = result if isinstance(result, list) else (result,)
+                    for sent in sent_messages:
+                        if isinstance(sent, Message) and sent.chat.type in {
+                            "group",
+                            "supergroup",
+                        }:
+                            schedule_message_deletion(sent, delay_seconds=20)
+                    return result
             except TelegramRetryAfter as exc:
                 if attempt >= settings.TELEGRAM_RETRY_AFTER_MAX:
                     raise

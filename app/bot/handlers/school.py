@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, MessageEntity
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.banners import MARKDOWN_V2, purchase_banner
 from app.bot.callbacks import (
     CastleCallback,
     ConfirmationCallback,
@@ -156,7 +157,9 @@ async def _send_or_edit(
     *,
     reply_markup,
     entities: list[MessageEntity] | None = None,
+    parse_mode: str | None = None,
 ) -> None:
+    formatting = {"parse_mode": parse_mode} if parse_mode else {"entities": entities}
     if isinstance(target, CallbackQuery):
         if target.message is None:
             return
@@ -165,16 +168,16 @@ async def _send_or_edit(
                 target.message,
                 text,
                 reply_markup=reply_markup,
-                entities=entities,
+                **formatting,
             )
         except TelegramAPIError:
             await target.message.answer(
                 text,
                 reply_markup=reply_markup,
-                entities=entities,
+                **formatting,
             )
         return
-    await target.answer(text, reply_markup=reply_markup, entities=entities)
+    await target.answer(text, reply_markup=reply_markup, **formatting)
 
 
 async def _school_view(
@@ -542,27 +545,23 @@ async def teacher_callback_handler(
             if callback_data.origin == "buffet":
                 await _send_or_edit(
                     callback,
-                    f"🛒 خرید دبیر «{teacher.name}»\n\n"
-                    f"قیمت: {_number(teacher.purchase_price)} "
-                    f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
-                    "آیا خرید را تأیید می‌کنی؟",
+                    purchase_banner(teacher),
                     reply_markup=confirmation_keyboard(
                         action="teacher_buy", target_id=teacher.id, origin="buffet"
                     ),
+                    parse_mode=MARKDOWN_V2,
                 )
                 await callback.answer()
                 return
             await _send_or_edit(
                 callback,
-                f"🛒 خرید دبیر {teacher.name}\n\n"
-                f"قیمت: {_number(teacher.purchase_price)} "
-                f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
-                "آیا می‌خواهی این دبیر را بخری؟",
+                purchase_banner(teacher),
                 reply_markup=confirmation_keyboard(
                     action="teacher_buy",
                     target_id=teacher.id,
                     origin=callback_data.origin,
                 ),
+                parse_mode=MARKDOWN_V2,
             )
             await callback.answer()
         elif callback_data.action == "upgrade":

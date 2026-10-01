@@ -43,6 +43,9 @@ ALLOWED_GROUP_COMMANDS = frozenset(
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
 GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "اطلاعات", "معرفی")
+GROUP_PROFILE_ALIASES = frozenset(
+    {"پروفایل", "اطلاعات پروفایل", "کاربر", "اطلاعات کاربر"}
+)
 
 
 class GroupAccessMiddleware(BaseMiddleware):
@@ -220,6 +223,8 @@ class GroupAccessMiddleware(BaseMiddleware):
         text = (message.text or "").strip()
         if not text:
             return False
+        if text in GROUP_PROFILE_ALIASES or text == "گاد":
+            return True
         # These are intentionally plain-text group commands. Require a word
         # boundary so ordinary messages such as "حملهای..." are not commands.
         if any(
@@ -268,6 +273,7 @@ class GroupAccessMiddleware(BaseMiddleware):
                 "help:",
                 "profile:",
                 "attack:",
+                "attack_menu:",
                 "random_attack:",
                 "confirm:",
                 "shield_purchase:",

@@ -3,6 +3,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 class UserStates(StatesGroup):
     search = State()
+    level_increase = State()
     resource_coin = State()
     resource_diamond = State()
     resource_banana = State()

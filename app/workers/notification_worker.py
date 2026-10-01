@@ -52,6 +52,8 @@ async def _deliver_notification(
                 "chat_id": payload["chat_id"],
                 "text": payload["text"],
             }
+            if payload.get("parse_mode"):
+                send_kwargs["parse_mode"] = payload["parse_mode"]
             if payload.get("level_confirmation"):
                 send_kwargs["reply_markup"] = level_confirmation_keyboard()
             await bot.send_message(**send_kwargs)

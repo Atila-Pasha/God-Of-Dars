@@ -733,6 +733,7 @@ def user_text(user) -> str:
         f"👤 {name or 'بدون نام'}\n🆔 شناسه داخلی: {user.id}\n"
         f"📱 تلگرام: {user.telegram_user_id}\n🔗 نام کاربری: @{user.username or 'ندارد'}\n"
         f"وضعیت: {'فعال' if user.is_active else 'مسدود'}\n"
+        f"لول: {user.level}\n"
         f"منابع: 🪙 {r.coin if r else 0} | 💎 {r.diamond if r else 0} | ✨ XP {r.banana if r else 0}"
     )
 
@@ -970,10 +971,49 @@ async def user_callback(
         )
         await callback.answer()
         return
+    if action == "level":
+        await state.update_data(user_id=user_id)
+        await state.set_state(UserStates.level_increase)
+        await callback.message.answer(
+            f"لول فعلی کاربر {user.level} است. چند لول اضافه کنم؟\n"
+            "یک عدد مثبت بفرستید. برای انصراف، لغو را بزنید.",
+            reply_markup=keyboards.cancel_keyboard(),
+        )
+        await callback.answer()
+        return
+    if action != "resources":
+        await callback.answer("عملیات نامعتبر است.", show_alert=True)
+        return
     await state.update_data(user_id=user_id)
     await state.set_state(UserStates.resource_coin)
     await callback.message.answer("چقدر سکه اضافه کنم؟\nبرای صفر، 0 بفرستید.")
     await callback.answer()
+
+
+@router.message(UserStates.level_increase)
+async def user_level_increase(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        amount = number(message.text, "مقدار افزایش لول", minimum=1)
+        data = await state.get_data()
+        result = await service.increase_user_level(session, data["user_id"], amount)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.clear()
+    if result is None:
+        await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.users_menu())
+        return
+    user, old_level = result
+    await message.answer(
+        f"✅ لول کاربر از {old_level} به {user.level} افزایش یافت.\n\n"
+        + user_text(user),
+        reply_markup=keyboards.user_actions(user.id, user.is_active),
+    )
+    await message.answer("مدیریت کاربران", reply_markup=keyboards.users_menu())
 
 
 @router.callback_query(F.data.startswith("user_teacher:"))

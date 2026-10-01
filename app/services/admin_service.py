@@ -5,11 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.enums import ResourceType
+from app.core.game_logic import game_config
 from app.models.resource import Resource
 from app.models.teacher import Teacher
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.models.user_teacher import UserTeacher
+from app.repositories.user import UserRepository
 
 
 class AdminService:
@@ -89,6 +91,25 @@ class AdminService:
         user.is_active = active
         await session.flush()
         return user
+
+    async def increase_user_level(
+        self, session: AsyncSession, user_id: int, amount: int
+    ) -> tuple[User, int] | None:
+        """Increase a user's level without spending their earned XP."""
+        if amount < 1:
+            raise ValueError("مقدار افزایش لول باید حداقل ۱ باشد.")
+        user = await UserRepository().get_by_id_for_update(session, user_id)
+        if user is None:
+            return None
+        old_level = user.level
+        max_level = game_config.level_progression.max_level
+        if old_level + amount > max_level:
+            raise ValueError(
+                f"حداکثر لول {max_level} است؛ لول فعلی کاربر {old_level} است."
+            )
+        user.level += amount
+        await session.flush()
+        return user, old_level
 
     async def add_resources(
         self,

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     func,
     text,
 )
@@ -111,6 +112,17 @@ class Attack(Base):
         DateTime(timezone=True), nullable=False
     )
     attack_command_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    teacher_name_snapshot: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    teacher_emoji_snapshot: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    teacher_ability_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_teacher_injury: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     attack_xp_awarded: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

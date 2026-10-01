@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import Message
 
 _deletion_tasks: set[asyncio.Task[None]] = set()
+_scheduled_deletions: set[tuple[int, int]] = set()
 
 
 def group_user_request(message: Message) -> Message | None:
@@ -28,12 +29,17 @@ async def _delete_message_after(message: Message, delay_seconds: float) -> None:
 
 def schedule_message_deletion(message: Message, *, delay_seconds: float = 10) -> None:
     """Delete a transient Telegram message without blocking its handler."""
+    key = (message.chat.id, message.message_id)
+    if key in _scheduled_deletions:
+        return
+    _scheduled_deletions.add(key)
     task = asyncio.create_task(
         _delete_message_after(message, delay_seconds),
         name=f"delete-telegram-message-{message.chat.id}-{message.message_id}",
     )
     _deletion_tasks.add(task)
     task.add_done_callback(_deletion_tasks.discard)
+    task.add_done_callback(lambda _task: _scheduled_deletions.discard(key))
 
 
 async def safe_edit_text(message: Any, text: str, **kwargs: Any) -> bool:

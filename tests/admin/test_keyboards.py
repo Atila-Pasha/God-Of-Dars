@@ -56,6 +56,10 @@ def test_content_menu_exposes_create_actions_without_commands() -> None:
     assert "➕ پک مطالعه جدید" in content_labels
 
 
+def test_user_actions_expose_level_increase() -> None:
+    assert "user:level:42" in inline_data(keyboards.user_actions(42, True))
+
+
 @dataclass
 class Channel:
     id: int

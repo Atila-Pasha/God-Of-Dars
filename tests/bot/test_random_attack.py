@@ -40,15 +40,19 @@ def random_preview(*, version: int = 1) -> RandomAttackPreview:
 def test_attack_preview_shows_every_selected_teacher_emoji() -> None:
     preview = replace(
         random_preview().preview,
-        teacher_emojis=("🧠", "🔬", "123456789"),
+        teacher_details=(
+            ("افلاطون", "درس ۱", "123456789"),
+            ("فراهانی", "درس ۲", "987654321"),
+            ("قضاتی", "درس ۳", "1122334455"),
+        ),
     )
 
-    text, entities = battle._preview_content(preview)
+    text = battle._preview_content(preview)
 
-    assert text.startswith("🧠 🔬 👨‍🏫 پیش‌نمایش حمله")
-    assert len(entities) == 1
-    assert entities[0].offset == len("🧠 🔬 ".encode("utf-16-le")) // 2
-    assert entities[0].custom_emoji_id == "123456789"
+    assert text.startswith("![⚔️](tg://emoji?id=5823192436024813346)")
+    for emoji_id in ("123456789", "987654321", "1122334455"):
+        assert f"tg://emoji?id={emoji_id}" in text
+    assert "درس ۳" in text
 
 
 def message() -> SimpleNamespace:
@@ -94,7 +98,7 @@ async def test_random_attack_command_uses_durable_preview_and_reroll_keyboard(
     prepare = AsyncMock(return_value=preview)
     monkeypatch.setattr(battle.attack_service, "prepare_random_preview", prepare)
 
-    await battle.attack_message(target, AsyncMock())
+    await battle.attack_message(target, AsyncMock(), AsyncMock())
 
     prepare.assert_awaited_once_with(
         ANY,
@@ -102,6 +106,7 @@ async def test_random_attack_command_uses_durable_preview_and_reroll_keyboard(
         teacher_name="افلاطون",
     )
     text = target.answer.await_args.args[0]
+    assert target.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
     keyboard = target.answer.await_args.kwargs["reply_markup"]
     assert "25 سکه" in text
     assert "حریف دیگر" in keyboard.inline_keyboard[1][0].text

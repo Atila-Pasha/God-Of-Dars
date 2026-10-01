@@ -92,6 +92,38 @@ def test_teacher_selection_keyboard_marks_multiple_teachers() -> None:
     _decorate_markup({"reply_markup": keyboard})
     teacher_buttons = [row[0] for row in keyboard.inline_keyboard[:-1]]
     assert all(button.icon_custom_emoji_id is None for button in teacher_buttons)
+    assert keyboard.inline_keyboard[-1][0].style == "success"
+
+
+@pytest.mark.asyncio
+async def test_reply_attack_in_group_opens_teacher_selection(monkeypatch) -> None:
+    target_preview = AsyncMock(return_value=SimpleNamespace(id=77))
+    show_selection = AsyncMock()
+    monkeypatch.setattr(battle.attack_service, "target_preview", target_preview)
+    monkeypatch.setattr(battle, "_show_teacher_selection", show_selection)
+    state = SimpleNamespace(clear=AsyncMock(), update_data=AsyncMock())
+    message = SimpleNamespace(
+        text="حمله",
+        chat=SimpleNamespace(type="supergroup"),
+        message_id=123,
+        from_user=SimpleNamespace(id=42),
+        reply_to_message=SimpleNamespace(
+            from_user=SimpleNamespace(id=55, is_bot=False)
+        ),
+    )
+    session = AsyncMock()
+
+    await battle.attack_message(message, session, state)
+
+    target_preview.assert_awaited_once_with(
+        session, attacker_telegram_id=42, identifier="55"
+    )
+    state.update_data.assert_awaited_once_with(
+        mode="id", target_id=77, selected_teacher_ids=[], group_attacker_id=42
+    )
+    show_selection.assert_awaited_once_with(
+        message, session, state, mode="id", reply_to_message_id=123
+    )
 
 
 @pytest.mark.asyncio

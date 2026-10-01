@@ -9,6 +9,7 @@ from app.bot.handlers.leaderboard import router as leaderboard_router
 from app.bot.handlers.library import router as library_router
 from app.bot.handlers.mine import router as mine_router
 from app.bot.handlers.profile import router as profile_router
+from app.bot.handlers.quick import router as quick_router
 from app.bot.handlers.referral import router as referral_router
 from app.bot.handlers.school import router as school_router
 from app.bot.handlers.start import router as start_router
@@ -33,15 +34,16 @@ def create_dispatcher() -> Dispatcher:
     dispatcher.callback_query.outer_middleware(subscription_middleware)
     # Explicit leaderboard commands and group phrases must win over generic
     # text handlers used by active FSM flows such as question answers.
+    dispatcher.include_router(quick_router)
     dispatcher.include_router(leaderboard_router)
     dispatcher.include_router(school_router)
     dispatcher.include_router(buffet_router)
     dispatcher.include_router(battle_router)
+    dispatcher.include_router(profile_router)
     dispatcher.include_router(chance_router)
     dispatcher.include_router(daily_router)
     dispatcher.include_router(library_router)
     dispatcher.include_router(mine_router)
-    dispatcher.include_router(profile_router)
     dispatcher.include_router(referral_router)
     dispatcher.include_router(start_router)
     return dispatcher

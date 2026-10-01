@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call
 
+import pytest
+
+from app.core.game_logic import game_config
+from app.repositories.user import UserRepository
 from app.services.admin_service import AdminService
 
 
@@ -41,4 +45,34 @@ async def test_delete_teacher_returns_not_found_without_deleting() -> None:
     assert deleted is False
     assert teacher is None
     session.delete.assert_not_awaited()
+    session.flush.assert_not_awaited()
+
+
+async def test_admin_increases_level_without_spending_xp(monkeypatch) -> None:
+    user = SimpleNamespace(level=10, resources=SimpleNamespace(banana=123))
+    locked_lookup = AsyncMock(return_value=user)
+    monkeypatch.setattr(UserRepository, "get_by_id_for_update", locked_lookup)
+    session = AsyncMock()
+
+    result = await AdminService().increase_user_level(session, 42, 3)
+
+    assert result == (user, 10)
+    assert user.level == 13
+    assert user.resources.banana == 123
+    locked_lookup.assert_awaited_once_with(session, 42)
+    session.flush.assert_awaited_once()
+
+
+async def test_admin_level_increase_rejects_exceeding_game_cap(monkeypatch) -> None:
+    max_level = game_config.level_progression.max_level
+    user = SimpleNamespace(level=max_level - 1)
+    monkeypatch.setattr(
+        UserRepository, "get_by_id_for_update", AsyncMock(return_value=user)
+    )
+    session = AsyncMock()
+
+    with pytest.raises(ValueError, match="حداکثر لول"):
+        await AdminService().increase_user_level(session, 42, 2)
+
+    assert user.level == max_level - 1
     session.flush.assert_not_awaited()
