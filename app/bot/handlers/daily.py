@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.banners import MARKDOWN_V2, rich_plain, section_entry_banner
 from app.bot.keyboards.daily import daily_keyboard
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, section_back_keyboard
 from app.bot.middlewares.subscription import subscription_service
@@ -97,13 +98,18 @@ async def _show(target, session: AsyncSession, user_id: int):
                 lines.append(f"\n• {quest.title}\n {status}\n 📝 {description}")
             text = "\n".join(lines)
             markup = daily_keyboard(progresses)
+    text = f"{section_entry_banner('فعالیت‌های روزانه')}\n─────────────────────\n{rich_plain(text)}"
     if isinstance(target, CallbackQuery):
-        await safe_edit_text(target.message, text, reply_markup=markup)
+        await safe_edit_text(
+            target.message, text, reply_markup=markup, parse_mode=MARKDOWN_V2
+        )
     else:
-        await target.answer(text, reply_markup=markup)
+        await target.answer(text, reply_markup=markup, parse_mode=MARKDOWN_V2)
         if isinstance(target, Message):
             await target.answer(
-                "فعالیت‌های روزانه", reply_markup=section_back_keyboard()
+                section_entry_banner("فعالیت‌های روزانه"),
+                reply_markup=section_back_keyboard(),
+                parse_mode=MARKDOWN_V2,
             )
 
 

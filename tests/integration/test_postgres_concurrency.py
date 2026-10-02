@@ -1094,3 +1094,226 @@ async def test_shield_activation_and_attack_resolution_are_serializable() -> Non
                 )
                 await session.execute(delete(Shield).where(Shield.id == shield_id))
                 await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.parametrize("currency", [ResourceType.COIN, ResourceType.DIAMOND])
+async def test_failed_teacher_purchase_handler_does_not_commit_ownership(currency):
+    from types import SimpleNamespace
+
+    from app.bot.callbacks import ConfirmationCallback
+    from app.bot.handlers.school import confirmation_callback_handler
+    from app.bot.middlewares.database import DatabaseSessionMiddleware
+
+    user_id = await _user()
+    async with AsyncSessionLocal() as session, session.begin():
+        teacher = Teacher(
+            name=f"unaffordable-{uuid4().hex[:8]}",
+            damage=10,
+            max_hp=100,
+            purchase_price=200,
+            purchase_resource=currency,
+            upgrade_price=10,
+        )
+        session.add(teacher)
+        await session.flush()
+        teacher_id = teacher.id
+        telegram_id = await session.scalar(
+            select(User.telegram_user_id).where(User.id == user_id)
+        )
+    try:
+        callback = SimpleNamespace(
+            from_user=SimpleNamespace(id=telegram_id),
+            message=None,
+            answer=AsyncMock(),
+        )
+        data = ConfirmationCallback(
+            action="teacher_buy", target_id=teacher_id, decision="confirm"
+        )
+
+        async def handler(event, context):
+            await confirmation_callback_handler(event, data, context["session"])
+
+        await DatabaseSessionMiddleware()(handler, callback, {})
+        callback.answer.assert_awaited_once()
+        async with AsyncSessionLocal() as session:
+            assert (
+                await session.scalar(
+                    select(func.count(UserTeacher.id)).where(
+                        UserTeacher.user_id == user_id
+                    )
+                )
+                == 0
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(Transaction.id)).where(
+                        Transaction.user_id == user_id
+                    )
+                )
+                == 0
+            )
+    finally:
+        await _cleanup([user_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.parametrize("currency", list(ResourceType))
+async def test_preloaded_wallet_cannot_spend_a_committed_debit_again(currency):
+    from app.repositories.user import UserRepository
+    from app.services.resource_service import ResourceService
+
+    user_id = await _user()
+    field = currency.value.lower()
+    async with AsyncSessionLocal() as session, session.begin():
+        wallet = await session.scalar(
+            select(Resource).where(Resource.user_id == user_id)
+        )
+        setattr(wallet, field, 100)
+        telegram_id = await session.scalar(
+            select(User.telegram_user_id).where(User.id == user_id)
+        )
+    try:
+        async with AsyncSessionLocal() as stale:
+            user = await UserRepository().get_by_telegram_user_id(stale, telegram_id)
+            assert getattr(user.resources, field) == 100
+            async with AsyncSessionLocal() as writer, writer.begin():
+                await ResourceService.debit(
+                    writer,
+                    None,
+                    user_id=user_id,
+                    resource_type=currency,
+                    amount=80,
+                    reason="FIRST_SPEND",
+                )
+            with pytest.raises(InsufficientCoins):
+                await ResourceService.debit(
+                    stale,
+                    user.resources,
+                    user_id=user_id,
+                    resource_type=currency,
+                    amount=80,
+                    reason="SECOND_SPEND",
+                )
+            await stale.rollback()
+        async with AsyncSessionLocal() as session:
+            assert (
+                await session.scalar(
+                    select(getattr(Resource, field)).where(Resource.user_id == user_id)
+                )
+                == 20
+            )
+            assert (
+                await session.scalar(
+                    select(func.sum(Transaction.amount)).where(
+                        Transaction.user_id == user_id
+                    )
+                )
+                == -80
+            )
+    finally:
+        await _cleanup([user_id])
+
+
+@pytest.mark.parametrize("currency", list(ResourceType))
+async def test_reward_refresh_preserves_other_session_credit_and_local_changes(
+    currency,
+):
+    from app.repositories.user import UserRepository
+
+    user_id = await _user()
+    async with AsyncSessionLocal() as session:
+        telegram_id = await session.scalar(
+            select(User.telegram_user_id).where(User.id == user_id)
+        )
+    try:
+        async with AsyncSessionLocal() as stale:
+            user = await UserRepository().get_by_telegram_user_id(stale, telegram_id)
+            assert getattr(user.resources, currency.value.lower()) == 0
+            async with AsyncSessionLocal() as writer, writer.begin():
+                await RewardService().grant(
+                    writer,
+                    user_id=user_id,
+                    spec=RewardSpec(currency, 7),
+                    source="REFRESH_TEST",
+                    reference_type="TEST",
+                    reference_id=1,
+                )
+            for reference_id in (2, 3):
+                await RewardService().grant(
+                    stale,
+                    user_id=user_id,
+                    spec=RewardSpec(currency, 3),
+                    source="REFRESH_TEST",
+                    reference_type="TEST",
+                    reference_id=reference_id,
+                )
+            await stale.commit()
+        async with AsyncSessionLocal() as session:
+            assert (
+                await session.scalar(
+                    select(getattr(Resource, currency.value.lower())).where(
+                        Resource.user_id == user_id
+                    )
+                )
+                == 13
+            )
+            assert (
+                await session.scalar(
+                    select(func.sum(Transaction.amount)).where(
+                        Transaction.user_id == user_id
+                    )
+                )
+                == 13
+            )
+    finally:
+        await _cleanup([user_id])
+
+
+@pytest.mark.parametrize(
+    "status", [AttackStatus.PENDING, AttackStatus.PROCESSING, AttackStatus.FAILED]
+)
+async def test_teacher_sale_waits_for_active_attack_and_allows_finished_history(status):
+    from app.services.teacher_service import TeacherService
+
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    attack_id = None
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            attack = Attack(
+                attacker_id=attacker_id,
+                target_id=target_id,
+                teacher_id=owned_id,
+                status=status,
+                resolve_at=datetime.now(UTC),
+                next_retry_at=datetime.now(UTC)
+                if status is AttackStatus.FAILED
+                else None,
+                teacher_damage_snapshot=10,
+                target_castle_strength_snapshot=100,
+                target_defense_power_snapshot=0,
+            )
+            session.add(attack)
+            await session.flush()
+            attack_id = attack.id
+        async with AsyncSessionLocal() as session:
+            with pytest.raises(AttackInProgress):
+                await TeacherService().sell(session, attacker_id, owned_id)
+            await session.commit()  # Even a caught domain error must leave no writes.
+        async with AsyncSessionLocal() as session, session.begin():
+            assert await session.get(UserTeacher, owned_id) is not None
+            result = await AttackService().resolve_pending_attack(session, attack_id)
+            assert result is not None
+        async with AsyncSessionLocal() as session, session.begin():
+            await TeacherService().sell(session, attacker_id, owned_id)
+        async with AsyncSessionLocal() as session:
+            assert await session.get(UserTeacher, owned_id) is None
+            attack = await session.get(Attack, attack_id)
+            assert attack.status is AttackStatus.RESOLVED
+            assert attack.teacher_id is None
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Attack).where(Attack.id == attack_id))
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id == teacher_id))

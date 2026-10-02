@@ -43,7 +43,11 @@ async def test_attack_button_replaces_main_menu_with_back_and_attack_types() -> 
     assert back_keyboard.keyboard[0][0].text == "بازگشت به منو اصلی"
     type_keyboard = message.answer.await_args_list[1].kwargs["reply_markup"]
     labels = [button.text for button in type_keyboard.inline_keyboard[0]]
-    assert labels == ["🎲 حمله رندوم", "🎯 حمله با آیدی"]
+    assert labels == ["حمله رندوم", "🎯 حمله با آیدی"]
+    assert (
+        type_keyboard.inline_keyboard[0][0].icon_custom_emoji_id
+        == "5825935099060822018"
+    )
 
 
 @pytest.mark.asyncio

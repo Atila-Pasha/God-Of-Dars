@@ -274,6 +274,7 @@ class GroupAccessMiddleware(BaseMiddleware):
                 "profile:",
                 "attack:",
                 "attack_menu:",
+                "attack_timer:",
                 "random_attack:",
                 "confirm:",
                 "shield_purchase:",

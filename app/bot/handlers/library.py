@@ -154,19 +154,33 @@ async def _user_id(session: AsyncSession, message: Message | CallbackQuery) -> i
 
 
 async def _show_library(target: Message | CallbackQuery) -> None:
+    from app.bot.banners import MARKDOWN_V2, bold, emoji, section_entry_banner
+
     text = (
-        "📚 کتابخانهٔ دانش\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها رو بشناس 👇"
+        f"{section_entry_banner('کتابخانه')}\n"
+        "─────────────────────\n"
+        f"{emoji('5825629907274703191', '📚')} {bold('کتابخانهٔ دانش')}\n\n"
+        "سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها رو بشناس\\."
     )
     if isinstance(target, CallbackQuery):
         if target.message is not None:
             target_message = cast(Message, target.message)
-            await safe_edit_text(target_message, text, reply_markup=library_keyboard())
+            await safe_edit_text(
+                target_message,
+                text,
+                reply_markup=library_keyboard(),
+                parse_mode=MARKDOWN_V2,
+            )
     else:
-        await target.answer(text, reply_markup=library_keyboard())
+        await target.answer(
+            text, reply_markup=library_keyboard(), parse_mode=MARKDOWN_V2
+        )
         if isinstance(target, Message):
-            await target.answer("کتابخانه", reply_markup=section_back_keyboard())
+            await target.answer(
+                section_entry_banner("کتابخانه"),
+                reply_markup=section_back_keyboard(),
+                parse_mode=MARKDOWN_V2,
+            )
 
 
 async def _safe_callback_answer(

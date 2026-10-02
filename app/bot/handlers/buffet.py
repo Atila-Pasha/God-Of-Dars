@@ -9,7 +9,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.banners import MARKDOWN_V2, purchase_banner
+from app.bot.banners import (
+    MARKDOWN_V2,
+    bold,
+    emoji,
+    purchase_banner,
+    section_entry_banner,
+)
 from app.bot.callbacks import (
     BuffetCallback,
     BuffetMenuCallback,
@@ -181,6 +187,16 @@ def _resource_text(resources) -> str:
     return f"🪙: {resources.coin}\n💎: {resources.diamond}"
 
 
+def _buffet_menu_banner() -> str:
+    return (
+        f"{section_entry_banner('بوفه')}\n"
+        "─────────────────────\n"
+        f"{emoji('5823511728188563725', '🍽️')} {bold('بازار و بوفه')}\n\n"
+        f"{emoji('5825699971076202989', '🪙')} دبیر بخر، سپر بردار یا منابع رو تبدیل کن\\.\n"
+        f"{emoji('5935912783261470019', '❓')} انتخاب با توئه\\."
+    )
+
+
 @router.message(F.text == BUFFET_LABEL)
 async def buffet_handler(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
@@ -188,9 +204,9 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
     try:
         await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
         await message.answer(
-            "🍽 بازار و بوفه\n━━━━━━━━━━━━━━━━━━\n\n"
-            "دبیر بخر، سپر بردار یا منابع رو تبدیل کن؛ انتخاب با توئه 👇",
+            _buffet_menu_banner(),
             reply_markup=buffet_menu_keyboard(),
+            parse_mode=MARKDOWN_V2,
         )
     except (UserInactiveError, SchoolUserNotFound):
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
@@ -199,16 +215,17 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
 async def _buffet_menu_view(
     target: Message | CallbackQuery, session: AsyncSession
 ) -> None:
-    text = (
-        "🍽 بازار و بوفه\n━━━━━━━━━━━━━━━━━━\n\n"
-        "دبیر بخر، سپر بردار یا منابع رو تبدیل کن؛ انتخاب با توئه 👇"
-    )
+    text = _buffet_menu_banner()
     if isinstance(target, CallbackQuery) and target.message is not None:
         # Reply keyboards cannot be attached to editMessageText. Send a fresh
         # message so Telegram replaces the user's keyboard at the bottom.
-        await target.message.answer(text, reply_markup=buffet_menu_keyboard())
+        await target.message.answer(
+            text, reply_markup=buffet_menu_keyboard(), parse_mode=MARKDOWN_V2
+        )
     else:
-        await target.answer(text, reply_markup=buffet_menu_keyboard())
+        await target.answer(
+            text, reply_markup=buffet_menu_keyboard(), parse_mode=MARKDOWN_V2
+        )
 
 
 @router.message(F.text.in_({"تبدیل منابع", "🔄 تبدیل منابع"}))

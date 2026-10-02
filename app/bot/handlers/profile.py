@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.banners import MARKDOWN_V2, bold, emoji, section_entry_banner
 from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
@@ -126,8 +127,10 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
 
 def _profile_menu_text() -> str:
     return (
-        "🧙 اتاق فرمانده\n━━━━━━━━━━━━━━━━━━\n\n"
-        "آمار، دارایی و مسیر پیشرفتت رو از اینجا زیر نظر بگیر 👇"
+        f"{section_entry_banner('پروفایل')}\n"
+        "─────────────────────\n"
+        f"{emoji('5825647731388981287', '🧙')} {bold('اتاق فرمانده')}\n\n"
+        "آمار، دارایی و مسیر پیشرفتت رو از اینجا زیر نظر بگیر\\."
     )
 
 
@@ -233,12 +236,19 @@ async def _show_profile_menu(target: Message | CallbackQuery) -> None:
             return
         try:
             await safe_edit_text(
-                target.message, text, reply_markup=_profile_markup(target)
+                target.message,
+                text,
+                reply_markup=_profile_markup(target),
+                parse_mode=MARKDOWN_V2,
             )
         except TelegramAPIError:
-            await target.message.answer(text, reply_markup=_profile_markup(target))
+            await target.message.answer(
+                text, reply_markup=_profile_markup(target), parse_mode=MARKDOWN_V2
+            )
     else:
-        await target.answer(text, reply_markup=_profile_markup(target))
+        await target.answer(
+            text, reply_markup=_profile_markup(target), parse_mode=MARKDOWN_V2
+        )
 
 
 async def _show_profile_section(

@@ -113,6 +113,8 @@ class Attack(Base):
     )
     attack_command_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     source_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    launch_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    launch_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     teacher_name_snapshot: Mapped[str | None] = mapped_column(
         String(100), nullable=True
     )

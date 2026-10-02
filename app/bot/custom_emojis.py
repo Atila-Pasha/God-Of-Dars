@@ -108,6 +108,9 @@ CUSTOM_EMOJI_IDS: dict[str, str] = {
 _group_reply_context: ContextVar[tuple[int, int] | None] = ContextVar(
     "godofdars_group_reply_context", default=None
 )
+_persist_group_message: ContextVar[bool] = ContextVar(
+    "godofdars_persist_group_message", default=False
+)
 _telegram_api_semaphore: asyncio.Semaphore | None = None
 
 
@@ -124,6 +127,14 @@ def set_group_reply_context(chat_id: int, message_id: int):
 
 def reset_group_reply_context(token) -> None:
     _group_reply_context.reset(token)
+
+
+def set_persist_group_message():
+    return _persist_group_message.set(True)
+
+
+def reset_persist_group_message(token) -> None:
+    _persist_group_message.reset(token)
 
 
 def _add_group_reply(kwargs: dict[str, Any]) -> None:
@@ -367,10 +378,16 @@ def install() -> None:
                     result = await original_call(self, method, *args, **kwargs)
                     sent_messages = result if isinstance(result, list) else (result,)
                     for sent in sent_messages:
-                        if isinstance(sent, Message) and sent.chat.type in {
-                            "group",
-                            "supergroup",
-                        }:
+                        if (
+                            isinstance(sent, Message)
+                            and method.__class__.__name__.startswith("Send")
+                            and not _persist_group_message.get()
+                            and sent.chat.type
+                            in {
+                                "group",
+                                "supergroup",
+                            }
+                        ):
                             schedule_message_deletion(sent, delay_seconds=20)
                     return result
             except TelegramRetryAfter as exc:

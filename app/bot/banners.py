@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from app.bot.custom_emojis import premium_emoji_id
+from app.bot.custom_emojis import CUSTOM_EMOJI_IDS, premium_emoji_id
 
 if TYPE_CHECKING:
+    from app.models.teacher import Teacher
     from app.services.attack_service import AttackPreview, AttackResult
 
 MARKDOWN_V2 = "MarkdownV2"
@@ -28,6 +29,22 @@ def quote(value: object) -> str:
 
 def emoji(emoji_id: str, fallback: str) -> str:
     return f"![{fallback}](tg://emoji?id={emoji_id})"
+
+
+def rich_plain(value: str) -> str:
+    """Escape ordinary text while replacing known emoji with custom entities."""
+    icons = sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True)
+    parts: list[str] = []
+    position = 0
+    while position < len(value):
+        icon = next((item for item in icons if value.startswith(item, position)), None)
+        if icon is None:
+            parts.append(escape(value[position]))
+            position += 1
+        else:
+            parts.append(emoji(CUSTOM_EMOJI_IDS[icon], icon))
+            position += len(icon)
+    return "".join(parts)
 
 
 def _short(value: str, limit: int = 180) -> str:
@@ -60,9 +77,40 @@ CASTLE = emoji("5823403314624080082", "🏰")
 HEAL = emoji("5825570280243732195", "🩹")
 STAR = emoji("5825647731388981287", "⭐")
 SPARKLE = emoji("5825920844064366385", "✨")
+ENTRY = emoji("5825709849500985213", "✅")
+LAUNCH = emoji("5847957479446547693", "🚀")
+SCHOOL = emoji("5825545274944135130", "🏫")
+LEVEL = emoji("5825727141039317043", "🎖️")
+UNLOCK = emoji("5823611946955447648", "✨")
+FORT = emoji("5825546447470206916", "🏰")
 
 
-def purchase_banner(teacher: object) -> str:
+def section_entry_banner(name: str) -> str:
+    return f"{ENTRY} {bold(f'وارد بخش {name} شدید')}\\."
+
+
+def attack_launch_banner(
+    target_name: str,
+    teacher_details: tuple[tuple[str, str | None, str | None], ...],
+    *,
+    remaining_seconds: int | None = None,
+) -> str:
+    teachers = "\n\n".join(
+        f">{teacher_icon(icon)}    {escape(name)}"
+        for name, _ability, icon in teacher_details[:4]
+    )
+    footer = (
+        "پس از پایان زمان، نتیجه حمله برای شما ارسال می‌شود\\."
+        if remaining_seconds is None
+        else f"زمان باقی‌مانده تا تکمیل حمله: {escape(f'{remaining_seconds // 60:02d}:{remaining_seconds % 60:02d}')}"
+    )
+    return (
+        f"{LAUNCH} {bold(f'حمله به «{target_name}» آغاز شد!')}\n\n"
+        f"{TEACHERS} دبیرها:\n{teachers}\n\n{footer}"
+    )
+
+
+def purchase_banner(teacher: Teacher) -> str:
     resource = getattr(teacher.purchase_resource, "value", teacher.purchase_resource)
     currency = "الماس" if resource == "DIAMOND" else "طلا"
     currency_icon = DIAMOND if currency == "الماس" else COIN
@@ -74,7 +122,7 @@ def purchase_banner(teacher: object) -> str:
         .replace("`", r"\`")
     )
     return (
-        f"{teacher_icon(teacher.emoji)} خرید دبیر «{bold(teacher.name)}»\n\n"
+        f"{teacher_icon(teacher.emoji)}    خرید دبیر «{bold(teacher.name)}»\n\n"
         f"● توانایی دبیر: `﹙{ability}﹚`\n\n"
         f"{currency_icon} {bold('قیمت')}: {escape(teacher.purchase_price)} {escape(currency)}\n"
         f"{quote(f'سطح بازشدن: {teacher.unlock_level}')}\n\n"
@@ -98,7 +146,7 @@ def _teacher_lines(
             for index, name in enumerate(names)
         )
     return [
-        f"{teacher_icon(icon)} {bold(name)}\n"
+        f"{teacher_icon(icon)}    {bold(name)}\n"
         f">{SPARKLE} توانایی دبیر: {escape(_short(ability or 'ثبت نشده'))}"
         for name, ability, icon in details[:4]
     ]
@@ -115,17 +163,16 @@ def attack_preview_banner(preview: AttackPreview) -> str:
         f"{SWORD} {bold('قربان! به این موارد توجه کنید:')}\n\n"
         f"{TARGET} هدف: {bold(preview.target_name)}\n"
         f"{FORCES} نیروهای تنظیم‌شده:\n{quote(names)}\n\n"
-        "╔════════════════════════╗\n"
         + "\n\n".join(details)
-        + "\n╚════════════════════════╝\n\n"
+        + "\n\n"
         f"{DEFENSE} دفاع دژ:\n>{escape(preview.defense_power)} DMG {DEFENSE}\n\n"
         f"{INJURY} آسیب احتمالی دبیر:\n"
         f">{escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
         "─────────────────────────\n\n"
         f"{LOOT} {bold('غنیمت')} احتمالی از منابع حریف:\n"
-        f"{COIN} {bold('طلا')}: {escape(preview.loot_coin)}\n"
-        f"{DIAMOND} {bold('الماس')}: {escape(preview.loot_diamond)}\n"
-        f"{BANANA} {bold('موز')}: {escape(preview.loot_banana)}\n\n"
+        f"{COIN}    {bold('طلا')}: {escape(preview.loot_coin)}\n"
+        f"{DIAMOND}    {bold('الماس')}: {escape(preview.loot_diamond)}\n"
+        f"{BANANA}    {bold('موز')}: {escape(preview.loot_banana)}\n\n"
         f"{QUESTION} {bold('فرمان حمله رو صادر می‌کنی؟')}"
     )
 
@@ -167,7 +214,7 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         else f"حمله به قلعهٔ «{result.target_name}» تمام شد!"
     )
     teacher_lines = "\n\n".join(
-        f">{teacher_icon(icon)} {escape(name)}"
+        f">{teacher_icon(icon)}    {escape(name)}"
         for name, _ability, icon in (
             result.teacher_details
             or tuple(
@@ -192,8 +239,8 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{CASTLE} قدرت باقی‌ماندهٔ دژ:\n>{escape(result.castle_strength_after)} DMG {CASTLE}\n\n"
         f"{HEAL} آسیب واردشده به دبیر:\n>{escape(result.teacher_injury)} HP {HEAL}\n\n"
         f"{LOOT} {loot_label}:\n"
-        f">{COIN} طلا: {escape(result.loot_coin)}\n"
-        f">{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
-        f">{BANANA} موز: {escape(result.loot_banana)}\n\n"
+        f">{COIN}    طلا: {escape(result.loot_coin)}\n"
+        f">{DIAMOND}    الماس: {escape(result.loot_diamond)}\n"
+        f">{BANANA}    موز: {escape(result.loot_banana)}\n\n"
         f"{closing}"
     )

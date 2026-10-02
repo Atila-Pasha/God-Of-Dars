@@ -174,6 +174,21 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                                     "parse_mode": MARKDOWN_V2,
                                 },
                             )
+                        if (
+                            result.attack.launch_chat_id is not None
+                            and result.attack.launch_message_id is not None
+                        ):
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="ATTACK_RESULT",
+                                recipient_user_id=result.attack.attacker_id,
+                                idempotency_key=f"ATTACK_LAUNCH_DELETE:{key}",
+                                payload={
+                                    "operation": "delete_message",
+                                    "chat_id": result.attack.launch_chat_id,
+                                    "message_id": result.attack.launch_message_id,
+                                },
+                            )
                         if can_upgrade:
                             await notification_service.enqueue(
                                 session,

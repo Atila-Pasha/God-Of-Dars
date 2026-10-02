@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select
 
 from app.bot.keyboards.profile import level_confirmation_keyboard
@@ -48,15 +49,25 @@ async def _deliver_notification(
 
     try:
         async with send_limit:
-            send_kwargs = {
-                "chat_id": payload["chat_id"],
-                "text": payload["text"],
-            }
-            if payload.get("parse_mode"):
-                send_kwargs["parse_mode"] = payload["parse_mode"]
-            if payload.get("level_confirmation"):
-                send_kwargs["reply_markup"] = level_confirmation_keyboard()
-            await bot.send_message(**send_kwargs)
+            if payload.get("operation") == "delete_message":
+                try:
+                    await bot.delete_message(
+                        chat_id=payload["chat_id"],
+                        message_id=payload["message_id"],
+                    )
+                except TelegramBadRequest as exc:
+                    if "message to delete not found" not in str(exc).lower():
+                        raise
+            else:
+                send_kwargs = {
+                    "chat_id": payload["chat_id"],
+                    "text": payload["text"],
+                }
+                if payload.get("parse_mode"):
+                    send_kwargs["parse_mode"] = payload["parse_mode"]
+                if payload.get("level_confirmation"):
+                    send_kwargs["reply_markup"] = level_confirmation_keyboard()
+                await bot.send_message(**send_kwargs)
     except Exception as exc:
         async with AsyncSessionLocal() as session, session.begin():
             row = await session.scalar(

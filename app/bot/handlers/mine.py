@@ -4,6 +4,18 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.banners import (
+    COIN,
+    DIAMOND,
+    FORT,
+    LOOT,
+    MARKDOWN_V2,
+    bold,
+    emoji,
+    escape,
+    rich_plain,
+    section_entry_banner,
+)
 from app.bot.callbacks import MineCallback
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
@@ -34,15 +46,16 @@ MINE_LABEL = next(
 def _mine_text(snapshot) -> str:
     production = snapshot.production
     return (
-        "⛏ معدن فرماندهی\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        f"🏗 سطح معدن: {snapshot.level}\n"
-        f"⚙️ تولید فعلی: هر دقیقه {production.coin_per_minute} طلا، "
-        f"{production.diamond_per_minute} الماس\n"
-        f"⏱️ زمان محاسبه‌شده: {snapshot.collected_minutes} دقیقه\n\n"
-        "📦 آماده جمع‌آوری:\n"
-        f"🪙 طلا: {snapshot.today_coin}\n"
-        f"💎 الماس: {snapshot.today_diamond}"
+        f"{emoji('5823474022670671455', '⛏️')} {bold('معدن فرماندهی')}\n"
+        "─────────────────────\n"
+        f"{FORT} سطح معدن: {escape(snapshot.level)}\n\n"
+        f"{emoji('5823443584237444682', '⚙️')} {bold('تولید در هر دقیقه')}\n"
+        f">{COIN}    {escape(production.coin_per_minute)} طلا\n"
+        f">{DIAMOND}    {escape(production.diamond_per_minute)} الماس\n\n"
+        f"{emoji('5823443584237444682', '⏱️')} زمان محاسبه‌شده: {escape(snapshot.collected_minutes)} دقیقه\n\n"
+        f"{LOOT} {bold('آمادهٔ جمع‌آوری')}\n"
+        f">{COIN}    طلا: {escape(snapshot.today_coin)}\n"
+        f">{DIAMOND}    الماس: {escape(snapshot.today_diamond)}"
     )
 
 
@@ -82,11 +95,17 @@ async def _show(target: Message | CallbackQuery, session: AsyncSession) -> None:
     text = _mine_text(snapshot)
     markup = mine_keyboard(can_upgrade=can_upgrade)
     if isinstance(target, CallbackQuery) and target.message is not None:
-        await safe_edit_text(target.message, text, reply_markup=markup)
+        await safe_edit_text(
+            target.message, text, reply_markup=markup, parse_mode=MARKDOWN_V2
+        )
     else:
-        await target.answer(text, reply_markup=markup)
+        await target.answer(text, reply_markup=markup, parse_mode=MARKDOWN_V2)
         if isinstance(target, Message):
-            await target.answer("معدن منابع", reply_markup=section_back_keyboard())
+            await target.answer(
+                section_entry_banner("معدن"),
+                reply_markup=section_back_keyboard(),
+                parse_mode=MARKDOWN_V2,
+            )
 
 
 async def mine_handler(message: Message, session: AsyncSession | None = None) -> None:
@@ -133,6 +152,7 @@ async def mine_callback(
                 callback.message,
                 _mine_text(snapshot),
                 reply_markup=mine_keyboard(can_upgrade=True),
+                parse_mode=MARKDOWN_V2,
             )
             await callback.answer(
                 f"منابع برداشت شد: {collected}"
@@ -152,8 +172,9 @@ async def mine_callback(
                 raise MineUpgradeUnavailable from exc
             await safe_edit_text(
                 callback.message,
-                _upgrade_text(snapshot, next_level),
+                rich_plain(_upgrade_text(snapshot, next_level)),
                 reply_markup=mine_upgrade_confirmation_keyboard(),
+                parse_mode=MARKDOWN_V2,
             )
             await callback.answer()
             return
@@ -172,6 +193,7 @@ async def mine_callback(
                 callback.message,
                 _mine_text(snapshot),
                 reply_markup=mine_keyboard(can_upgrade=can_upgrade),
+                parse_mode=MARKDOWN_V2,
             )
             await callback.answer("معدن با موفقیت ارتقا پیدا کرد.")
             return

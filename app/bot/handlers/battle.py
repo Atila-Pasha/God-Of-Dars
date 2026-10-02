@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -13,24 +13,31 @@ from aiogram.types import (
     Message,
     ReplyParameters,
 )
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import (
     MARKDOWN_V2,
+    attack_launch_banner,
     attack_preview_banner,
     attack_result_banner,
     emoji,
     escape,
+    section_entry_banner,
 )
 from app.bot.callbacks import (
     AttackConfirmationCallback,
+    AttackCountdownCallback,
     AttackMenuCallback,
     RandomAttackCallback,
 )
+from app.bot.custom_emojis import reset_persist_group_message, set_persist_group_message
 from app.bot.keyboards.main_menu import section_back_keyboard
 from app.bot.states import AttackMenuStates
-from app.bot.utils.attack import teacher_phrase
-from app.bot.utils.telegram import schedule_message_deletion
+from app.bot.utils.telegram import safe_edit_text
+from app.core.enums import AttackStatus
+from app.models.attack import Attack
+from app.models.user import User
 from app.services.attack_service import (
     AttackPreview,
     AttackResult,
@@ -64,6 +71,116 @@ def _source_group_chat_id(message: Message) -> int | None:
     return (
         chat.id if chat is not None and chat.type in {"group", "supergroup"} else None
     )
+
+
+def _attack_countdown_keyboard(command_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="زمان باقی‌مانده",
+                    icon_custom_emoji_id="5825746176334373354",
+                    callback_data=AttackCountdownCallback(command_id=command_id).pack(),
+                )
+            ]
+        ]
+    )
+
+
+async def _send_launch_message(
+    message: Message,
+    launch,
+    session: AsyncSession,
+    reply_parameters: ReplyParameters | None,
+) -> None:
+    token = set_persist_group_message()
+    try:
+        kwargs = {
+            "reply_parameters": reply_parameters,
+            "reply_markup": _attack_countdown_keyboard(launch.attack_command_id),
+            "parse_mode": MARKDOWN_V2,
+        }
+        try:
+            sent = await message.answer(
+                attack_launch_banner(launch.target_name, launch.teacher_details),
+                **kwargs,
+            )
+        except TelegramBadRequest as exc:
+            if "message to be replied not found" not in str(exc).lower():
+                raise
+            kwargs["reply_parameters"] = None
+            sent = await message.answer(
+                attack_launch_banner(launch.target_name, launch.teacher_details),
+                **kwargs,
+            )
+    finally:
+        reset_persist_group_message(token)
+    await session.execute(
+        update(Attack)
+        .where(Attack.attack_command_id == launch.attack_command_id)
+        .values(launch_chat_id=sent.chat.id, launch_message_id=sent.message_id)
+    )
+    await session.commit()
+
+
+@router.callback_query(AttackCountdownCallback.filter())
+async def attack_countdown(
+    callback: CallbackQuery,
+    callback_data: AttackCountdownCallback,
+    session: AsyncSession,
+) -> None:
+    if callback.message is None or callback.from_user is None:
+        await callback.answer()
+        return
+    rows = list(
+        await session.scalars(
+            select(Attack)
+            .where(Attack.attack_command_id == callback_data.command_id)
+            .order_by(Attack.id)
+        )
+    )
+    if not rows:
+        await callback.answer("این حمله پیدا نشد.", show_alert=True)
+        return
+    attacker_id = await session.scalar(
+        select(User.telegram_user_id).where(User.id == rows[0].attacker_id)
+    )
+    if callback.from_user.id != attacker_id:
+        await callback.answer(
+            "فقط فرماندهٔ حمله می‌تواند زمان را بررسی کند.", show_alert=True
+        )
+        return
+    if all(row.status is AttackStatus.RESOLVED for row in rows):
+        await callback.answer("حمله تمام شده است.", show_alert=True)
+        return
+    target_name = (
+        await session.scalar(
+            select(User.first_name).where(User.id == rows[0].target_id)
+        )
+        or "حریف"
+    )
+    details = tuple(
+        (
+            row.teacher_name_snapshot or "دبیر",
+            row.teacher_ability_snapshot,
+            row.teacher_emoji_snapshot,
+        )
+        for row in rows
+    )
+    remaining = max(
+        0, int((rows[0].resolve_at - datetime.now(UTC)).total_seconds() + 0.999)
+    )
+    await callback.answer(f"{remaining // 60:02d}:{remaining % 60:02d} باقی مانده")
+    token = set_persist_group_message()
+    try:
+        await safe_edit_text(
+            callback.message,
+            attack_launch_banner(target_name, details, remaining_seconds=remaining),
+            reply_markup=_attack_countdown_keyboard(callback_data.command_id),
+            parse_mode=MARKDOWN_V2,
+        )
+    finally:
+        reset_persist_group_message(token)
 
 
 def _attack_text(result: AttackResult) -> str:
@@ -215,7 +332,7 @@ def _teacher_selection_keyboard(
         for teacher in teachers
     ]
     submit_text = (
-        f"🎲 حمله رندوم ({len(selected)}/{MAX_ATTACK_TEACHERS})"
+        f"حمله رندوم ({len(selected)}/{MAX_ATTACK_TEACHERS})"
         if mode == "random"
         else f"⚔️ پیش‌نمایش حمله ({len(selected)}/{MAX_ATTACK_TEACHERS})"
     )
@@ -224,6 +341,9 @@ def _teacher_selection_keyboard(
             InlineKeyboardButton(
                 text=submit_text,
                 style="success",
+                icon_custom_emoji_id=(
+                    "5825935099060822018" if mode == "random" else None
+                ),
                 callback_data=AttackMenuCallback(action="submit", mode=mode).pack(),
             )
         ]
@@ -236,7 +356,8 @@ def _attack_type_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🎲 حمله رندوم",
+                    text="حمله رندوم",
+                    icon_custom_emoji_id="5825935099060822018",
                     callback_data=AttackMenuCallback(
                         action="choose", mode="random"
                     ).pack(),
@@ -360,8 +481,9 @@ async def attack_help_handler(message: Message) -> None:
 async def attack_menu_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
-        "⚔️ وارد بخش حمله شدید.",
+        section_entry_banner("حمله"),
         reply_markup=section_back_keyboard(),
+        parse_mode=MARKDOWN_V2,
     )
     await message.answer(
         "انتخاب نوع حمله\n\nیکی از روش‌های زیر را انتخاب کنید:",
@@ -747,14 +869,7 @@ async def random_attack_confirmation(
                 )
             except TelegramAPIError:
                 continue
-        launch_message = await callback.message.answer(
-            f"⚔️ حمله به «{launch.target_name}» آغاز شد!\n"
-            f"👨‍🏫 {teacher_phrase(launch.teacher_name)}\n"
-            "⏱ زمان حمله: ۲ دقیقه\n"
-            "پس از پایان زمان، نتیجه حمله برای شما ارسال می‌شود.",
-            reply_parameters=reply_parameters,
-        )
-        schedule_message_deletion(launch_message, delay_seconds=10)
+        await _send_launch_message(callback.message, launch, session, reply_parameters)
     except SchoolError as error:
         await _report_error(callback.message, error)
 
@@ -808,13 +923,6 @@ async def attack_confirmation(
             except TelegramAPIError:
                 # A missing or invalid optional sticker must not block an attack.
                 continue
-        launch_message = await callback.message.answer(
-            f"⚔️ حمله به «{launch.target_name}» آغاز شد!\n"
-            f"👨‍🏫 {teacher_phrase(launch.teacher_name)}\n"
-            "⏱ زمان حمله: ۲ دقیقه\n"
-            "پس از پایان زمان، نتیجه حمله برای شما ارسال می‌شود.",
-            reply_parameters=reply_parameters,
-        )
-        schedule_message_deletion(launch_message, delay_seconds=10)
+        await _send_launch_message(callback.message, launch, session, reply_parameters)
     except SchoolError as error:
         await _report_error(callback.message, error)

@@ -7,7 +7,19 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, MessageEntity
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.banners import MARKDOWN_V2, purchase_banner
+from app.bot.banners import (
+    DEFENSE,
+    FORT,
+    LEVEL,
+    MARKDOWN_V2,
+    QUESTION,
+    SCHOOL,
+    UNLOCK,
+    bold,
+    escape,
+    purchase_banner,
+    section_entry_banner,
+)
 from app.bot.callbacks import (
     CastleCallback,
     ConfirmationCallback,
@@ -190,22 +202,40 @@ async def _school_view(
     user = await _user(session, target.from_user.id)
     castle = await castle_service.snapshot(session, user.id)
     capacity = await teacher_service.capacity(session, user.id)
+    from app.bot.handlers.profile import _level_unlocks
+
+    next_level = user.level + 1
+    if user.level < castle_service.config.level_progression.max_level:
+        unlocks = await _level_unlocks(session, next_level)
+        unlocks = "\n".join(
+            f"▫️ {escape(line.removeprefix('•').strip())}"
+            for line in unlocks.splitlines()
+        )
+    else:
+        unlocks = "▫️ به بالاترین سطح فرماندهی رسیده‌ای\\."
+    progress = _progress_bar(capacity.owned, capacity.available)
+    percentage = _progress_percent(capacity.owned, capacity.available)
     text = (
-        "🏫 ستاد فرماندهی مدرسه\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        f"🎖 سطح فرمانده: {_number(user.level)}\n"
-        f"🏰 سطح دژ: {_number(castle.level)}\n"
-        f"🛡 قدرت دفاعی: {_number(castle.strength)}\n\n"
-        "👨‍🏫 ظرفیت تیم دبیرها\n"
-        f"{_progress_bar(capacity.owned, capacity.available)}  "
-        f"{_number(capacity.owned)} / {_number(capacity.available)} "
-        f"({_progress_percent(capacity.owned, capacity.available)})"
+        f"{SCHOOL} {bold('ستاد فرماندهی مدرسه')} {QUESTION}\n"
+        "─────────────────────\n"
+        f"{LEVEL} سطح فرمانده: {escape(_number(user.level))}\n\n"
+        f"{UNLOCK} {bold(f'آیتم‌های جدید در سطح {next_level}:')}\n"
+        f"{unlocks}\n\n"
+        f"{FORT} سطح دژ: {escape(_number(castle.level))}\n"
+        f"{DEFENSE} قدرت دفاعی: {escape(_number(castle.strength))}\n\n"
+        f"● {bold('ظرفیت تیم دبیرها')}\n"
+        f"`{escape(progress)}`  {escape(_number(capacity.owned))} / "
+        f"{escape(_number(capacity.available))} "
+        f"{escape(f'({percentage})')}"
     )
-    await _send_or_edit(target, text, reply_markup=school_keyboard())
+    await _send_or_edit(
+        target, text, reply_markup=school_keyboard(), parse_mode=MARKDOWN_V2
+    )
     if isinstance(target, Message):
         await target.answer(
-            "مدرسه",
+            section_entry_banner("مدرسه من"),
             reply_markup=section_back_keyboard(),
+            parse_mode=MARKDOWN_V2,
         )
 
 

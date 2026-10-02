@@ -87,6 +87,7 @@ class AttackLaunch:
     teacher_name: str
     teacher_stickers: tuple[str, ...]
     resolve_at: datetime
+    teacher_details: tuple[tuple[str, str | None, str | None], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -629,6 +630,14 @@ class AttackService:
                 if teacher.teacher.sticker
             ),
             resolve_at=resolve_at,
+            teacher_details=tuple(
+                (
+                    teacher.teacher.name,
+                    teacher.teacher.ability_text,
+                    teacher.teacher.emoji,
+                )
+                for teacher in teachers
+            ),
         )
 
     async def resolve_pending_attack(

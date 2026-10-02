@@ -96,6 +96,10 @@ class AttackMenuCallback(CallbackData, prefix="attack_menu"):
     teacher_id: int = 0
 
 
+class AttackCountdownCallback(CallbackData, prefix="attack_timer"):
+    command_id: str
+
+
 class LibraryCallback(CallbackData, prefix="library"):
     action: Literal["daily", "group", "study", "teachers", "back", "cancel"]
 
