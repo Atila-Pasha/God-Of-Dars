@@ -213,18 +213,23 @@ async def _school_view(
         )
     else:
         unlocks = "▫️ به بالاترین سطح فرماندهی رسیده‌ای\\."
+    unlock_heading = (
+        f"آیتم‌های جدید در سطح {next_level}:"
+        if user.level < castle_service.config.level_progression.max_level
+        else "مسیر پیشرفت فرمانده"
+    )
     progress = _progress_bar(capacity.owned, capacity.available)
     percentage = _progress_percent(capacity.owned, capacity.available)
     text = (
         f"{SCHOOL} {bold('ستاد فرماندهی مدرسه')} {QUESTION}\n"
         "─────────────────────\n"
         f"{LEVEL} سطح فرمانده: {escape(_number(user.level))}\n\n"
-        f"{UNLOCK} {bold(f'آیتم‌های جدید در سطح {next_level}:')}\n"
+        f"{UNLOCK} {bold(unlock_heading)}\n"
         f"{unlocks}\n\n"
         f"{FORT} سطح دژ: {escape(_number(castle.level))}\n"
         f"{DEFENSE} قدرت دفاعی: {escape(_number(castle.strength))}\n\n"
         f"● {bold('ظرفیت تیم دبیرها')}\n"
-        f"`{escape(progress)}`  {escape(_number(capacity.owned))} / "
+        f"`{progress}`  {escape(_number(capacity.owned))} / "
         f"{escape(_number(capacity.available))} "
         f"{escape(f'({percentage})')}"
     )
