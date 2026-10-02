@@ -37,6 +37,7 @@ from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
+    AttackInProgress,
     InsufficientCoins,
     InsufficientDiamonds,
     SchoolError,
@@ -743,7 +744,14 @@ async def confirmation_callback_handler(
             await _teacher_view(callback, session, callback_data.target_id)
             notice = "دبیر فعال شد."
         await callback.answer(notice)
+    except AttackInProgress:
+        await session.rollback()
+        await callback.answer(
+            "این دبیر در حال نبرد است؛ پس از پایان نبرد می‌توانید او را بفروشید.",
+            show_alert=True,
+        )
     except InsufficientDiamonds:
+        await session.rollback()
         await callback.answer("الماس کافی برای تعمیر یا ارتقا ندارید.", show_alert=True)
     except (
         TeacherAlreadyOwned,
@@ -754,10 +762,12 @@ async def confirmation_callback_handler(
         TeacherSlotLocked,
         InsufficientCoins,
     ) as error:
+        await session.rollback()
         if callback_data.action == "teacher_buy":
             await _delete_group_purchase_prompt(callback)
         await callback.answer(_teacher_purchase_error(error), show_alert=True)
     except SchoolError:
+        await session.rollback()
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 
 

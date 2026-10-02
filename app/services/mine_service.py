@@ -52,7 +52,10 @@ class MineService:
         if user_result.scalar_one_or_none() is None:
             raise MineNotFound
         resources_result = await session.execute(
-            select(Resource).where(Resource.user_id == user_id).with_for_update()
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         resources = resources_result.scalar_one_or_none()
         if resources is None:
@@ -116,7 +119,10 @@ class MineService:
         if user_result.scalar_one_or_none() is None:
             raise MineNotFound
         resources_result = await session.execute(
-            select(Resource).where(Resource.user_id == user_id).with_for_update()
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         resources = resources_result.scalar_one_or_none()
         if resources is None:
@@ -175,7 +181,10 @@ class MineService:
         if user is None:
             raise MineNotFound
         resources_result = await session.execute(
-            select(Resource).where(Resource.user_id == user_id).with_for_update()
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         resources = resources_result.scalar_one_or_none()
         if resources is None:

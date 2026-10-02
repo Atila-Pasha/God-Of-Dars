@@ -107,7 +107,10 @@ class ShieldService:
         if user is None:
             raise ShieldNotFound
         resource_result = await session.execute(
-            select(Resource).where(Resource.user_id == user_id).with_for_update()
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         resources = resource_result.scalar_one_or_none()
         if resources is None:

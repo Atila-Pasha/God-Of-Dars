@@ -117,6 +117,9 @@ class RewardService:
         session: AsyncSession, user_id: int
     ) -> Resource | None:
         result = await session.execute(
-            select(Resource).where(Resource.user_id == user_id).with_for_update()
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()

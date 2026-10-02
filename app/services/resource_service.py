@@ -21,7 +21,10 @@ class ResourceService:
                 raise ResourceNotFound
             return resources
         result = await session.execute(
-            select(Resource).where(Resource.user_id == user_id).with_for_update()
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         locked = result.scalar_one_or_none()
         if locked is None:

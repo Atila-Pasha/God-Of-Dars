@@ -24,6 +24,9 @@ from app.services.teacher_service import TeacherService
 
 
 class FakeTeacherRepository:
+    async def has_active_attack(self, session, user_id, user_teacher_id):
+        return False
+
     def __init__(self, *, user, resources, teacher, owned=None, owned_count=0):
         self.user = user
         self.resources = resources

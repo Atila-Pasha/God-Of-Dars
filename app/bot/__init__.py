@@ -15,6 +15,7 @@ from app.bot.handlers.school import router as school_router
 from app.bot.handlers.start import router as start_router
 from app.bot.middlewares.database import DatabaseSessionMiddleware
 from app.bot.middlewares.group import GroupAccessMiddleware
+from app.bot.middlewares.navigation import NavigationStateMiddleware
 from app.bot.middlewares.subscription import SubscriptionMiddleware
 
 
@@ -32,6 +33,7 @@ def create_dispatcher() -> Dispatcher:
     dispatcher.my_chat_member.outer_middleware(group_middleware)
     dispatcher.message.outer_middleware(subscription_middleware)
     dispatcher.callback_query.outer_middleware(subscription_middleware)
+    dispatcher.message.outer_middleware(NavigationStateMiddleware())
     # Explicit leaderboard commands and group phrases must win over generic
     # text handlers used by active FSM flows such as question answers.
     dispatcher.include_router(quick_router)

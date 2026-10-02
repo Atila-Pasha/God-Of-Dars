@@ -2,6 +2,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.enums import AttackStatus
+from app.models.attack import Attack
 from app.models.resource import Resource
 from app.models.teacher import Teacher
 from app.models.user import User
@@ -9,6 +11,26 @@ from app.models.user_teacher import UserTeacher
 
 
 class TeacherRepository:
+    async def has_active_attack(
+        self, session: AsyncSession, user_id: int, user_teacher_id: int
+    ) -> bool:
+        # The caller holds the user lock shared with attack launch/resolution.
+        # Do not lock the attack row here: resolvers lock it before the user.
+        result = await session.scalar(
+            select(Attack.id)
+            .where(
+                Attack.attacker_id == user_id,
+                Attack.teacher_id == user_teacher_id,
+                Attack.status.in_((AttackStatus.PENDING, AttackStatus.PROCESSING))
+                | (
+                    (Attack.status == AttackStatus.FAILED)
+                    & Attack.next_retry_at.is_not(None)
+                ),
+            )
+            .limit(1)
+        )
+        return result is not None
+
     async def get_user(self, session: AsyncSession, user_id: int) -> User | None:
         result = await session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
@@ -25,7 +47,10 @@ class TeacherRepository:
         self, session: AsyncSession, user_id: int
     ) -> Resource | None:
         result = await session.execute(
-            select(Resource).where(Resource.user_id == user_id).with_for_update()
+            select(Resource)
+            .where(Resource.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 

@@ -68,6 +68,7 @@ async def lock_attack_dependencies(
                 .where(Resource.user_id.in_(user_ids))
                 .order_by(Resource.user_id)
                 .with_for_update()
+                .execution_options(populate_existing=True)
             )
         )
     }

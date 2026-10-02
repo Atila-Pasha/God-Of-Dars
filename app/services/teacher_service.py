@@ -9,6 +9,8 @@ from app.models.user_teacher import UserTeacher
 from app.repositories.teacher import TeacherRepository
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
+    AttackInProgress,
+    InsufficientCoins,
     InsufficientDiamonds,
     InvalidTeacherState,
     OperationNotConfigured,
@@ -144,6 +146,10 @@ class TeacherService:
         )
         if purchase_resource not in {ResourceType.COIN, ResourceType.DIAMOND}:
             raise TeacherNotPurchasable
+        if getattr(resources, purchase_resource.value.lower()) < teacher.purchase_price:
+            if purchase_resource is ResourceType.DIAMOND:
+                raise InsufficientDiamonds
+            raise InsufficientCoins
 
         owned_teacher = UserTeacher(
             user_id=user_id,
@@ -239,6 +245,8 @@ class TeacherService:
             raise TeacherNotOwned
         if owned_teacher.current_hp != owned_teacher.teacher.max_hp:
             raise InvalidTeacherState
+        if await self.repository.has_active_attack(session, user_id, user_teacher_id):
+            raise AttackInProgress
         try:
             sell_price = self.config.teacher_sell_price(
                 owned_teacher.teacher.id,
