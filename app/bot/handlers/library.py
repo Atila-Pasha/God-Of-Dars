@@ -157,7 +157,6 @@ async def _show_library(target: Message | CallbackQuery) -> None:
     from app.bot.banners import MARKDOWN_V2, bold, emoji, section_entry_banner
 
     text = (
-        f"{section_entry_banner('کتابخانه')}\n"
         f"{emoji('5825629907274703191', '📚')} {bold('کتابخانهٔ دانش')}\n\n"
         "سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها رو بشناس\\."
     )

@@ -30,7 +30,11 @@ from app.bot.keyboards.buffet import (
     shield_inventory_keyboard,
     shield_purchase_confirmation,
 )
-from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, main_menu_keyboard
+from app.bot.keyboards.main_menu import (
+    MENU_SECTION_BY_LABEL,
+    main_menu_keyboard,
+    section_back_keyboard,
+)
 from app.bot.keyboards.school import (
     confirmation_keyboard,
     teacher_catalog_page_keyboard,
@@ -189,7 +193,6 @@ def _resource_text(resources) -> str:
 
 def _buffet_menu_banner() -> str:
     return (
-        f"{section_entry_banner('بوفه')}\n"
         f"{emoji('5823511728188563725', '🍽️')} {bold('بازار و بوفه')}\n\n"
         f"{emoji('5825699971076202989', '🪙')} دبیر بخر، سپر بردار یا منابع رو تبدیل کن\\.\n"
         f"{emoji('5935912783261470019', '❓')} انتخاب با توئه\\."
@@ -205,6 +208,11 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
         await message.answer(
             _buffet_menu_banner(),
             reply_markup=buffet_menu_keyboard(),
+            parse_mode=MARKDOWN_V2,
+        )
+        await message.answer(
+            section_entry_banner("بوفه"),
+            reply_markup=section_back_keyboard(),
             parse_mode=MARKDOWN_V2,
         )
     except (UserInactiveError, SchoolUserNotFound):

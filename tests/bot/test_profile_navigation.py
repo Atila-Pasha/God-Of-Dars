@@ -76,12 +76,16 @@ async def test_profile_handler_shows_rich_live_stats(monkeypatch) -> None:
 async def test_profile_aliases_open_same_section(monkeypatch, alias) -> None:
     show_section = AsyncMock()
     monkeypatch.setattr(profile, "_show_profile_section", show_section)
-    message = SimpleNamespace(text=alias)
+    message = SimpleNamespace(text=alias, answer=AsyncMock())
     session = AsyncMock()
 
     await profile.profile_handler(message, session)
 
     show_section.assert_awaited_once_with(message, session, "profile")
+    if alias == profile.PROFILE_LABEL:
+        assert "وارد بخش پروفایل شدید" in message.answer.await_args.args[0]
+    else:
+        message.answer.assert_not_awaited()
 
 
 @pytest.mark.asyncio

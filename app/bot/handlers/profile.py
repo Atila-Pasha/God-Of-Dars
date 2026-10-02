@@ -15,6 +15,7 @@ from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     main_menu_keyboard,
+    section_back_keyboard,
 )
 from app.bot.keyboards.profile import level_confirmation_keyboard, profile_keyboard
 from app.bot.utils.telegram import safe_edit_text
@@ -127,7 +128,6 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
 
 def _profile_menu_text() -> str:
     return (
-        f"{section_entry_banner('پروفایل')}\n"
         f"{emoji('5825647731388981287', '🧙')} {bold('اتاق فرمانده')}\n\n"
         "آمار، دارایی و مسیر پیشرفتت رو از اینجا زیر نظر بگیر\\."
     )
@@ -400,6 +400,12 @@ async def profile_handler(message: Message, session: AsyncSession) -> None:
             }.get(command_name)
         if section is not None:
             await _show_profile_section(message, session, section)
+            if message_text == PROFILE_LABEL:
+                await message.answer(
+                    section_entry_banner("پروفایل"),
+                    reply_markup=section_back_keyboard(),
+                    parse_mode=MARKDOWN_V2,
+                )
         elif not message_text:
             await _show_profile(message, session)
         else:

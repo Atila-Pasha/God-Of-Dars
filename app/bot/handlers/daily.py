@@ -94,7 +94,7 @@ async def _show(target, session: AsyncSession, user_id: int):
                 lines.append(f"\n• {quest.title}\n {status}\n 📝 {description}")
             text = "\n".join(lines)
             markup = daily_keyboard(progresses)
-    text = f"{section_entry_banner('فعالیت‌های روزانه')}\n\n{rich_banner(text)}"
+    text = rich_banner(text)
     if isinstance(target, CallbackQuery):
         await safe_edit_text(
             target.message, text, reply_markup=markup, parse_mode=MARKDOWN_V2
