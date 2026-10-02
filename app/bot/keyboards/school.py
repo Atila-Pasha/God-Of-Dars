@@ -18,6 +18,7 @@ from app.bot.custom_emojis import premium_emoji_id
 from app.core.enums import TeacherStatus
 from app.models.teacher import Teacher
 from app.models.user_teacher import UserTeacher
+from app.services.recovery_service import HospitalService
 
 
 def school_keyboard() -> InlineKeyboardMarkup:
@@ -382,6 +383,19 @@ def hospital_keyboard(
 ) -> InlineKeyboardMarkup:
     rows = []
     for teacher in teachers:
+        if HospitalService.ready_for_discharge(teacher):
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"✅ ترخیص {teacher.teacher.name}",
+                        style="success",
+                        callback_data=HospitalCallback(
+                            action="discharge", teacher_id=teacher.id
+                        ).pack(),
+                    )
+                ]
+            )
+            continue
         if teacher.status is TeacherStatus.DISABLED and can_activate:
             rows.append(
                 [

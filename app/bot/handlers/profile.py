@@ -84,42 +84,42 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
 
     return (
         "🧙 پروندهٔ کامل فرمانده\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "\n"
         f"👤 نام: {_name(snapshot)}\n"
         f"📎 نام کاربری: {_username(snapshot)}\n"
         f"📅 عضو از: {_date(user.created_at)}\n"
         f"🌟 سطح فرمانده: {_number(user.level)}\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "\n"
         "💰 کیف دارایی\n\n"
         f"🪙 سکه: {_number(coin)}\n"
         f"💎 الماس: {_number(diamond)}\n"
         f"🍌 موز: {_number(xp)}\n"
         "\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "\n"
         "🏰 قلمرو و مدرسه\n\n"
         f"🏯 سطح دژ: {_number(castle_level)}\n"
         f"❤️ استحکام دژ: {_number(castle_strength)}\n"
         f"🛡 قدرت دفاع: {_number(defense_power)}\n"
         f"👨‍🏫 دبیرها: {_number(snapshot.active_teachers_count)} فعال از "
         f"{_number(snapshot.teachers_count)}\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "\n"
         "⚔️ کارنامه نبرد\n\n"
         f"⚔️ حمله‌های انجام‌شده: {_number(snapshot.attacks_sent)}\n"
         f"🏆 حمله‌های موفق: {_number(snapshot.successful_attacks)}\n"
         f"🎯 حمله‌های در انتظار: {_number(snapshot.pending_attacks)}\n"
         f"🎖 حمله‌های دریافتی: {_number(snapshot.attacks_received)}\n"
         f"💥 آسیب واردشده: {_number(snapshot.damage_dealt)}\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "\n"
         "غنیمت‌های ثبت‌شده:\n\n"
         f"🪙 {_number(snapshot.loot_coin)}\n"
         f"💎 {_number(snapshot.loot_diamond)}\n"
         f"🍌 موز دریافتی از حمله: {_number(snapshot.loot_banana)}\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+        "\n"
         "📚 دانش و ارتباطات\n\n"
         f"✅ پاسخ‌های درست: {_number(snapshot.correct_answers)} از "
         f"{_number(snapshot.answers_count)}\n"
         f"دقت: {_accuracy(snapshot)}\n\n"
-        ".━━━━━━━━━━━━━━━━━━━━━━━.\n"
+        "\n"
         f"🤝 دوستان دعوت‌شده: {_number(snapshot.referrals_count)}\n\n"
         "✨ هر نبرد، هر پاسخ و هر دعوت، یک قدم به سمت فرمانروایی بزرگ‌تر است!"
     )
@@ -128,7 +128,6 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
 def _profile_menu_text() -> str:
     return (
         f"{section_entry_banner('پروفایل')}\n"
-        "─────────────────────\n"
         f"{emoji('5825647731388981287', '🧙')} {bold('اتاق فرمانده')}\n\n"
         "آمار، دارایی و مسیر پیشرفتت رو از اینجا زیر نظر بگیر\\."
     )
@@ -152,7 +151,7 @@ def _profile_markup(target: Message | CallbackQuery):
 def _profile_identity_text(snapshot: ProfileSnapshot) -> str:
     user = snapshot.user
     return (
-        "👤 شناسنامهٔ فرمانده\n━━━━━━━━━━━━━━━━━━\n\n"
+        "👤 شناسنامهٔ فرمانده\n\n"
         f"🏷 نام: {_name(snapshot)}\n"
         f"📎 نام کاربری: {_username(snapshot)}\n"
         f"📅 عضویت از: {_date(user.created_at)}\n"
@@ -164,7 +163,7 @@ def _profile_identity_text(snapshot: ProfileSnapshot) -> str:
 
 def _profile_war_text(snapshot: ProfileSnapshot) -> str:
     return (
-        "⚔️ کارنامهٔ میدان نبرد\n━━━━━━━━━━━━━━━━━━\n\n"
+        "⚔️ کارنامهٔ میدان نبرد\n\n"
         f"حمله‌های انجام‌شده: {_number(snapshot.attacks_sent)}\n"
         f"حمله‌های موفق: {_number(snapshot.successful_attacks)}\n"
         f"حمله‌های در انتظار: {_number(snapshot.pending_attacks)}\n"
@@ -183,7 +182,7 @@ def _profile_assets_text(snapshot: ProfileSnapshot) -> str:
     castle = user.castle
     defense_power = castle.defense.defense_power if castle and castle.defense else 0
     return (
-        "🏰 خزانه و قلمرو\n━━━━━━━━━━━━━━━━━━\n\n"
+        "🏰 خزانه و قلمرو\n\n"
         f"سکه: {_number(resources.coin if resources else 0)}\n"
         f"الماس: {_number(resources.diamond if resources else 0)}\n"
         f"موز: {_number(resources.banana if resources else 0)}\n\n"
@@ -195,7 +194,7 @@ def _profile_assets_text(snapshot: ProfileSnapshot) -> str:
 
 def _profile_knowledge_text(snapshot: ProfileSnapshot) -> str:
     return (
-        "📚 دانش و اتحادها\n━━━━━━━━━━━━━━━━━━\n\n"
+        "📚 دانش و اتحادها\n\n"
         f"پاسخ‌های درست: {_number(snapshot.correct_answers)} از "
         f"{_number(snapshot.answers_count)}\n"
         f"دقت: {_accuracy(snapshot)}\n"
@@ -293,7 +292,7 @@ async def _show_level_upgrade(target: CallbackQuery, session: AsyncSession) -> N
     next_level = snapshot.user.level + 1
     unlocks = await _level_unlocks(session, next_level)
     text = (
-        "⬆️ جهش سطح فرمانده\n━━━━━━━━━━━━━━━━━━\n\n"
+        "⬆️ جهش سطح فرمانده\n\n"
         f"سطح فعلی: {_number(snapshot.user.level)}\n"
         f"سطح بعدی: {_number(next_level)}\n"
         f"هزینه: {_number(cost)} موز\n"

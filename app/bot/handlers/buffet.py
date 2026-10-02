@@ -190,7 +190,6 @@ def _resource_text(resources) -> str:
 def _buffet_menu_banner() -> str:
     return (
         f"{section_entry_banner('بوفه')}\n"
-        "─────────────────────\n"
         f"{emoji('5823511728188563725', '🍽️')} {bold('بازار و بوفه')}\n\n"
         f"{emoji('5825699971076202989', '🪙')} دبیر بخر، سپر بردار یا منابع رو تبدیل کن\\.\n"
         f"{emoji('5935912783261470019', '❓')} انتخاب با توئه\\."
@@ -243,7 +242,7 @@ async def buffet_conversion_message(
         if resources is None:
             raise UserInactiveError
         await message.answer(
-            "🔄 صرافی منابع\n━━━━━━━━━━━━━━━━━━\n\nموجودی فعلی تو:\n"
+            "🔄 صرافی منابع\n\nموجودی فعلی تو:\n"
             + _resource_text(resources)
             + "\n\nیک تبدیل را انتخاب کنید:",
             reply_markup=buffet_keyboard(buffet_service.options()),
@@ -295,10 +294,7 @@ async def _teacher_shop_view(
         session, target.from_user.id
     )
     catalog = await teacher_service.public_teachers(session)
-    text = (
-        "👨‍🏫 بازار نقل‌وانتقال دبیرها\n━━━━━━━━━━━━━━━━━━\n\n"
-        "عضو بعدی تیم رویایی‌ات رو انتخاب کن 👇"
-    )
+    text = "👨‍🏫 بازار نقل‌وانتقال دبیرها\n\nعضو بعدی تیم رویایی‌ات رو انتخاب کن 👇"
     markup = teacher_catalog_page_keyboard(
         catalog,
         player_level=user.level,
@@ -328,7 +324,7 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
     if resources is None:
         raise UserInactiveError
     text = (
-        "🔄 صرافی منابع\n━━━━━━━━━━━━━━━━━━\n\nموجودی فعلی تو:\n"
+        "🔄 صرافی منابع\n\nموجودی فعلی تو:\n"
         + _resource_text(resources)
         + "\n\nیک تبدیل را انتخاب کنید:"
     )
@@ -345,7 +341,7 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     )
     owned = await shield_service.list_owned(session, user.id)
     catalog = await shield_service.catalog(session, player_level=user.level)
-    lines = [f"🛡 زرادخانهٔ سپرها\n━━━━━━━━━━━━━━━━━━\n\n🎖 سطح فرمانده: {user.level}"]
+    lines = [f"🛡 زرادخانهٔ سپرها\n\n🎖 سطح فرمانده: {user.level}"]
     if owned:
         lines.append("\n📦 موجودی شما:")
         for item in owned:

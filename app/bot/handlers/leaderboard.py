@@ -32,8 +32,7 @@ leaderboards = LeaderboardService()
 users = UserService()
 
 LEADERBOARD_MENU_TEXT = (
-    "🏆 تالار قهرمانان\n━━━━━━━━━━━━━━━━━━\n\n"
-    "اسم چه کسی باید بالای جدول بدرخشه؟ دسته‌بندی رو انتخاب کن 👇"
+    "🏆 تالار قهرمانان\n\nاسم چه کسی باید بالای جدول بدرخشه؟ دسته‌بندی رو انتخاب کن 👇"
 )
 _GROUP_CATEGORY_PHRASES: dict[str, LeaderboardKind] = {
     "برترین فرمانده": "commander",
@@ -99,7 +98,6 @@ def _table(kind: LeaderboardKind, entries: tuple[LeaderboardEntry, ...]) -> str:
     lines = [
         f"{'رتبه':<7} │ {'اکانت':<{account_width}} │ "
         f"{primary_header:<6} │ {secondary_header}",
-        f"{'─' * 7}─┼─{'─' * account_width}─┼─{'─' * 6}─┼─{'─' * 8}",
     ]
     for entry in entries:
         primary, secondary = _metrics(kind, entry)
@@ -227,7 +225,7 @@ def leaderboard_markdown(
         "با بقیه رقابت کن، امتیاز جمع کن و خودت را به صدر جدول برسان.",
         "**آخرین بروزرسانی:** امروز",
         _markdown_table(kind, entries),
-        "---\n## رتبه شما",
+        "## رتبه شما",
     ]
     if viewer is None:
         parts.append("هنوز در این جدول رتبه‌ای نداری.")

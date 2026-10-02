@@ -37,6 +37,44 @@ class HospitalService:
     def instant_recovery_cost(self) -> int | None:
         return self.config.instant_recovery_diamond_cost
 
+    @staticmethod
+    def ready_for_discharge(
+        teacher: UserTeacher, *, now: datetime | None = None
+    ) -> bool:
+        if teacher.status is not TeacherStatus.RECOVERING:
+            return False
+        now = now or datetime.now(UTC)
+        for recovery in teacher.recoveries:
+            if recovery.completed_at is None:
+                end_at = recovery.recovery_end_at
+                if end_at.tzinfo is None:
+                    end_at = end_at.replace(tzinfo=UTC)
+                return end_at <= now
+        return False
+
+    async def discharge(
+        self, session: AsyncSession, user_id: int, user_teacher_id: int
+    ) -> UserTeacher:
+        teacher = await self.repository.get_owned_for_update(
+            session, user_id, user_teacher_id
+        )
+        if teacher is None:
+            raise TeacherNotOwned
+        if teacher.current_hp <= 0:
+            await session.delete(teacher)
+            await session.flush()
+            raise InvalidTeacherState
+        if not self.ready_for_discharge(teacher):
+            raise InvalidTeacherState
+        now = datetime.now(UTC)
+        for recovery in teacher.recoveries:
+            if recovery.completed_at is None:
+                recovery.completed_at = now
+        teacher.current_hp = teacher.teacher.max_hp
+        teacher.status = TeacherStatus.ACTIVE
+        await session.flush()
+        return teacher
+
     async def instant_recover(
         self, session: AsyncSession, user_id: int, user_teacher_id: int
     ) -> UserTeacher:
@@ -50,6 +88,8 @@ class HospitalService:
             await session.flush()
             raise InvalidTeacherState
         if teacher.status not in {TeacherStatus.INJURED, TeacherStatus.RECOVERING}:
+            raise InvalidTeacherState
+        if self.ready_for_discharge(teacher):
             raise InvalidTeacherState
         cost = self.config.instant_recovery_diamond_cost
         if cost is None:
@@ -76,7 +116,6 @@ class HospitalService:
 
     async def patients(self, session: AsyncSession, user_id: int) -> list[UserTeacher]:
         teachers = await self.repository.list_owned(session, user_id)
-        now = datetime.now(UTC)
         changed = False
         living_teachers: list[UserTeacher] = []
         for teacher in teachers:
@@ -87,23 +126,6 @@ class HospitalService:
                 changed = True
                 continue
             living_teachers.append(teacher)
-            active_recovery = next(
-                (
-                    recovery
-                    for recovery in teacher.recoveries
-                    if recovery.completed_at is None
-                ),
-                None,
-            )
-            if (
-                teacher.status is TeacherStatus.RECOVERING
-                and active_recovery is not None
-                and active_recovery.recovery_end_at <= now
-            ):
-                active_recovery.completed_at = now
-                teacher.current_hp = teacher.teacher.max_hp
-                teacher.status = TeacherStatus.ACTIVE
-                changed = True
         if changed:
             await session.flush()
         return [

@@ -51,7 +51,7 @@ class TeacherCallback(CallbackData, prefix="teacher"):
 
 
 class HospitalCallback(CallbackData, prefix="hospital"):
-    action: Literal["activate", "recover", "instant", "back"]
+    action: Literal["activate", "recover", "instant", "discharge", "back"]
     teacher_id: int
 
 

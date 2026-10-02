@@ -4,7 +4,7 @@ from datetime import datetime
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, MessageEntity
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import (
@@ -18,7 +18,9 @@ from app.bot.banners import (
     bold,
     escape,
     purchase_banner,
+    rich_plain,
     section_entry_banner,
+    teacher_icon,
 )
 from app.bot.callbacks import (
     CastleCallback,
@@ -27,7 +29,6 @@ from app.bot.callbacks import (
     SchoolCallback,
     TeacherCallback,
 )
-from app.bot.custom_emojis import custom_emoji_entity
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     main_menu_keyboard,
@@ -141,6 +142,8 @@ async def _user(session: AsyncSession, telegram_user_id: int):
 
 
 def _status(teacher: UserTeacher) -> str:
+    if HospitalService.ready_for_discharge(teacher):
+        return "بهبود یافته؛ در انتظار ترخیص"
     return STATUS_LABELS.get(teacher.status, teacher.status.value)
 
 
@@ -148,11 +151,9 @@ def _status_icon(teacher: UserTeacher) -> str:
     return STATUS_ICONS.get(teacher.status, "⚪")
 
 
-def _teacher_icon(teacher: UserTeacher) -> tuple[str, MessageEntity | None]:
-    return custom_emoji_entity(teacher.teacher.emoji, fallback="👨‍🏫")
-
-
 def _recovery_text(teacher: UserTeacher) -> str:
+    if HospitalService.ready_for_discharge(teacher):
+        return "دبیر بهبود پیدا کرده ولی ترخیص نشده؛ به بیمارستان برو و ترخیصش کن."
     recovery = next(
         (item for item in teacher.recoveries if item.completed_at is None), None
     )
@@ -169,10 +170,9 @@ async def _send_or_edit(
     text: str,
     *,
     reply_markup,
-    entities: list[MessageEntity] | None = None,
     parse_mode: str | None = None,
 ) -> None:
-    formatting = {"parse_mode": parse_mode} if parse_mode else {"entities": entities}
+    formatting = {"parse_mode": parse_mode} if parse_mode else {}
     if isinstance(target, CallbackQuery):
         if target.message is None:
             return
@@ -222,7 +222,6 @@ async def _school_view(
     percentage = _progress_percent(capacity.owned, capacity.available)
     text = (
         f"{SCHOOL} {bold('ستاد فرماندهی مدرسه')} {QUESTION}\n"
-        "─────────────────────\n"
         f"{LEVEL} سطح فرمانده: {escape(_number(user.level))}\n\n"
         f"{UNLOCK} {bold(unlock_heading)}\n"
         f"{unlocks}\n\n"
@@ -252,7 +251,6 @@ async def _castle_view(
     castle = await castle_service.snapshot(session, user.id)
     text = (
         "🏰 دژ مدرسه | خط مقدم دفاع\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
         f"✨ سطح دژ: {_number(castle.level)}\n"
         f"⚔️ سلامت دژ: {_number(castle.strength)} / "
         f"{_number(castle_service.config.castle_max_strength(castle.level))}\n"
@@ -291,7 +289,6 @@ async def _teachers_view(
     catalog = await teacher_service.catalog(session, user.id)
     text_lines = [
         "👨‍🏫 تیم دبیرهای من",
-        "━━━━━━━━━━━━━━━━━━",
         "",
         f"🎖 سطح شما: {_number(user.level)}",
         "",
@@ -335,10 +332,7 @@ async def _teacher_view(
     with suppress(SchoolError):
         damage = str(teacher_service.damage(teacher))
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
-    icon, icon_entity = _teacher_icon(teacher)
-    text = (
-        f"{icon} پروندهٔ عملیاتی | {teacher.teacher.name}\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
+    details = (
         f"🎖 سطح: {_number(teacher.level)}\n"
         f"⚔️ قدرت ضربه: {damage_text}\n"
         f"❤️ جان: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
@@ -347,6 +341,11 @@ async def _teacher_view(
         f"📌 وضعیت: {_status(teacher)}\n"
         f"✨ توانایی: {teacher.teacher.ability_text or 'تنظیم نشده'}\n\n"
         f"⏳ {_recovery_text(teacher)}"
+    )
+    text = (
+        f"{teacher_icon(teacher.teacher.emoji)}    "
+        f"{bold(f'پروندهٔ عملیاتی | {teacher.teacher.name}')}\n\n"
+        f"{rich_plain(details)}"
     )
     await _send_or_edit(
         target,
@@ -357,7 +356,7 @@ async def _teacher_view(
             can_sell=teacher_service.can_sell(teacher),
             can_activate=hospital_service.can_activate(),
         ),
-        entities=[icon_entity] if icon_entity is not None else None,
+        parse_mode=MARKDOWN_V2,
     )
 
 
@@ -369,7 +368,6 @@ async def _hospital_view(
     patients = await hospital_service.patients(session, user.id)
     lines = [
         "🏥 بیمارستان مدرسه",
-        "━━━━━━━━━━━━━━━━━━",
         "",
     ]
     if not patients:
@@ -825,6 +823,9 @@ async def hospital_callback_handler(
                 session, user.id, callback_data.teacher_id
             )
             notice = "فرآیند بهبودی دبیر آغاز شد."
+        elif callback_data.action == "discharge":
+            await hospital_service.discharge(session, user.id, callback_data.teacher_id)
+            notice = "دبیر ترخیص شد و دوباره فعال است."
         elif callback_data.action == "instant":
             cost = hospital_service.instant_recovery_cost()
             if cost is None:

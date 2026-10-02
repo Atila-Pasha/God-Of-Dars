@@ -6,6 +6,7 @@ from functools import wraps
 from typing import Any
 
 from aiogram import Bot
+from aiogram.client.default import Default
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.types import (
     Message,
@@ -231,8 +232,21 @@ def _decorate(kwargs: dict[str, Any], text_key: str, entities_key: str) -> None:
         kwargs[entities_key] = generated
 
 
-def _decorate_method(method: Any) -> None:
+def _decorate_method(method: Any, *, use_rich_banners: bool = False) -> None:
     """Decorate aiogram method objects used by Message.answer/edit shortcuts."""
+    if use_rich_banners and hasattr(method, "text"):
+        content = getattr(method, "text", None)
+        mode = getattr(method, "parse_mode", None)
+        if (
+            isinstance(content, str)
+            and "\n" in content
+            and not getattr(method, "entities", None)
+            and (mode is None or isinstance(mode, Default))
+        ):
+            from app.bot.banners import rich_banner
+
+            method.text = rich_banner(content)
+            method.parse_mode = "MarkdownV2"
     context = _group_reply_context.get()
     if context is not None and isinstance(
         getattr(method, "reply_markup", None), ReplyKeyboardMarkup
@@ -343,7 +357,14 @@ def install() -> None:
     @wraps(original_send_message)
     async def send_message(self: Bot, *args: Any, **kwargs: Any) -> Any:
         _add_group_reply(kwargs)
-        _decorate(kwargs, "text", "entities")
+        if not (
+            self.token == settings.BOT_TOKEN
+            and isinstance(kwargs.get("text"), str)
+            and "\n" in kwargs["text"]
+            and not kwargs.get("entities")
+            and kwargs.get("parse_mode") is None
+        ):
+            _decorate(kwargs, "text", "entities")
         _decorate_markup(kwargs)
         return await _send_message_with_reply_fallback(
             original_send_message, self, args, kwargs
@@ -351,7 +372,14 @@ def install() -> None:
 
     @wraps(original_edit_message_text)
     async def edit_message_text(self: Bot, *args: Any, **kwargs: Any) -> Any:
-        _decorate(kwargs, "text", "entities")
+        if not (
+            self.token == settings.BOT_TOKEN
+            and isinstance(kwargs.get("text"), str)
+            and "\n" in kwargs["text"]
+            and not kwargs.get("entities")
+            and kwargs.get("parse_mode") is None
+        ):
+            _decorate(kwargs, "text", "entities")
         _decorate_markup(kwargs)
         return await original_edit_message_text(self, *args, **kwargs)
 
@@ -370,7 +398,7 @@ def install() -> None:
 
     @wraps(original_call)
     async def call(self: Bot, method: Any, *args: Any, **kwargs: Any) -> Any:
-        _decorate_method(method)
+        _decorate_method(method, use_rich_banners=self.token == settings.BOT_TOKEN)
         reply_fallback_used = False
         for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
             try:

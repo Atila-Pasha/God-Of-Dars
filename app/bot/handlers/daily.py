@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.banners import MARKDOWN_V2, rich_plain, section_entry_banner
+from app.bot.banners import MARKDOWN_V2, rich_banner, section_entry_banner
 from app.bot.keyboards.daily import daily_keyboard
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, section_back_keyboard
 from app.bot.middlewares.subscription import subscription_service
@@ -31,7 +31,7 @@ async def _show(target, session: AsyncSession, user_id: int):
     quests = await service.list(session, service.today(), active_only=True)
     if not quests:
         text = (
-            "🎯 مأموریت‌های امروز\n━━━━━━━━━━━━━━━━━━\n\n"
+            "🎯 مأموریت‌های امروز\n\n"
             "امروز مأموریتی تعریف نشده؛ برای فرمان بعدی آماده بمون ⚡"
         )
         markup = None
@@ -69,15 +69,11 @@ async def _show(target, session: AsyncSession, user_id: int):
             progress.quest = quest
             progresses.append(progress)
         if not progresses:
-            text = (
-                "🎯 مأموریت‌های امروز\n━━━━━━━━━━━━━━━━━━\n\n"
-                "امروز مأموریت قابل بررسی‌ای وجود نداره."
-            )
+            text = "🎯 مأموریت‌های امروز\n\nامروز مأموریت قابل بررسی‌ای وجود نداره."
             markup = None
         else:
             lines = [
                 "🎯 مأموریت‌های امروز",
-                "━━━━━━━━━━━━━━━━━━",
                 "",
                 "چالش‌ها رو کامل کن و جایزه‌ها رو درو کن 👇",
             ]
@@ -98,7 +94,7 @@ async def _show(target, session: AsyncSession, user_id: int):
                 lines.append(f"\n• {quest.title}\n {status}\n 📝 {description}")
             text = "\n".join(lines)
             markup = daily_keyboard(progresses)
-    text = f"{section_entry_banner('فعالیت‌های روزانه')}\n─────────────────────\n{rich_plain(text)}"
+    text = f"{section_entry_banner('فعالیت‌های روزانه')}\n\n{rich_banner(text)}"
     if isinstance(target, CallbackQuery):
         await safe_edit_text(
             target.message, text, reply_markup=markup, parse_mode=MARKDOWN_V2

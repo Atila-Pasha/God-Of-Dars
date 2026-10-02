@@ -359,7 +359,7 @@ async def test_castle_repair_scales_with_missing_strength_and_restores_health() 
 
 
 @pytest.mark.asyncio
-async def test_hospital_completes_due_recovery_without_teacher_death() -> None:
+async def test_hospital_waits_for_discharge_after_recovery() -> None:
     model = teacher()
     owned = UserTeacher(
         id=11,
@@ -388,10 +388,55 @@ async def test_hospital_completes_due_recovery_without_teacher_death() -> None:
 
     patients = await service.patients(session, 10)
 
-    assert patients == []
+    assert patients == [owned]
+    assert owned.status is TeacherStatus.RECOVERING
+    assert owned.current_hp == 20
+    session.flush.assert_not_awaited()
+
+    with pytest.raises(InvalidTeacherState):
+        await service.instant_recover(session, 10, owned.id)
+
+    discharged = await service.discharge(session, 10, owned.id)
+
+    assert discharged is owned
     assert owned.status is TeacherStatus.ACTIVE
     assert owned.current_hp == model.max_hp
+    assert owned.recoveries[0].completed_at is not None
     session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_hospital_cannot_discharge_before_recovery_finishes() -> None:
+    model = teacher()
+    owned = UserTeacher(
+        id=11,
+        user_id=10,
+        teacher_id=model.id,
+        level=1,
+        current_hp=20,
+        status=TeacherStatus.RECOVERING,
+        teacher=model,
+    )
+    owned.recoveries = [
+        Recovery(
+            user_teacher_id=owned.id,
+            recovery_started_at=datetime.now(UTC),
+            recovery_end_at=datetime.now(UTC) + timedelta(minutes=5),
+        )
+    ]
+    repository = FakeTeacherRepository(
+        user=user(),
+        resources=SimpleNamespace(coin=0),
+        teacher=model,
+        owned=owned,
+    )
+    session = SimpleNamespace(flush=AsyncMock())
+
+    with pytest.raises(InvalidTeacherState):
+        await HospitalService(repository).discharge(session, 10, owned.id)
+
+    assert owned.status is TeacherStatus.RECOVERING
+    session.flush.assert_not_awaited()
 
 
 @pytest.mark.asyncio

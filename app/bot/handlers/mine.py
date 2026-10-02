@@ -13,7 +13,7 @@ from app.bot.banners import (
     bold,
     emoji,
     escape,
-    rich_plain,
+    rich_banner,
     section_entry_banner,
 )
 from app.bot.callbacks import MineCallback
@@ -47,15 +47,14 @@ def _mine_text(snapshot) -> str:
     production = snapshot.production
     return (
         f"{emoji('5823474022670671455', '⛏️')} {bold('معدن فرماندهی')}\n"
-        "─────────────────────\n"
         f"{FORT} سطح معدن: {escape(snapshot.level)}\n\n"
         f"{emoji('5823443584237444682', '⚙️')} {bold('تولید در هر دقیقه')}\n"
-        f">{COIN}    {escape(production.coin_per_minute)} طلا\n"
-        f">{DIAMOND}    {escape(production.diamond_per_minute)} الماس\n\n"
+        f"{COIN}    {escape(production.coin_per_minute)} طلا\n"
+        f"{DIAMOND}    {escape(production.diamond_per_minute)} الماس\n\n"
         f"{emoji('5823443584237444682', '⏱️')} زمان محاسبه‌شده: {escape(snapshot.collected_minutes)} دقیقه\n\n"
         f"{LOOT} {bold('آمادهٔ جمع‌آوری')}\n"
-        f">{COIN}    طلا: {escape(snapshot.today_coin)}\n"
-        f">{DIAMOND}    الماس: {escape(snapshot.today_diamond)}"
+        f"{COIN}    طلا: {escape(snapshot.today_coin)}\n"
+        f"{DIAMOND}    الماس: {escape(snapshot.today_diamond)}"
     )
 
 
@@ -66,7 +65,7 @@ def _upgrade_text(snapshot, next_level) -> str:
     )
     return (
         "⬆️ ارتقای معدن | پیش‌نمایش\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
+        "\n"
         f"سطح فعلی: {snapshot.level}\n"
         f"سطح بعدی: {snapshot.level + 1}\n\n"
         "📈 تولید جدید در هر دقیقه:\n"
@@ -172,7 +171,7 @@ async def mine_callback(
                 raise MineUpgradeUnavailable from exc
             await safe_edit_text(
                 callback.message,
-                rich_plain(_upgrade_text(snapshot, next_level)),
+                rich_banner(_upgrade_text(snapshot, next_level)),
                 reply_markup=mine_upgrade_confirmation_keyboard(),
                 parse_mode=MARKDOWN_V2,
             )
