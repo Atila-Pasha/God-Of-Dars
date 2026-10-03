@@ -18,9 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import (
     MARKDOWN_V2,
+    TEACHERS,
     attack_launch_banner,
     attack_preview_banner,
     attack_result_banner,
+    bold,
     emoji,
     escape,
     section_entry_banner,
@@ -311,41 +313,48 @@ def _random_attack_confirmation_keyboard(
 
 
 def _teacher_selection_keyboard(
-    teachers, *, mode: Literal["random", "id"], selected_ids: list[int]
+    teachers,
+    *,
+    mode: Literal["random", "id"],
+    selected_ids: list[int],
+    attacker_id: int = 0,
 ) -> InlineKeyboardMarkup:
     selected = set(selected_ids)
     rows = [
         [
             InlineKeyboardButton(
-                # Keep these as standard Unicode status marks. A heart here
-                # was promoted to the premium hospital icon by the global
-                # keyboard decorator and visually replaced the selection tick.
-                text=("☑️ " if teacher.id in selected else "⬜️ ")
-                + f"{teacher.teacher.name} (جان: {teacher.current_hp})",
+                text=f"{teacher.teacher.name} ({teacher.level})",
+                icon_custom_emoji_id=(
+                    "5823388325188214894" if teacher.id in selected else None
+                ),
                 callback_data=AttackMenuCallback(
                     action="toggle",
                     mode=mode,
                     teacher_id=teacher.id,
+                    attacker_id=attacker_id,
                 ).pack(),
             )
         ]
         for teacher in teachers
     ]
-    submit_text = (
-        f"حمله رندوم ({len(selected)}/{MAX_ATTACK_TEACHERS})"
-        if mode == "random"
-        else f"⚔️ پیش‌نمایش حمله ({len(selected)}/{MAX_ATTACK_TEACHERS})"
-    )
     rows.append(
         [
             InlineKeyboardButton(
-                text=submit_text,
+                text="تأیید حمله",
                 style="success",
-                icon_custom_emoji_id=(
-                    "5825935099060822018" if mode == "random" else None
-                ),
-                callback_data=AttackMenuCallback(action="submit", mode=mode).pack(),
-            )
+                icon_custom_emoji_id="5823388325188214894",
+                callback_data=AttackMenuCallback(
+                    action="submit", mode=mode, attacker_id=attacker_id
+                ).pack(),
+            ),
+            InlineKeyboardButton(
+                text="لغو حمله",
+                style="danger",
+                icon_custom_emoji_id="5825504038963125908",
+                callback_data=AttackMenuCallback(
+                    action="cancel", mode=mode, attacker_id=attacker_id
+                ).pack(),
+            ),
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -406,16 +415,26 @@ async def _show_teacher_selection(
     await state.update_data(mode=mode, selected_teacher_ids=selected_ids)
     await state.set_state(AttackMenuStates.selecting_teachers)
     text = (
-        "👨‍🏫 دبیرهای حمله را انتخاب کنید.\n"
-        f"می‌توانید هم‌زمان تا {MAX_ATTACK_TEACHERS} دبیر را تیک بزنید."
+        f"{TEACHERS} {bold('دبیرهای حمله را انتخاب کنید.')}\n\n"
+        f"> می‌توانید هم‌زمان تا {MAX_ATTACK_TEACHERS} دبیر را تیک بزنید\\."
     )
-    markup = _teacher_selection_keyboard(teachers, mode=mode, selected_ids=selected_ids)
+    markup = _teacher_selection_keyboard(
+        teachers,
+        mode=mode,
+        selected_ids=selected_ids,
+        attacker_id=target.from_user.id,
+    )
     if isinstance(target, CallbackQuery):
         if isinstance(target.message, Message):
-            await target.message.edit_text(text, reply_markup=markup)
+            await target.message.edit_text(
+                text, reply_markup=markup, parse_mode=MARKDOWN_V2
+            )
     else:
         await target.answer(
-            text, reply_markup=markup, reply_to_message_id=reply_to_message_id
+            text,
+            reply_markup=markup,
+            reply_to_message_id=reply_to_message_id,
+            parse_mode=MARKDOWN_V2,
         )
 
 
@@ -457,7 +476,10 @@ async def _report_error(message: Message, error: Exception) -> None:
             "این دبیر فعال نیست؛ ابتدا آن را فعال کنید تا آماده حمله شود."
         )
     elif isinstance(error, CannotAttackSelf):
-        await message.answer("نمی‌توانید به خودتان حمله کنید.")
+        await message.answer(
+            f"نمیتونی به خودت حمله کنی زرنگ {emoji('5920515596088250243', '😏')}",
+            parse_mode=MARKDOWN_V2,
+        )
     elif isinstance(error, RandomOpponentNotFound):
         await message.answer("حریفی برای حمله پیدا نکردم.")
     elif isinstance(error, RandomAttackSelectionExpired):
@@ -566,6 +588,11 @@ async def attack_menu_callback_handler(
     if callback.from_user is None or not isinstance(callback.message, Message):
         await callback.answer()
         return
+    if callback_data.attacker_id and callback_data.attacker_id != callback.from_user.id:
+        await callback.answer(
+            "فقط شروع‌کننده حمله می‌تواند دبیرها را انتخاب کند.", show_alert=True
+        )
+        return
     data = await state.get_data()
     if (
         data.get("group_attacker_id") is not None
@@ -574,6 +601,11 @@ async def attack_menu_callback_handler(
         await callback.answer(
             "فقط شروع‌کننده حمله می‌تواند دبیرها را انتخاب کند.", show_alert=True
         )
+        return
+    if callback_data.action == "cancel":
+        await state.clear()
+        await callback.answer("حمله لغو شد.")
+        await callback.message.edit_text("حمله لغو شد.", reply_markup=None)
         return
     if callback_data.action == "choose":
         await state.clear()
@@ -632,7 +664,10 @@ async def attack_menu_callback_handler(
         await state.update_data(selected_teacher_ids=selected_ids)
         await callback.message.edit_reply_markup(
             reply_markup=_teacher_selection_keyboard(
-                teachers, mode=callback_data.mode, selected_ids=selected_ids
+                teachers,
+                mode=callback_data.mode,
+                selected_ids=selected_ids,
+                attacker_id=callback.from_user.id,
             )
         )
         await callback.answer()
@@ -699,7 +734,7 @@ async def attack_message(
             await message.answer("روی پیام کاربر هدف ریپلای کنید و «حمله» بنویسید.")
             return
         if replied.from_user.id == message.from_user.id:
-            await message.answer("نمی‌توانید به خودتان حمله کنید.")
+            await _report_error(message, CannotAttackSelf())
             return
         try:
             target = await attack_service.target_preview(

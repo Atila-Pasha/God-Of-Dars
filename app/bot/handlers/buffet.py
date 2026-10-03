@@ -33,7 +33,6 @@ from app.bot.keyboards.buffet import (
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     main_menu_keyboard,
-    section_back_keyboard,
 )
 from app.bot.keyboards.school import (
     confirmation_keyboard,
@@ -212,7 +211,7 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
         )
         await message.answer(
             section_entry_banner("بوفه"),
-            reply_markup=section_back_keyboard(),
+            reply_markup=buffet_menu_keyboard(),
             parse_mode=MARKDOWN_V2,
         )
     except (UserInactiveError, SchoolUserNotFound):

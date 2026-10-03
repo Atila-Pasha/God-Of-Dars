@@ -57,9 +57,21 @@ def buffet_menu_keyboard() -> ReplyKeyboardMarkup:
     """Replace the main user keyboard while the user is inside the buffet."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔄 تبدیل منابع")],
-            [KeyboardButton(text="🛡 فهرست سپر ها")],
-            [KeyboardButton(text="👨‍🏫 خرید دبیر")],
+            [
+                KeyboardButton(
+                    text="تبدیل منابع", icon_custom_emoji_id=premium_emoji_id("🔄")
+                )
+            ],
+            [
+                KeyboardButton(
+                    text="فهرست سپر ها", icon_custom_emoji_id=premium_emoji_id("🛡")
+                )
+            ],
+            [
+                KeyboardButton(
+                    text="خرید دبیر", icon_custom_emoji_id=premium_emoji_id("👨‍🏫")
+                )
+            ],
             [KeyboardButton(text="بازگشت به منو اصلی")],
         ],
         resize_keyboard=True,

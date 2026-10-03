@@ -20,7 +20,7 @@ def test_purchase_banner_escapes_teacher_data_and_uses_custom_emoji() -> None:
     assert "*قضاتی \\[آزمایشی\\]*" in text
     assert "ملخک‌ها \\`قوی\\`" in text
     assert "سطح بازشدن: 3" in text
-    assert ">" not in text
+    assert "> سطح بازشدن: 3" in text
 
 
 def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
@@ -52,5 +52,5 @@ def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
     assert "به قلعهٔ تو" in defender
     assert "دفاعت را تقویت کن" in defender
     assert "منابع ازدست‌رفته" in defender
-    assert ">" not in attacker
-    assert ">" not in defender
+    assert "> 80 DMG" in attacker
+    assert "> 20 DMG" in defender

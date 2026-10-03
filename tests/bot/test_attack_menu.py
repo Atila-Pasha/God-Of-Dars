@@ -14,6 +14,7 @@ from app.services.attack_service import AttackTargetPreview
 def teacher(teacher_id: int, name: str = "افلاطون") -> SimpleNamespace:
     return SimpleNamespace(
         id=teacher_id,
+        level=3,
         current_hp=80,
         teacher=SimpleNamespace(name=name),
     )
@@ -88,15 +89,19 @@ def test_teacher_selection_keyboard_marks_multiple_teachers() -> None:
         selected_ids=[1, 3],
     )
 
-    assert keyboard.inline_keyboard[0][0].text.startswith("☑️")
-    assert keyboard.inline_keyboard[1][0].text.startswith("⬜️")
-    assert keyboard.inline_keyboard[2][0].text.startswith("☑️")
-    assert "2/4" in keyboard.inline_keyboard[-1][0].text
+    assert keyboard.inline_keyboard[0][0].text == "افلاطون (3)"
+    assert keyboard.inline_keyboard[1][0].text == "فراهانی (3)"
+    assert keyboard.inline_keyboard[2][0].text == "حسابی (3)"
 
     _decorate_markup({"reply_markup": keyboard})
     teacher_buttons = [row[0] for row in keyboard.inline_keyboard[:-1]]
-    assert all(button.icon_custom_emoji_id is None for button in teacher_buttons)
+    assert teacher_buttons[0].icon_custom_emoji_id == "5823388325188214894"
+    assert teacher_buttons[1].icon_custom_emoji_id is None
+    assert teacher_buttons[2].icon_custom_emoji_id == "5823388325188214894"
     assert keyboard.inline_keyboard[-1][0].style == "success"
+    assert keyboard.inline_keyboard[-1][0].text == "تأیید حمله"
+    assert keyboard.inline_keyboard[-1][1].style == "danger"
+    assert keyboard.inline_keyboard[-1][1].text == "لغو حمله"
 
 
 @pytest.mark.asyncio
@@ -128,6 +133,46 @@ async def test_reply_attack_in_group_opens_teacher_selection(monkeypatch) -> Non
     show_selection.assert_awaited_once_with(
         message, session, state, mode="id", reply_to_message_id=123
     )
+
+
+@pytest.mark.asyncio
+async def test_reply_attack_on_self_shows_requested_message() -> None:
+    message = SimpleNamespace(
+        text="حمله",
+        chat=SimpleNamespace(type="supergroup"),
+        from_user=SimpleNamespace(id=42),
+        reply_to_message=SimpleNamespace(
+            from_user=SimpleNamespace(id=42, is_bot=False)
+        ),
+        answer=AsyncMock(),
+    )
+
+    await battle.attack_message(message, AsyncMock(), AsyncMock())
+
+    assert "نمیتونی به خودت حمله کنی زرنگ" in message.answer.await_args.args[0]
+    assert "5920515596088250243" in message.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_other_group_member_cannot_cancel_teacher_selection() -> None:
+    message = MagicMock(spec=Message)
+    message.edit_text = AsyncMock()
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=24), message=message, answer=AsyncMock()
+    )
+    state = SimpleNamespace(get_data=AsyncMock(), clear=AsyncMock())
+
+    await battle.attack_menu_callback_handler(
+        callback,
+        AttackMenuCallback(action="cancel", mode="id", attacker_id=42),
+        AsyncMock(),
+        state,
+    )
+
+    assert callback.answer.await_args.kwargs["show_alert"] is True
+    state.get_data.assert_not_awaited()
+    state.clear.assert_not_awaited()
+    message.edit_text.assert_not_awaited()
 
 
 @pytest.mark.asyncio

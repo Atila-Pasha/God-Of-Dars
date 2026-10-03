@@ -222,6 +222,7 @@ async def _school_view(
     percentage = _progress_percent(capacity.owned, capacity.available)
     text = (
         f"{SCHOOL} {bold('ستاد فرماندهی مدرسه')} {QUESTION}\n"
+        "─────────────────────\n"
         f"{LEVEL} سطح فرمانده: {escape(_number(user.level))}\n\n"
         f"{UNLOCK} {bold(unlock_heading)}\n"
         f"{unlocks}\n\n"

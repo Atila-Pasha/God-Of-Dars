@@ -91,9 +91,10 @@ class RandomAttackCallback(CallbackData, prefix="random_attack"):
 
 
 class AttackMenuCallback(CallbackData, prefix="attack_menu"):
-    action: Literal["choose", "target_teachers", "toggle", "submit"]
+    action: Literal["choose", "target_teachers", "toggle", "submit", "cancel"]
     mode: Literal["random", "id"]
     teacher_id: int = 0
+    attacker_id: int = 0
 
 
 class AttackCountdownCallback(CallbackData, prefix="attack_timer"):
