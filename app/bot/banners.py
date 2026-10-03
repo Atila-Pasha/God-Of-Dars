@@ -200,7 +200,7 @@ def _teacher_lines(
             for index, name in enumerate(names)
         )
     return [
-        f"{teacher_icon(icon)}    {bold(name)}\n"
+        f"{teacher_icon(icon)}{bold(name)}\n\n"
         f"{SPARKLE} توانایی دبیر: {escape(_short(ability or 'ثبت نشده'))}"
         for name, ability, icon in details[:4]
     ]
@@ -210,21 +210,16 @@ def attack_preview_banner(preview: AttackPreview) -> str:
     details = _teacher_lines(
         preview.teacher_details, preview.teacher_name, preview.teacher_emojis
     )
-    names = " + ".join(name for name, _, _ in preview.teacher_details) or (
-        preview.teacher_name.replace("،", " +")
-    )
     return (
         f"{SWORD} {bold('قربان! به این موارد توجه کنید:')}\n\n"
         f"{TARGET} هدف: {bold(preview.target_name)}\n\n"
-        f"{FORCES} نیروهای تنظیم‌شده:\n"
-        f"> {escape(names)}\n\n" + "\n\n".join(details) + "\n\n"
+        f"{FORCES} نیروهای تنظیم‌شده:\n\n" + "\n\n".join(details) + "\n\n"
         f"{DEFENSE} دفاع دژ:\n"
         f"> {escape(preview.defense_power)} DMG {DEFENSE}\n\n"
         f"{INJURY} آسیب احتمالی دبیر:\n"
         f"> {escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
         f"{LOOT} {bold('غنیمت')} احتمالی از منابع حریف:\n"
         f"{COIN}    {bold('طلا')}: {escape(preview.loot_coin)}\n"
-        f"{DIAMOND}    {bold('الماس')}: {escape(preview.loot_diamond)}\n"
         f"{BANANA}    {bold('موز')}: {escape(preview.loot_banana)}\n\n"
         f"{QUESTION} {bold('فرمان حمله رو صادر می‌کنی؟')}"
     )
@@ -266,8 +261,8 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         if recipient == "defender"
         else f"حمله به قلعهٔ «{result.target_name}» تمام شد!"
     )
-    teacher_lines = "\n\n".join(
-        f"{teacher_icon(icon)}    {escape(name)}"
+    teacher_lines = " \\- ".join(
+        f"{teacher_icon(icon)}{escape(name)}"
         for name, _ability, icon in (
             result.teacher_details
             or tuple(

@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from app.bot.banners import attack_result_banner, purchase_banner
-from app.services.attack_service import AttackResult
+from app.bot.banners import attack_preview_banner, attack_result_banner, purchase_banner
+from app.services.attack_service import AttackPreview, AttackResult
 
 
 def test_purchase_banner_escapes_teacher_data_and_uses_custom_emoji() -> None:
@@ -21,6 +21,38 @@ def test_purchase_banner_escapes_teacher_data_and_uses_custom_emoji() -> None:
     assert "ملخک‌ها \\`قوی\\`" in text
     assert "سطح بازشدن: 3" in text
     assert "> سطح بازشدن: 3" in text
+
+
+def test_attack_preview_lists_teachers_without_icon_gap_or_summary() -> None:
+    preview = AttackPreview(
+        attacker_id=1,
+        target_id=2,
+        teacher_id=3,
+        attacker_name="آرش",
+        target_name="نگار",
+        teacher_name="قضاتی، فراهانی",
+        ability_text=None,
+        teacher_damage=80,
+        defense_power=50,
+        estimated_castle_damage=30,
+        estimated_teacher_injury=7,
+        loot_coin=10,
+        loot_diamond=2,
+        loot_banana=1,
+        teacher_details=(
+            ("قضاتی", "لشکر ملخک‌ها", "123"),
+            ("فراهانی", "سپاه کتاب‌ها", "456"),
+        ),
+    )
+
+    text = attack_preview_banner(preview)
+
+    assert "tg://emoji?id=123)*قضاتی*" in text
+    assert "tg://emoji?id=456)*فراهانی*" in text
+    assert "نیروهای تنظیم‌شده:\n\n" in text
+    assert "قضاتی + فراهانی" not in text
+    assert "الماس" not in text
+    assert "> 50 DMG" in text
 
 
 def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
@@ -48,6 +80,8 @@ def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
     assert "80%" in attacker
     assert "tg://emoji?id=123" in attacker
     assert "tg://emoji?id=456" in attacker
+    assert "tg://emoji?id=123)قضاتی \\- ![" in attacker
+    assert "tg://emoji?id=456)فراهانی" in attacker
     assert "حمله به قلعه" in attacker
     assert "به قلعهٔ تو" in defender
     assert "دفاعت را تقویت کن" in defender

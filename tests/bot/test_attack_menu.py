@@ -95,9 +95,9 @@ def test_teacher_selection_keyboard_marks_multiple_teachers() -> None:
 
     _decorate_markup({"reply_markup": keyboard})
     teacher_buttons = [row[0] for row in keyboard.inline_keyboard[:-1]]
-    assert teacher_buttons[0].icon_custom_emoji_id == "5823388325188214894"
+    assert teacher_buttons[0].icon_custom_emoji_id == "5825709849500985213"
     assert teacher_buttons[1].icon_custom_emoji_id is None
-    assert teacher_buttons[2].icon_custom_emoji_id == "5823388325188214894"
+    assert teacher_buttons[2].icon_custom_emoji_id == "5825709849500985213"
     assert keyboard.inline_keyboard[-1][0].style == "success"
     assert keyboard.inline_keyboard[-1][0].text == "تأیید حمله"
     assert keyboard.inline_keyboard[-1][1].style == "danger"

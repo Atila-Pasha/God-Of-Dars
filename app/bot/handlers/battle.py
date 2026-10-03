@@ -325,7 +325,7 @@ def _teacher_selection_keyboard(
             InlineKeyboardButton(
                 text=f"{teacher.teacher.name} ({teacher.level})",
                 icon_custom_emoji_id=(
-                    "5823388325188214894" if teacher.id in selected else None
+                    "5825709849500985213" if teacher.id in selected else None
                 ),
                 callback_data=AttackMenuCallback(
                     action="toggle",
