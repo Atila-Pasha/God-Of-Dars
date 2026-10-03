@@ -149,8 +149,8 @@ def attack_launch_banner(
     *,
     remaining_seconds: int | None = None,
 ) -> str:
-    teachers = "\n\n".join(
-        f"{teacher_icon(icon)}    {escape(name)}"
+    teachers = " \\- ".join(
+        f"{teacher_icon(icon)}{escape(name)}"
         for name, _ability, icon in teacher_details[:4]
     )
     footer = (
@@ -160,7 +160,7 @@ def attack_launch_banner(
     )
     return (
         f"{LAUNCH} {bold(f'حمله به «{target_name}» آغاز شد!')}\n\n"
-        f"{TEACHERS} دبیرها:\n{teachers}\n\n{footer}"
+        f"{TEACHERS} دبیر :\n{teachers}\n\n{footer}"
     )
 
 

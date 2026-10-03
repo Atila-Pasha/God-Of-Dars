@@ -10,8 +10,9 @@ def test_launch_banner_renders_teacher_icons_and_real_remaining_time() -> None:
     updated = attack_launch_banner("حریف [قوی]", teachers, remaining_seconds=92)
 
     assert "حریف \\[قوی\\]" in starting
-    assert "tg://emoji?id=123)    قضاتی" in starting
-    assert "tg://emoji?id=456)    فراهانی" in starting
+    assert "دبیر :\n" in starting
+    assert "tg://emoji?id=123)قضاتی \\- ![" in starting
+    assert "tg://emoji?id=456)فراهانی" in starting
     assert "پس از پایان زمان" in starting
     assert "زمان باقی‌مانده تا تکمیل حمله: 01:32" in updated
     assert "پس از پایان زمان" not in updated
