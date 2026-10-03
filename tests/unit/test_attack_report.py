@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.bot.banners import attack_teacher_injury_banner
 from app.core.enums import AttackStatus
 from app.services.attack_service import AttackResult
 from app.workers.attack_resolver import _command_result
@@ -15,11 +16,16 @@ def _attack_row(
     injury: int,
     *,
     status: AttackStatus = AttackStatus.RESOLVED,
+    remaining_hp: int | None = 20,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=attack_id,
         status=status,
-        teacher=None,
+        teacher=(
+            SimpleNamespace(current_hp=remaining_hp)
+            if remaining_hp is not None
+            else None
+        ),
         teacher_name_snapshot=name,
         teacher_ability_snapshot=f"توانایی {name}",
         teacher_emoji_snapshot=str(attack_id),
@@ -37,7 +43,14 @@ def _attack_row(
 async def test_report_waits_for_every_teacher_then_sums_the_command() -> None:
     rows = [
         _attack_row(1, "قضاتی", 30, 2),
-        _attack_row(2, "فراهانی", 40, 3, status=AttackStatus.PROCESSING),
+        _attack_row(
+            2,
+            "فراهانی",
+            40,
+            3,
+            status=AttackStatus.PROCESSING,
+            remaining_hp=None,
+        ),
     ]
     session = SimpleNamespace(scalars=AsyncMock(return_value=rows))
     result = AttackResult(
@@ -66,3 +79,13 @@ async def test_report_waits_for_every_teacher_then_sums_the_command() -> None:
     assert summary.loot_coin == 70
     assert len(summary.teacher_details) == 2
     assert summary.source_chat_id == -100123
+    assert summary.teacher_injuries[0].damage == 2
+    assert summary.teacher_injuries[0].remaining_hp == 20
+    assert not summary.teacher_injuries[0].lost
+    assert summary.teacher_injuries[1].damage == 3
+    assert summary.teacher_injuries[1].lost
+    banner = attack_teacher_injury_banner(summary)
+    assert "2 HP" in banner
+    assert "3 HP" in banner
+    assert "جان باقی‌مانده" in banner
+    assert "دبیرت را در نبرد از دست دادی" in banner

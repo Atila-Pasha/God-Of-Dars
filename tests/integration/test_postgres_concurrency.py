@@ -858,6 +858,15 @@ async def test_stale_processing_attack_recovers_without_duplicate_ledger() -> No
                 )
                 == 2
             )
+            assert (
+                await session.scalar(
+                    select(func.count(Notification.id)).where(
+                        Notification.idempotency_key
+                        == f"ATTACK_TEACHER_INJURY:{attack_id}:ATTACKER"
+                    )
+                )
+                == 1
+            )
     finally:
         async with AsyncSessionLocal() as session:
             async with session.begin():

@@ -47,6 +47,29 @@ async def _deliver_notification(
     payload = dict(notification.payload)
     attempts = notification.attempts
 
+    dependency_key = payload.get("depends_on_key")
+    if dependency_key:
+        async with AsyncSessionLocal() as session, session.begin():
+            dependency_status = await session.scalar(
+                select(Notification.status).where(
+                    Notification.idempotency_key == dependency_key
+                )
+            )
+            if dependency_status is not NotificationStatus.SENT:
+                row = await session.scalar(
+                    select(Notification)
+                    .where(Notification.id == notification_id)
+                    .with_for_update()
+                )
+                if row is not None and row.status is NotificationStatus.PROCESSING:
+                    row.status = NotificationStatus.PENDING
+                    row.processing_at = None
+                    row.next_attempt_at = datetime.now(UTC) + timedelta(
+                        seconds=settings.WORKER_POLL_INTERVAL
+                    )
+                    row.attempts = max(0, row.attempts - 1)
+                return
+
     try:
         async with send_limit:
             if payload.get("operation") == "delete_message":

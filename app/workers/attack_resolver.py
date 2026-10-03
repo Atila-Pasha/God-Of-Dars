@@ -10,14 +10,18 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
-from app.bot.banners import MARKDOWN_V2, attack_result_banner
+from app.bot.banners import (
+    MARKDOWN_V2,
+    attack_result_banner,
+    attack_teacher_injury_banner,
+)
 from app.core.config import settings
 from app.core.enums import AttackStatus
 from app.db.session import AsyncSessionLocal
 from app.models.attack import Attack
 from app.models.user_teacher import UserTeacher
 from app.repositories.user import UserRepository
-from app.services.attack_service import AttackService
+from app.services.attack_service import AttackService, TeacherInjury
 from app.services.level_service import LevelService
 from app.services.notification_service import NotificationService
 from app.services.school_errors import OperationNotConfigured, SchoolError
@@ -35,12 +39,15 @@ def _result_text(result, *, recipient: str = "attacker") -> str:
 async def _command_result(session, result):
     """Create one complete report after every teacher in a command has resolved."""
     command_id = result.attack.attack_command_id
-    if command_id is None:
-        return result
+    attack_filter = (
+        Attack.attack_command_id == command_id
+        if command_id is not None
+        else Attack.id == result.attack.id
+    )
     records = list(
         await session.scalars(
             select(Attack)
-            .where(Attack.attack_command_id == command_id)
+            .where(attack_filter)
             .options(selectinload(Attack.teacher).selectinload(UserTeacher.teacher))
             .order_by(Attack.id)
         )
@@ -58,10 +65,21 @@ async def _command_result(session, result):
         )
         for row in records
     )
+    injuries = tuple(
+        TeacherInjury(
+            name=name,
+            emoji=icon,
+            damage=row.result_teacher_injury,
+            remaining_hp=row.teacher.current_hp if row.teacher is not None else 0,
+            lost=row.teacher is None and row.result_teacher_injury > 0,
+        )
+        for row, (name, _ability, icon) in zip(records, details, strict=True)
+    )
     return replace(
         result,
         teacher_name="، ".join(name for name, _, _ in details),
         teacher_details=details,
+        teacher_injuries=injuries,
         castle_damage=sum(row.result_damage or 0 for row in records),
         teacher_injury=sum(row.result_teacher_injury for row in records),
         loot_coin=sum(row.loot_coin for row in records),
@@ -149,6 +167,18 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                                 "chat_id": result.attacker_telegram_id,
                                 "text": text,
                                 "parse_mode": MARKDOWN_V2,
+                            },
+                        )
+                        await notification_service.enqueue(
+                            session,
+                            notification_type="ATTACK_TEACHER_INJURY",
+                            recipient_user_id=result.attack.attacker_id,
+                            idempotency_key=f"ATTACK_TEACHER_INJURY:{key}:ATTACKER",
+                            payload={
+                                "chat_id": result.attacker_telegram_id,
+                                "text": attack_teacher_injury_banner(result),
+                                "parse_mode": MARKDOWN_V2,
+                                "depends_on_key": f"ATTACK_RESULT:{key}:ATTACKER",
                             },
                         )
                         await notification_service.enqueue(

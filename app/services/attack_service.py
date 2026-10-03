@@ -38,6 +38,15 @@ from app.services.teacher_service import TeacherService
 
 
 @dataclass(frozen=True)
+class TeacherInjury:
+    name: str
+    emoji: str | None
+    damage: int
+    remaining_hp: int
+    lost: bool
+
+
+@dataclass(frozen=True)
 class AttackResult:
     attack: Attack
     attacker_telegram_id: int
@@ -54,6 +63,7 @@ class AttackResult:
     loot_banana: int
     blocked_by_shield: bool = False
     teacher_details: tuple[tuple[str, str | None, str | None], ...] = ()
+    teacher_injuries: tuple[TeacherInjury, ...] = ()
     castle_strength_before: int = 0
     source_chat_id: int | None = None
 

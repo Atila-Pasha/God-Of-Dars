@@ -295,3 +295,20 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{BANANA}    موز: {escape(result.loot_banana)}\n\n"
         f"{closing}"
     )
+
+
+def attack_teacher_injury_banner(result: AttackResult) -> str:
+    lines = []
+    for teacher in result.teacher_injuries:
+        heading = (
+            f"{teacher_icon(teacher.emoji)}{bold(teacher.name)}: "
+            f"{bold(f'{teacher.damage} HP')} آسیب"
+        )
+        if teacher.lost:
+            status = f"{INJURY} دبیرت را در نبرد از دست دادی و دیگر در تیمت نیست\\."
+        else:
+            status = f"جان باقی‌مانده: {bold(f'{teacher.remaining_hp} HP')}"
+        lines.append(f"{heading}\n{status}")
+    if not lines:
+        lines.append("اطلاعات آسیب دبیرها در دسترس نیست\\.")
+    return f"{HEAL} {bold('گزارش آسیب دبیرها')}\n\n" + "\n\n".join(lines)
