@@ -88,4 +88,6 @@ async def test_report_waits_for_every_teacher_then_sums_the_command() -> None:
     assert "2 HP" in banner
     assert "3 HP" in banner
     assert "جان باقی‌مانده" in banner
+    assert "> 《 جان باقی‌مانده: *20 HP* 》" in banner
+    assert "Let’s go to the hospital\\." in banner
     assert "دبیرت را در نبرد از دست دادی" in banner

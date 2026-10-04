@@ -80,8 +80,9 @@ def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
     assert "80%" in attacker
     assert "tg://emoji?id=123" in attacker
     assert "tg://emoji?id=456" in attacker
-    assert "tg://emoji?id=123)قضاتی \\- ![" in attacker
-    assert "tg://emoji?id=456)فراهانی" in attacker
+    assert "《![" in attacker
+    assert "tg://emoji?id=123) قضاتی》  《![" in attacker
+    assert "tg://emoji?id=456) فراهانی》" in attacker
     assert "حمله به قلعه" in attacker
     assert "به قلعهٔ تو" in defender
     assert "دفاعت را تقویت کن" in defender

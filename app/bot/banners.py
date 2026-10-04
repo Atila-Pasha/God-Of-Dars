@@ -149,8 +149,8 @@ def attack_launch_banner(
     *,
     remaining_seconds: int | None = None,
 ) -> str:
-    teachers = " \\- ".join(
-        f"{teacher_icon(icon)}{escape(name)}"
+    teachers = "\n\n".join(
+        f"《 {escape(name)}  {teacher_icon(icon)}》"
         for name, _ability, icon in teacher_details[:4]
     )
     footer = (
@@ -261,8 +261,8 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         if recipient == "defender"
         else f"حمله به قلعهٔ «{result.target_name}» تمام شد!"
     )
-    teacher_lines = " \\- ".join(
-        f"{teacher_icon(icon)}{escape(name)}"
+    teacher_lines = "  ".join(
+        f"《{teacher_icon(icon)} {escape(name)}》"
         for name, _ability, icon in (
             result.teacher_details
             or tuple(
@@ -301,14 +301,18 @@ def attack_teacher_injury_banner(result: AttackResult) -> str:
     lines = []
     for teacher in result.teacher_injuries:
         heading = (
-            f"{teacher_icon(teacher.emoji)}{bold(teacher.name)}: "
-            f"{bold(f'{teacher.damage} HP')} آسیب"
+            f"{teacher_icon(teacher.emoji)} {escape(teacher.name)}: "
+            f"{bold(f'{teacher.damage} HP')} آسیب دید\\."
         )
         if teacher.lost:
-            status = f"{INJURY} دبیرت را در نبرد از دست دادی و دیگر در تیمت نیست\\."
+            status = "> 《 دبیرت را در نبرد از دست دادی و دیگر در تیمت نیست\\. 》"
         else:
-            status = f"جان باقی‌مانده: {bold(f'{teacher.remaining_hp} HP')}"
-        lines.append(f"{heading}\n{status}")
+            status = f"> 《 جان باقی‌مانده: {bold(f'{teacher.remaining_hp} HP')} 》"
+        lines.append(f"{heading}\n\n{status}")
     if not lines:
         lines.append("اطلاعات آسیب دبیرها در دسترس نیست\\.")
-    return f"{HEAL} {bold('گزارش آسیب دبیرها')}\n\n" + "\n\n".join(lines)
+    return (
+        f"{HEAL} {bold('گزارش آسیب دبیرها')}\n\n"
+        + "\n\n".join(lines)
+        + f"\n\nLet’s go to the hospital\\. {INJURY}"
+    )

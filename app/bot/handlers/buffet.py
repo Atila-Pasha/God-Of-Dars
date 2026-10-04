@@ -13,6 +13,7 @@ from app.bot.banners import (
     MARKDOWN_V2,
     bold,
     emoji,
+    escape,
     purchase_banner,
     section_entry_banner,
 )
@@ -340,6 +341,51 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
     )
 
 
+def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str:
+    shield_icon = emoji("5825861861278490879", "🛡️")
+    time_icon = emoji("6039539366177541657", "⏳")
+    level_icon = emoji("5825727141039317043", "🎖️")
+    lines = [
+        f"{shield_icon} {bold('زرادخانهٔ سپرها')}",
+        f"{level_icon} سطح فرمانده: {bold(player_level)}",
+        f"{shield_icon} {bold('وضعیت دفاعی شما')}",
+    ]
+    if owned:
+        for item in owned:
+            remaining = max(
+                0, int((item.active_until - datetime.now(UTC)).total_seconds())
+            )
+            minutes = (remaining + 59) // 60
+            lines.append(
+                f"{shield_icon} سپر فعال: {bold(item.shield.name)}\n"
+                f"{time_icon} زمان باقی‌مانده: {escape(minutes)} دقیقه"
+            )
+    else:
+        lines.append("هنوز سپر فعالی نداری\\.")
+    lines.append(f"{emoji('5825832256068918886', '🎁')} {bold('سپرهای قابل خرید')}")
+    if not catalog:
+        lines.append("فعلاً سپری برای سطح شما تعریف نشده است\\.")
+    else:
+        for shield in catalog:
+            currency_icon = emoji(
+                "5825753314570018832"
+                if shield.purchase_resource is ResourceType.DIAMOND
+                else "5825699971076202989",
+                "💎" if shield.purchase_resource is ResourceType.DIAMOND else "🪙",
+            )
+            description = " ".join((shield.description or "").split())
+            lines.append(
+                f"{shield_icon} {bold(shield.name)}\n"
+                f"{currency_icon} قیمت: {bold(shield.purchase_price)} "
+                f"{escape(_shield_currency(shield))}\n"
+                f"{time_icon} مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
+                f"{level_icon} سطح بازشدن: {escape(shield.unlock_level)}\n"
+                "اثر: جلوگیری کامل از حمله"
+                + (f"\n{escape(description)}" if description else "")
+            )
+    return "\n\n".join(lines)
+
+
 async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) -> None:
     if target.from_user is None:
         raise UserInactiveError
@@ -348,40 +394,18 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     )
     owned = await shield_service.list_owned(session, user.id)
     catalog = await shield_service.catalog(session, player_level=user.level)
-    lines = [f"🛡 زرادخانهٔ سپرها\n\n🎖 سطح فرمانده: {user.level}"]
-    if owned:
-        lines.append("\n📦 موجودی شما:")
-        for item in owned:
-            if item.active_until is None:
-                continue
-            remaining = max(
-                0, int((item.active_until - datetime.now(UTC)).total_seconds())
-            )
-            minutes = (remaining + 59) // 60
-            lines.append(
-                f"\n✅ سپر فعال — {item.shield.name}\nزمان باقی‌مانده: {minutes} دقیقه"
-            )
-    else:
-        lines.append("\nهنوز سپری ندارید.")
-    lines.append("\n\nسپرهای قابل خرید در سطح شما:")
-    if not catalog:
-        lines.append("\nفعلاً سپری برای سطح شما تعریف نشده است.")
-    else:
-        for shield in catalog:
-            lines.append(
-                f"\n🛡 {shield.name} — {shield.purchase_price} {_shield_currency(shield)}"
-                f"\nمدت: {shield.duration_minutes} دقیقه — جلوگیری کامل از حمله"
-                + (f"\n{shield.description}" if shield.description else "")
-            )
+    text = _shield_catalog_banner(user.level, owned, catalog)
     reply_markup = (
         shield_catalog_keyboard(catalog, owned)
         if catalog
         else shield_inventory_keyboard(owned)
     )
     if isinstance(target, CallbackQuery) and target.message is not None:
-        await safe_edit_text(target.message, "".join(lines), reply_markup=reply_markup)
+        await safe_edit_text(
+            target.message, text, reply_markup=reply_markup, parse_mode=MARKDOWN_V2
+        )
     else:
-        await target.answer("".join(lines), reply_markup=reply_markup)
+        await target.answer(text, reply_markup=reply_markup, parse_mode=MARKDOWN_V2)
 
 
 @router.callback_query(BuffetCallback.filter())

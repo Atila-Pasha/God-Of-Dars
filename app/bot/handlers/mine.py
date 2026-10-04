@@ -49,12 +49,12 @@ def _mine_text(snapshot) -> str:
     status = (
         f"{emoji('5823388325188214894', '✅')} محموله آمادهٔ برداشت است\\."
         if ready
-        else f"{emoji('5823443584237444682', '⏳')} کوره‌ها مشغول کارند؛ کمی دیگر سر بزن\\."
+        else f"{emoji('6039539366177541657', '⏳')} کوره‌ها مشغول کارند؛ کمی دیگر سر بزن\\."
     )
     return (
         f"{emoji('5823474022670671455', '⛏️')} {bold('معدن فرماندهی')} {emoji('5935912783261470019', '✨')}\n\n"
         f"{FORT} سطح معدن: {bold(snapshot.level)}\n"
-        f"{emoji('5823443584237444682', '⚙️')} زمان تولید محاسبه‌شده: {escape(snapshot.collected_minutes)} دقیقه\n\n"
+        f"{emoji('6039539366177541657', '⚙️')} زمان تولید محاسبه‌شده: {escape(snapshot.collected_minutes)} دقیقه\n\n"
         f"{emoji('5823611946955447648', '✨')} {bold('توان تولید در هر دقیقه')}\n"
         f"{COIN}    طلا: {escape(production.coin_per_minute)}\n"
         f"{DIAMOND}    الماس: {escape(production.diamond_per_minute)}\n\n"

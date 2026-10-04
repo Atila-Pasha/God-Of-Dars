@@ -59,20 +59,25 @@ def buffet_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [
                 KeyboardButton(
-                    text="تبدیل منابع", icon_custom_emoji_id=premium_emoji_id("🔄")
+                    text="تبدیل منابع", icon_custom_emoji_id="5220021677244559322"
                 )
             ],
             [
                 KeyboardButton(
-                    text="فهرست سپر ها", icon_custom_emoji_id=premium_emoji_id("🛡")
+                    text="فهرست سپر ها", icon_custom_emoji_id="5825861861278490879"
                 )
             ],
             [
                 KeyboardButton(
-                    text="خرید دبیر", icon_custom_emoji_id=premium_emoji_id("👨‍🏫")
+                    text="خرید دبیر", icon_custom_emoji_id="5784897390922174736"
                 )
             ],
-            [KeyboardButton(text="بازگشت به منو اصلی")],
+            [
+                KeyboardButton(
+                    text="بازگشت به منو اصلی",
+                    icon_custom_emoji_id="5235864325540815679",
+                )
+            ],
         ],
         resize_keyboard=True,
         is_persistent=False,

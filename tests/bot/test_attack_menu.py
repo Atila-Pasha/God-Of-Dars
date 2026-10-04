@@ -89,9 +89,9 @@ def test_teacher_selection_keyboard_marks_multiple_teachers() -> None:
         selected_ids=[1, 3],
     )
 
-    assert keyboard.inline_keyboard[0][0].text == "افلاطون (3)"
-    assert keyboard.inline_keyboard[1][0].text == "فراهانی (3)"
-    assert keyboard.inline_keyboard[2][0].text == "حسابی (3)"
+    assert keyboard.inline_keyboard[0][0].text == "افلاطون (سطح 3)"
+    assert keyboard.inline_keyboard[1][0].text == "فراهانی (سطح 3)"
+    assert keyboard.inline_keyboard[2][0].text == "حسابی (سطح 3)"
 
     _decorate_markup({"reply_markup": keyboard})
     teacher_buttons = [row[0] for row in keyboard.inline_keyboard[:-1]]

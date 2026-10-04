@@ -11,8 +11,9 @@ def test_launch_banner_renders_teacher_icons_and_real_remaining_time() -> None:
 
     assert "حریف \\[قوی\\]" in starting
     assert "دبیر :\n" in starting
-    assert "tg://emoji?id=123)قضاتی \\- ![" in starting
-    assert "tg://emoji?id=456)فراهانی" in starting
+    assert "《 قضاتی  ![" in starting
+    assert "tg://emoji?id=123)》\n\n《 فراهانی  ![" in starting
+    assert "tg://emoji?id=456)》" in starting
     assert "پس از پایان زمان" in starting
     assert "زمان باقی‌مانده تا تکمیل حمله: 01:32" in updated
     assert "پس از پایان زمان" not in updated

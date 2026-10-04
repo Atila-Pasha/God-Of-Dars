@@ -46,7 +46,14 @@ def school_keyboard() -> InlineKeyboardMarkup:
 
 def school_navigation_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="بازگشت به منو اصلی")]],
+        keyboard=[
+            [
+                KeyboardButton(
+                    text="بازگشت به منو اصلی",
+                    icon_custom_emoji_id="5235864325540815679",
+                )
+            ]
+        ],
         resize_keyboard=True,
         is_persistent=False,
     )

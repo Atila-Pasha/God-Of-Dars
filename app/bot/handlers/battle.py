@@ -262,7 +262,7 @@ def _random_attack_preview_content(selection: RandomAttackPreview) -> str:
         attack_preview_banner(selection.preview)
         + "\n\n"
         + f"{emoji('5823192436024813346', '🎲')} حریف تا حدود {remaining_minutes} دقیقه ثابت می‌ماند\n"
-        + f"{emoji('5823443584237444682', '♻️')} دیدن حریف دیگر: {escape(selection.reroll_coin_cost)} سکه"
+        + f"{emoji('6039539366177541657', '♻️')} دیدن حریف دیگر: {escape(selection.reroll_coin_cost)} سکه"
     )
 
 
@@ -323,7 +323,7 @@ def _teacher_selection_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=f"{teacher.teacher.name} ({teacher.level})",
+                text=f"{teacher.teacher.name} (سطح {teacher.level})",
                 icon_custom_emoji_id=(
                     "5825709849500985213" if teacher.id in selected else None
                 ),

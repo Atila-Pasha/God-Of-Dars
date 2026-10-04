@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.bot.handlers import buffet
-from app.bot.handlers.buffet import _resource_display, _resource_text
+from app.bot.handlers.buffet import (
+    _resource_display,
+    _resource_text,
+    _shield_catalog_banner,
+)
 from app.bot.keyboards.buffet import buffet_keyboard
 from app.core.enums import ResourceType
 from app.core.game_logic import BuffetConversion
@@ -50,3 +54,28 @@ async def test_buffet_entry_keeps_all_menu_buttons(monkeypatch) -> None:
             "بازگشت به منو اصلی",
         ]
         assert all(row[0].icon_custom_emoji_id for row in keyboard.keyboard[:3])
+        assert [row[0].icon_custom_emoji_id for row in keyboard.keyboard] == [
+            "5220021677244559322",
+            "5825861861278490879",
+            "5784897390922174736",
+            "5235864325540815679",
+        ]
+
+
+def test_shield_catalog_banner_uses_rich_text_and_escapes_descriptions() -> None:
+    shield = SimpleNamespace(
+        name="سپر [طلایی]",
+        purchase_resource=ResourceType.COIN,
+        purchase_price=150,
+        duration_minutes=45,
+        unlock_level=3,
+        description="حفاظت ویژه [قوی]",
+    )
+
+    text = _shield_catalog_banner(3, [], [shield])
+
+    assert "tg://emoji?id=5825861861278490879" in text
+    assert "*سپر \\[طلایی\\]*" in text
+    assert "حفاظت ویژه \\[قوی\\]" in text
+    assert "150" in text
+    assert "45 دقیقه" in text
