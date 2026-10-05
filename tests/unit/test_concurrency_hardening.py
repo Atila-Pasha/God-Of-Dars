@@ -10,6 +10,7 @@ from app.models.mine import Mine
 from app.models.resource import Resource
 from app.services.daily_quest_service import DailyQuestService
 from app.services.mine_service import MineService
+from app.services.resource_service import ResourceService
 from app.services.reward_service import RewardService, RewardSpec
 
 
@@ -132,6 +133,64 @@ async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -
     assert amounts == (0, 0, 0)
     assert mine.collection_count == 0
     record_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mine_collects_gold_and_diamonds_independently(monkeypatch) -> None:
+    mine = Mine(
+        id=9,
+        user_id=1,
+        level=2,
+        last_collected_at=datetime.now(UTC),
+        today=datetime.now(UTC).date(),
+        today_coin=100,
+        today_diamond=20,
+        today_banana=5,
+        collection_count=0,
+    )
+    resources = Resource(user_id=1, coin=0, diamond=0, banana=0)
+
+    def session():
+        rows = iter(
+            (
+                SimpleNamespace(scalar_one_or_none=lambda: SimpleNamespace(id=1)),
+                SimpleNamespace(scalar_one_or_none=lambda: resources),
+                SimpleNamespace(scalar_one_or_none=lambda: mine),
+            )
+        )
+        return SimpleNamespace(
+            execute=AsyncMock(side_effect=lambda statement: next(rows)),
+            flush=AsyncMock(),
+        )
+
+    credit_coin = AsyncMock()
+    credit_diamond = AsyncMock()
+    credit_banana = AsyncMock()
+    monkeypatch.setattr(ResourceService, "credit_coin", credit_coin)
+    monkeypatch.setattr(ResourceService, "credit_diamond", credit_diamond)
+    monkeypatch.setattr(ResourceService, "credit_banana", credit_banana)
+    monkeypatch.setattr(DailyQuestService, "record_event", AsyncMock())
+    service = MineService(config=game_config)
+
+    snapshot, amounts = await service.collect(
+        session(), 1, resource_type=ResourceType.COIN
+    )
+    assert amounts == (100, 0, 5)
+    assert (snapshot.today_coin, snapshot.today_diamond, snapshot.today_banana) == (
+        0,
+        20,
+        0,
+    )
+    credit_coin.assert_awaited_once()
+    credit_banana.assert_awaited_once()
+    credit_diamond.assert_not_awaited()
+
+    snapshot, amounts = await service.collect(
+        session(), 1, resource_type=ResourceType.DIAMOND
+    )
+    assert amounts == (0, 20, 0)
+    assert snapshot.today_diamond == 0
+    credit_diamond.assert_awaited_once()
 
 
 class _RewardSession:

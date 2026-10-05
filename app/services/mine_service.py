@@ -6,6 +6,7 @@ from datetime import UTC, datetime, time, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import ResourceType
 from app.core.game_logic import (
     GameConfig,
     GameConfigurationError,
@@ -130,7 +131,11 @@ class MineService:
         return credited_minutes
 
     async def collect(
-        self, session: AsyncSession, user_id: int
+        self,
+        session: AsyncSession,
+        user_id: int,
+        *,
+        resource_type: ResourceType | None = None,
     ) -> tuple[MineSnapshot, tuple[int, int, int]]:
         user_result = await session.execute(
             select(User).where(User.id == user_id).with_for_update()
@@ -153,7 +158,16 @@ class MineService:
         if mine is None:
             raise MineNotFound
         self._accrue(mine)
-        amounts = (mine.today_coin, mine.today_diamond, mine.today_banana)
+        if resource_type is ResourceType.COIN:
+            # Banana production, if enabled later, is collected with gold.
+            amounts = (mine.today_coin, 0, mine.today_banana)
+        elif resource_type is ResourceType.DIAMOND:
+            amounts = (0, mine.today_diamond, 0)
+        elif resource_type is None:
+            # Keep callbacks on messages sent by older bot versions usable.
+            amounts = (mine.today_coin, mine.today_diamond, mine.today_banana)
+        else:
+            raise ValueError("Unsupported mine collection resource")
         credit_methods = (
             ResourceService.credit_coin,
             ResourceService.credit_diamond,
@@ -170,7 +184,9 @@ class MineService:
                     reference_type="MINE",
                     reference_id=mine.id,
                 )
-        mine.today_coin = mine.today_diamond = mine.today_banana = 0
+        mine.today_coin -= amounts[0]
+        mine.today_diamond -= amounts[1]
+        mine.today_banana -= amounts[2]
         if any(amounts):
             mine.collection_count += 1
             await DailyQuestService().record_event(
@@ -185,9 +201,9 @@ class MineService:
                 level=mine.level,
                 production=self._production(mine),
                 collected_minutes=0,
-                today_coin=0,
-                today_diamond=0,
-                today_banana=0,
+                today_coin=mine.today_coin,
+                today_diamond=mine.today_diamond,
+                today_banana=mine.today_banana,
                 daily_produced_minutes=mine.daily_produced_minutes or 0,
             ),
             amounts,

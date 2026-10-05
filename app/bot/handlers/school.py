@@ -44,6 +44,7 @@ from app.bot.keyboards.school import (
     teacher_detail_keyboard,
     teachers_keyboard,
 )
+from app.bot.progress import premium_progress_bar
 from app.bot.utils.telegram import group_user_request, safe_edit_text
 from app.core.enums import TeacherStatus
 from app.core.game_logic import GameConfigurationError
@@ -92,11 +93,8 @@ def _number(value: int) -> str:
     return str(value)
 
 
-def _progress_bar(value: int, maximum: int, *, width: int = 10) -> str:
-    if maximum <= 0:
-        return "-" * width
-    filled = round(max(0, min(value, maximum)) / maximum * width)
-    return "█" * filled + "░" * (width - filled)
+def _progress_bar(value: int, maximum: int, *, width: int = 8) -> str:
+    return premium_progress_bar(value, maximum, width=width)
 
 
 def _progress_percent(value: int, maximum: int) -> str:
@@ -229,7 +227,7 @@ async def _school_view(
         f"{FORT} سطح دژ: {escape(_number(castle.level))}\n"
         f"{emoji('5915633360734002967', '🛡️')} قدرت دفاعی: {escape(_number(castle.strength + castle.defense_power))}\n\n"
         f"● {bold('ظرفیت تیم دبیرها')}\n"
-        f"`{progress}`  {escape(_number(capacity.owned))} / "
+        f"{progress}  {escape(_number(capacity.owned))} / "
         f"{escape(_number(capacity.available))} "
         f"{escape(f'({percentage})')}"
     )
@@ -295,7 +293,7 @@ async def _teachers_view(
         "",
         f"{emoji('5825667690102006523', '📊')} ظرفیت استفاده‌شده:",
         (
-            f"`{_progress_bar(capacity.owned, capacity.available)}`  "
+            f"{_progress_bar(capacity.owned, capacity.available)}  "
             f"{escape(_number(capacity.owned))} / {escape(_number(capacity.available))} "
             f"{escape(f'({_progress_percent(capacity.owned, capacity.available)})')}"
         ),
@@ -304,7 +302,7 @@ async def _teachers_view(
     if teachers:
         text_lines.append(f"{emoji('5866218662481892680', '👥')} فهرست دبیرها")
     else:
-        text_lines.append("🌱 هنوز دبیری به مدرسه‌تان اضافه نشده است.")
+        text_lines.append(rich_plain("🌱 هنوز دبیری به مدرسه‌تان اضافه نشده است."))
     await _send_or_edit(
         target,
         "\n".join(text_lines),
@@ -334,10 +332,8 @@ async def _teacher_view(
     with suppress(SchoolError):
         damage = str(teacher_service.damage(teacher))
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
-    details = (
-        f"🎖 سطح: {_number(teacher.level)}\n"
-        f"⚔️ قدرت ضربه: {damage_text}\n"
-        f"❤️ جان: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
+    details = f"🎖 سطح: {_number(teacher.level)}\n⚔️ قدرت ضربه: {damage_text}\n"
+    after_bar = (
         f"   {_number(teacher.current_hp)} / {_number(teacher.teacher.max_hp)} "
         f"({_progress_percent(teacher.current_hp, teacher.teacher.max_hp)})\n"
         f"📌 وضعیت: {_status(teacher)}\n"
@@ -348,6 +344,8 @@ async def _teacher_view(
         f"{teacher_icon(teacher.teacher.emoji)}    "
         f"{bold(f'پروندهٔ عملیاتی | {teacher.teacher.name}')}\n\n"
         f"{rich_plain(details)}"
+        f"{emoji('5213455977919039650', '❤️')} جان: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
+        f"{rich_plain(after_bar)}"
     )
     await _send_or_edit(
         target,
@@ -369,24 +367,21 @@ async def _hospital_view(
     user = await _user(session, target.from_user.id)
     patients = await hospital_service.patients(session, user.id)
     lines = [
-        "🏥 بیمارستان مدرسه",
+        f"{emoji('5825570280243732195', '🏥')} {bold('بیمارستان مدرسه')}",
         "",
     ]
     if not patients:
-        lines.append("در حال حاضر دبیر مصدوم یا غیرفعالی ندارید.")
+        lines.append(escape("در حال حاضر دبیر مصدوم یا غیرفعالی ندارید."))
     else:
         for teacher in patients:
             lines.extend(
                 [
+                    f"{rich_plain(_status_icon(teacher))} {escape(teacher.teacher.name)}  •  {escape(_status(teacher))}",
                     (
-                        f"{_status_icon(teacher)} {teacher.teacher.name}  •  "
-                        f"{_status(teacher)}"
+                        f"{emoji('5213455977919039650', '❤️')} {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)} "
+                        f"{escape(_number(teacher.current_hp))} / {escape(_number(teacher.teacher.max_hp))}"
                     ),
-                    (
-                        f"❤️ {_progress_bar(teacher.current_hp, teacher.teacher.max_hp, width=8)} "
-                        f"{_number(teacher.current_hp)} / {_number(teacher.teacher.max_hp)}"
-                    ),
-                    f"⏳ {_recovery_text(teacher)}",
+                    f"{emoji('6039539366177541657', '⏳')} {escape(_recovery_text(teacher))}",
                     "",
                 ]
             )
@@ -399,6 +394,7 @@ async def _hospital_view(
             can_recover=hospital_service.can_begin_recovery(),
             instant_recovery_cost=hospital_service.instant_recovery_cost(),
         ),
+        parse_mode=MARKDOWN_V2,
     )
 
 

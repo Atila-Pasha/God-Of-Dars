@@ -7,9 +7,15 @@ def mine_keyboard(*, can_upgrade: bool) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
-                text="📦 برداشت منابع",
-                callback_data=MineCallback(action="collect").pack(),
-            )
+                text="برداشت طلا",
+                icon_custom_emoji_id="5823329527085931340",
+                callback_data=MineCallback(action="collect_coin").pack(),
+            ),
+            InlineKeyboardButton(
+                text="برداشت الماس",
+                icon_custom_emoji_id="5825753314570018832",
+                callback_data=MineCallback(action="collect_diamond").pack(),
+            ),
         ]
     ]
     if can_upgrade:

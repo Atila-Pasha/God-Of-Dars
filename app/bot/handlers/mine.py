@@ -23,7 +23,9 @@ from app.bot.keyboards.main_menu import (
     section_back_keyboard,
 )
 from app.bot.keyboards.mine import mine_keyboard, mine_upgrade_confirmation_keyboard
+from app.bot.progress import premium_progress_bar
 from app.bot.utils.telegram import safe_edit_text
+from app.core.enums import ResourceType
 from app.core.game_logic import GameConfigurationError
 from app.services.mine_service import MineService
 from app.services.school_errors import (
@@ -84,29 +86,7 @@ def _mine_text(snapshot) -> str:
 
 
 def _ore_bar(amount: int, scale: int) -> str:
-    """Render eight adjoining custom-emoji cells in physical left-to-right order."""
-    scale = max(1, scale)
-    fill = max(0.0, min(8.0, 8 * amount / scale))
-    percent = min(100, max(0, amount * 100 // scale))
-    empty = ("5931534188657254206", "5933785859621920322", "5931275038920548077")
-    complete = ("5949744124142820550", "5949736114028814482", "5947346029153100052")
-    partial = (
-        ("5949346577674935537", "5949509477194537601", "5949308223616982431"),
-        ("5947466314007192098", "5947256955826363081", "5949707002740481824"),
-        ("5949257543002889576", "5949513969730330381", "5947323523524468309"),
-    )
-    cells = []
-    for index in range(8):
-        kind = 0 if index == 0 else 2 if index == 7 else 1
-        portion = max(0.0, min(1.0, fill - (7 - index)))
-        if portion <= 0:
-            icon_id = empty[kind]
-        elif portion >= 1:
-            icon_id = complete[kind]
-        else:
-            icon_id = partial[kind][min(2, int(portion * 3))]
-        cells.append(emoji(icon_id, "▫️"))
-    return _ltr("".join(cells)) + "  " + _ltr(f"{percent}%")
+    return premium_progress_bar(amount, scale, show_percent=True)
 
 
 def _ltr(value: str) -> str:
@@ -191,18 +171,29 @@ async def mine_callback(
             await callback.message.answer(
                 "به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard()
             )
-        elif callback_data.action == "collect":
-            snapshot, amounts = await mine_service.collect(session, user.id)
+        elif callback_data.action in {"collect", "collect_coin", "collect_diamond"}:
+            resource_type = {
+                "collect_coin": ResourceType.COIN,
+                "collect_diamond": ResourceType.DIAMOND,
+            }.get(callback_data.action)
+            snapshot, amounts = await mine_service.collect(
+                session, user.id, resource_type=resource_type
+            )
             labels = ("طلا", "الماس", "موز")
             collected = "، ".join(
                 f"{amount} {label}"
                 for label, amount in zip(labels, amounts, strict=True)
                 if amount
             )
+            can_upgrade = True
+            try:
+                mine_service.config.mine_upgrade(snapshot.level, user.level)
+            except GameConfigurationError:
+                can_upgrade = False
             await safe_edit_text(
                 callback.message,
                 _mine_text(snapshot),
-                reply_markup=mine_keyboard(can_upgrade=True),
+                reply_markup=mine_keyboard(can_upgrade=can_upgrade),
                 parse_mode=MARKDOWN_V2,
             )
             await callback.answer(
