@@ -2,8 +2,15 @@ from collections.abc import Sequence
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.callbacks import LibraryCallback, LibraryTeacherCallback, StudyCallback
+from app.bot.callbacks import (
+    LibraryCallback,
+    LibraryShieldCallback,
+    LibraryTeacherCallback,
+    StudyCallback,
+)
 from app.bot.custom_emojis import premium_emoji_id
+from app.bot.keyboards.buffet import SHIELD_ICONS
+from app.models.shield import Shield
 from app.models.study_pack import StudyPack
 from app.models.teacher import Teacher
 
@@ -39,14 +46,41 @@ def library_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def shield_library_keyboard() -> InlineKeyboardMarkup:
+def shield_library_keyboard(shields: Sequence[Shield]) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=shield.name,
+                icon_custom_emoji_id=SHIELD_ICONS.get(
+                    shield.name, "5825861861278490879"
+                ),
+                callback_data=LibraryShieldCallback(
+                    action="view", shield_id=shield.id
+                ).pack(),
+            )
+        ]
+        for shield in shields
+    ]
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="بازگشت به کتابخانه",
+                icon_custom_emoji_id="5235864325540815679",
+                callback_data=LibraryCallback(action="back").pack(),
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def shield_library_detail_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="بازگشت به کتابخانه",
+                    text="بازگشت به فهرست سپرها",
                     icon_custom_emoji_id="5235864325540815679",
-                    callback_data=LibraryCallback(action="back").pack(),
+                    callback_data=LibraryShieldCallback(action="back").pack(),
                 )
             ]
         ]

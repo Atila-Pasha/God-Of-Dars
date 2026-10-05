@@ -37,6 +37,25 @@ async def test_library_menu_is_shown_from_main_menu_button():
 
 
 @pytest.mark.asyncio
+async def test_completed_study_shows_library_then_plain_reward(monkeypatch):
+    target = message(text="کتابخانه")
+    monkeypatch.setattr(library, "_user_id", AsyncMock(return_value=7))
+    monkeypatch.setattr(
+        library.study_service,
+        "settle",
+        AsyncMock(return_value=(None, (SimpleNamespace(value="COIN"), 25))),
+    )
+
+    await library.library_handler(target, AsyncMock(), AsyncMock())
+
+    assert target.answer.await_count == 2
+    assert "کتابخانهٔ دانش" in target.answer.await_args_list[0].args[0]
+    reward_call = target.answer.await_args_list[-1]
+    assert reward_call.args == ("مطالعه‌ات تکمیل شد و 25 طلا دریافت کردی.",)
+    assert "reply_markup" not in reward_call.kwargs
+
+
+@pytest.mark.asyncio
 async def test_daily_button_shows_active_question_and_starts_answer_state(monkeypatch):
     question = Question(
         id=10,

@@ -33,11 +33,12 @@ def test_mine_banner_uses_actual_production_scale() -> None:
 
     assert "1,035" in text
     assert "450" in text
-    assert "1,440 / 2,880" in text
-    assert "360 / 720" in text
     assert "tg://emoji?id=594" in text
     assert _ore_bar(1035, 2880) in text
     assert _ore_bar(450, 720) in text
+    assert "تولید امروز" not in text
+    assert "مقیاس نوار محموله" not in text
+    assert "سقف تولید روزانه" in text
 
 
 def test_diamond_without_production_has_no_fake_capacity() -> None:
@@ -54,7 +55,6 @@ def test_diamond_without_production_has_no_fake_capacity() -> None:
     assert "تولید الماس در این سطح هنوز فعال نیست" in text
     assert "موجودی قابل برداشت: *\u20660\u2069*" in text
     assert "1,530" in text
-    assert "1,440 / 1,440" in text
     assert "\u2066100%\u2069" in text
     assert _ore_bar(1530, 1440) in text
 
@@ -71,7 +71,7 @@ def test_mine_bar_tracks_cargo_even_when_today_production_is_near_zero() -> None
 
     text = _mine_text(snapshot)
 
-    assert "4 / 1,440" in text
+    assert "تولید امروز" not in text
     assert _ore_bar(1570, 1440) in text
     assert "\u2066100%\u2069" in text
 

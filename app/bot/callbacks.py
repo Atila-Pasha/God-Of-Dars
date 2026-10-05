@@ -113,6 +113,11 @@ class LibraryTeacherCallback(CallbackData, prefix="library_teacher"):
     page: int = 0
 
 
+class LibraryShieldCallback(CallbackData, prefix="library_shield"):
+    action: Literal["view", "back"]
+    shield_id: int = 0
+
+
 class StudyCallback(CallbackData, prefix="study"):
     pack_key: str
 

@@ -12,11 +12,17 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import MARKDOWN_V2, bold, emoji, escape, rich_plain, teacher_icon
-from app.bot.callbacks import LibraryCallback, LibraryTeacherCallback, StudyCallback
+from app.bot.callbacks import (
+    LibraryCallback,
+    LibraryShieldCallback,
+    LibraryTeacherCallback,
+    StudyCallback,
+)
 from app.bot.keyboards.buffet import SHIELD_ICONS
 from app.bot.keyboards.library import (
     answer_keyboard,
     library_keyboard,
+    shield_library_detail_keyboard,
     shield_library_keyboard,
     study_keyboard,
     teacher_library_detail_keyboard,
@@ -95,7 +101,7 @@ def _study_reward_text(reward: tuple | None) -> str:
         return ""
     resource, amount = reward
     label = "طلا" if resource.value == "COIN" else "الماس"
-    return f"\n\n🎁 پاداش مطالعه آماده شد: {amount} {label}"
+    return f"مطالعه‌ات تکمیل شد و {amount} {label} دریافت کردی."
 
 
 def _result_text(result: AnswerResult) -> str:
@@ -253,22 +259,35 @@ async def _show_teacher_list(
         )
 
 
-def _shield_library_text(shields: list) -> str:
-    lines = [
-        f"{emoji('5915888842568638290', '🛡️')} {bold('دانشنامهٔ سپرها')}",
-        "سپرها پس از رسیدن به سطح لازم در زرادخانه باز می‌شوند\\.",
-    ]
-    for shield in shields:
-        icon = emoji(SHIELD_ICONS.get(shield.name, "5825861861278490879"), "🛡️")
-        currency = "الماس" if shield.purchase_resource.value == "DIAMOND" else "طلا"
-        lines.append(
-            f"{icon} {bold(shield.name)}\n"
-            f"سطح بازشدن: {escape(shield.unlock_level)}\n"
-            f"مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
-            f"قیمت: {escape(shield.purchase_price)} {escape(currency)}\n"
-            f"{escape(shield.description or 'جلوگیری از حمله به دژ')}"
+def _shield_library_text() -> str:
+    return (
+        f"{emoji('5915888842568638290', '🛡️')} {bold('دانشنامهٔ سپرها')}\n\n"
+        f"برای خواندن پروندهٔ هر سپر، دکمهٔ آن را انتخاب کن {emoji('5888976517362355346', '👇')}"
+    )
+
+
+def _shield_library_detail_text(shield) -> str:
+    icon = emoji(SHIELD_ICONS.get(shield.name, "5825861861278490879"), "🛡️")
+    currency = "الماس" if shield.purchase_resource.value == "DIAMOND" else "طلا"
+    return (
+        f"{icon} {bold(shield.name)}\n\n"
+        f"{emoji('5825699618888884083', '🎖️')} سطح بازشدن: {escape(shield.unlock_level)}\n"
+        f"{emoji('6039539366177541657', '⏳')} مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
+        f"{emoji('5825753314570018832' if currency == 'الماس' else '5825699971076202989', '💎' if currency == 'الماس' else '🪙')} "
+        f"قیمت: {escape(shield.purchase_price)} {escape(currency)}\n\n"
+        f"{bold('اثر سپر:')} {escape(shield.description or 'جلوگیری از حمله به دژ')}"
+    )
+
+
+async def _show_shield_list(callback: CallbackQuery, session: AsyncSession) -> None:
+    shields = await shield_service.catalog(session, player_level=None)
+    if callback.message is not None:
+        await safe_edit_text(
+            cast(Message, callback.message),
+            _shield_library_text(),
+            reply_markup=shield_library_keyboard(shields),
+            parse_mode=MARKDOWN_V2,
         )
-    return "\n\n".join(lines)
 
 
 @router.message(
@@ -304,9 +323,7 @@ async def library_handler(
         except (UserInactiveError, SchoolUserNotFound):
             return
         if reward is not None:
-            await message.answer(
-                _study_reward_text(reward).strip(), reply_markup=library_keyboard()
-            )
+            await message.answer(_study_reward_text(reward))
 
 
 @router.callback_query(LibraryCallback.filter())
@@ -371,25 +388,20 @@ async def library_callback_handler(
                     parse_mode=MARKDOWN_V2,
                 )
                 return
+            if reward is not None:
+                await _show_library(callback)
+                await _notify_callback(callback, _study_reward_text(reward))
+                return
             if callback.message is not None:
                 await safe_edit_text(
                     cast(Message, callback.message),
                     "📖 ثبت مطالعه\n\nیک پک مطالعه انتخاب کنید. تا پایان پک امکان انتخاب پک دیگر وجود ندارد:",
                     reply_markup=study_keyboard(await study_service.packs(session)),
                 )
-            if reward is not None:
-                await _notify_callback(callback, _study_reward_text(reward).strip())
         elif callback_data.action == "teachers":
             await _show_teacher_list(callback, session, 0)
         elif callback_data.action == "shields":
-            shields = await shield_service.catalog(session, player_level=None)
-            if callback.message is not None:
-                await safe_edit_text(
-                    cast(Message, callback.message),
-                    _shield_library_text(shields),
-                    reply_markup=shield_library_keyboard(),
-                    parse_mode=MARKDOWN_V2,
-                )
+            await _show_shield_list(callback, session)
         elif callback_data.action == "cancel":
             await state.clear()
             if callback.message is not None:
@@ -405,6 +417,29 @@ async def library_callback_handler(
         await state.clear()
         await _notify_callback(
             callback, "امکان استفاده از کتابخانه در حال حاضر وجود ندارد."
+        )
+
+
+@router.callback_query(LibraryShieldCallback.filter())
+async def library_shield_callback(
+    callback: CallbackQuery,
+    callback_data: LibraryShieldCallback,
+    session: AsyncSession,
+) -> None:
+    await _safe_callback_answer(callback)
+    if callback_data.action == "back":
+        await _show_shield_list(callback, session)
+        return
+    shield = await shield_service.get_shield(session, callback_data.shield_id)
+    if shield is None or not shield.is_active:
+        await _notify_callback(callback, "این سپر در دسترس نیست.")
+        return
+    if callback.message is not None:
+        await safe_edit_text(
+            cast(Message, callback.message),
+            _shield_library_detail_text(shield),
+            reply_markup=shield_library_detail_keyboard(),
+            parse_mode=MARKDOWN_V2,
         )
 
 
@@ -474,7 +509,9 @@ async def study_callback_handler(
             "تا پایان این زمان امکان انتخاب پک دیگر ندارید."
         )
         if result.completed_reward:
-            text = _study_reward_text(result.completed_reward).strip() + "\n\n" + text
+            await _notify_callback(
+                callback, _study_reward_text(result.completed_reward)
+            )
         if callback.message is not None:
             await safe_edit_text(
                 cast(Message, callback.message), text, reply_markup=library_keyboard()
