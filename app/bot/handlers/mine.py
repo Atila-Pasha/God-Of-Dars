@@ -54,9 +54,20 @@ def _mine_text(snapshot) -> str:
     coin_scale = max(
         1, production.coin_per_minute * mine_service.config.mine_max_catchup_minutes
     )
-    diamond_scale = max(
-        1, production.diamond_per_minute * mine_service.config.mine_max_catchup_minutes
+    diamond_scale = (
+        production.diamond_per_minute * mine_service.config.mine_max_catchup_minutes
     )
+    if diamond_scale:
+        diamond_stock = (
+            f"موجودی: {bold(_ltr(f'{snapshot.today_diamond:,} / {diamond_scale:,}'))} {DIAMOND}\n"
+            f"{_ore_bar(snapshot.today_diamond, diamond_scale)}"
+        )
+    else:
+        diamond_stock = (
+            f"موجودی: {bold(_ltr(f'{snapshot.today_diamond:,}'))} {DIAMOND}\n"
+            f"{_ore_bar(0, 1)}\n"
+            "تولید الماس در این سطح هنوز فعال نیست\\."
+        )
     return (
         f"{emoji('5823474022670671455', '⛏️')} {bold('معدن فرماندهی')} {emoji('5935912783261470019', '✨')}\n\n"
         f"{FORT} سطح معدن: {bold(snapshot.level)}\n"
@@ -66,10 +77,9 @@ def _mine_text(snapshot) -> str:
         f"{DIAMOND} الماس: {escape(production.diamond_per_minute)}\n\n"
         f"{LOOT} {bold('محمولهٔ فعلی معدن')}:\n\n"
         f"{DIAMOND} {bold('معدن الماس')}\n"
-        f"موجودی: {bold(f'{snapshot.today_diamond:,} / {diamond_scale:,}')} {DIAMOND}\n"
-        f"{_ore_bar(snapshot.today_diamond, diamond_scale)}\n\n"
+        f"{diamond_stock}\n\n"
         f"{emoji('5823329527085931340', '🪙')} {bold('معدن طلا')}\n"
-        f"موجودی: {bold(f'{snapshot.today_coin:,} / {coin_scale:,}')} {emoji('5823329527085931340', '🪙')}\n"
+        f"موجودی: {bold(_ltr(f'{snapshot.today_coin:,} / {coin_scale:,}'))} {emoji('5823329527085931340', '🪙')}\n"
         f"{_ore_bar(snapshot.today_coin, coin_scale)}\n\n"
         f"مقیاس نوار: تولید {escape(mine_service.config.mine_max_catchup_minutes // 60)} ساعت؛ برداشت محدودیت ظرفیت ندارد\\.\n\n"
         f"{status}"
@@ -77,23 +87,16 @@ def _mine_text(snapshot) -> str:
 
 
 def _ore_bar(amount: int, scale: int) -> str:
-    """Render the supplied eight-piece bar, preserving its rounded ends."""
+    """A stable eight-cell bar; Telegram custom emoji have variable visual edges."""
     scale = max(1, scale)
     filled = max(0, min(8, (8 * amount + scale - 1) // scale))
-    pieces = []
-    for index in range(8):
-        if index < filled:
-            identifier = (
-                "5947346029153100052"
-                if index == 0
-                else "5947466314007192098"
-                if index == filled - 1
-                else "5949736114028814482"
-            )
-        else:
-            identifier = "5931534188657254206" if index == 7 else "5933785859621920322"
-        pieces.append(emoji(identifier, "🟩" if index < filled else "⬛"))
-    return "".join(pieces)
+    percent = min(100, max(0, amount * 100 // scale))
+    return _ltr(f"`{'█' * filled}{'░' * (8 - filled)}`  {percent}%")
+
+
+def _ltr(value: str) -> str:
+    """Keep amounts and progress bars in reading order inside Persian text."""
+    return f"\u2066{value}\u2069"
 
 
 def _upgrade_text(snapshot, next_level) -> str:

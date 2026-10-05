@@ -9,12 +9,14 @@ def test_mine_bar_moves_with_the_uncollected_amount() -> None:
     half = _ore_bar(1000, 2000)
     full = _ore_bar(2000, 2000)
 
-    assert empty.count("tg://emoji?id=") == 8
-    assert half.count("tg://emoji?id=") == 8
-    assert full.count("tg://emoji?id=") == 8
-    assert empty.count("![🟩]") == 0
-    assert half.count("![🟩]") == 4
-    assert full.count("![🟩]") == 8
+    assert "`░░░░░░░░`  0%" in empty
+    assert "`████░░░░`  50%" in half
+    assert "`████████`  100%" in full
+    assert _ore_bar(2100, 2000) == full
+    assert all(
+        bar.startswith("\u2066") and bar.endswith("\u2069")
+        for bar in (empty, half, full)
+    )
 
 
 def test_mine_banner_uses_actual_production_scale() -> None:
@@ -29,7 +31,25 @@ def test_mine_banner_uses_actual_production_scale() -> None:
 
     assert "1,035 / 2,880" in text
     assert "450 / 720" in text
-    assert text.count("tg://emoji?id=594") > 0
+    assert text.count("`████") == 1
+    assert "tg://emoji?id=594" not in text
+
+
+def test_diamond_without_production_has_no_fake_capacity() -> None:
+    snapshot = SimpleNamespace(
+        level=1,
+        production=SimpleNamespace(coin_per_minute=2, diamond_per_minute=0),
+        collected_minutes=12,
+        today_coin=1530,
+        today_diamond=0,
+    )
+    text = _mine_text(snapshot)
+
+    assert "تولید الماس در این سطح هنوز فعال نیست" in text
+    assert "موجودی: *\u20660\u2069*" in text
+    assert "`░░░░░░░░`  0%" in text
+    assert "1,530 / 1,440" in text
+    assert "`████████`  100%" in text
 
 
 def test_kazemi_shield_exception_only_applies_to_named_teachers() -> None:
