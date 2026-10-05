@@ -102,7 +102,9 @@ class AttackCountdownCallback(CallbackData, prefix="attack_timer"):
 
 
 class LibraryCallback(CallbackData, prefix="library"):
-    action: Literal["daily", "answer", "group", "study", "teachers", "back", "cancel"]
+    action: Literal[
+        "daily", "answer", "group", "study", "teachers", "shields", "back", "cancel"
+    ]
 
 
 class LibraryTeacherCallback(CallbackData, prefix="library_teacher"):

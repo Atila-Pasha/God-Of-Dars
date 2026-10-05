@@ -41,12 +41,13 @@ class ShieldService:
         self.config = config or game_config
 
     async def catalog(
-        self, session: AsyncSession, *, player_level: int
+        self, session: AsyncSession, *, player_level: int | None
     ) -> list[Shield]:
+        statement = select(Shield).where(Shield.is_active.is_(True))
+        if player_level is not None:
+            statement = statement.where(Shield.unlock_level <= player_level)
         result = await session.execute(
-            select(Shield)
-            .where(Shield.is_active.is_(True))
-            .order_by(Shield.unlock_level, Shield.id)
+            statement.order_by(Shield.unlock_level, Shield.id)
         )
         return list(result.scalars().all())
 

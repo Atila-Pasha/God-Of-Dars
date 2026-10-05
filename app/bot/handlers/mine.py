@@ -45,26 +45,25 @@ MINE_LABEL = next(
 
 def _mine_text(snapshot) -> str:
     production = snapshot.production
+    daily_limit = mine_service.config.mine_max_catchup_minutes
+    daily_minutes = snapshot.daily_produced_minutes
     ready = snapshot.today_coin > 0 or snapshot.today_diamond > 0
     status = (
         f"{emoji('5823388325188214894', '✅')} محموله آمادهٔ برداشت است\\."
         if ready
         else f"{emoji('6039539366177541657', '⏳')} کوره‌ها مشغول کارند؛ کمی دیگر سر بزن\\."
     )
-    coin_scale = max(
-        1, production.coin_per_minute * mine_service.config.mine_max_catchup_minutes
-    )
-    diamond_scale = (
-        production.diamond_per_minute * mine_service.config.mine_max_catchup_minutes
-    )
+    coin_scale = max(1, production.coin_per_minute * daily_limit)
+    diamond_scale = production.diamond_per_minute * daily_limit
     if diamond_scale:
         diamond_stock = (
-            f"موجودی: {bold(_ltr(f'{snapshot.today_diamond:,} / {diamond_scale:,}'))} {DIAMOND}\n"
-            f"{_ore_bar(snapshot.today_diamond, diamond_scale)}"
+            f"موجودی قابل برداشت: {bold(_ltr(f'{snapshot.today_diamond:,}'))} {DIAMOND}\n"
+            f"تولید امروز: {bold(_ltr(f'{daily_minutes * production.diamond_per_minute:,} / {diamond_scale:,}'))}\n"
+            f"{_ore_bar(daily_minutes, daily_limit)}"
         )
     else:
         diamond_stock = (
-            f"موجودی: {bold(_ltr(f'{snapshot.today_diamond:,}'))} {DIAMOND}\n"
+            f"موجودی قابل برداشت: {bold(_ltr(f'{snapshot.today_diamond:,}'))} {DIAMOND}\n"
             f"{_ore_bar(0, 1)}\n"
             "تولید الماس در این سطح هنوز فعال نیست\\."
         )
@@ -79,19 +78,38 @@ def _mine_text(snapshot) -> str:
         f"{DIAMOND} {bold('معدن الماس')}\n"
         f"{diamond_stock}\n\n"
         f"{emoji('5823329527085931340', '🪙')} {bold('معدن طلا')}\n"
-        f"موجودی: {bold(_ltr(f'{snapshot.today_coin:,} / {coin_scale:,}'))} {emoji('5823329527085931340', '🪙')}\n"
-        f"{_ore_bar(snapshot.today_coin, coin_scale)}\n\n"
-        f"مقیاس نوار: تولید {escape(mine_service.config.mine_max_catchup_minutes // 60)} ساعت؛ برداشت محدودیت ظرفیت ندارد\\.\n\n"
+        f"موجودی قابل برداشت: {bold(_ltr(f'{snapshot.today_coin:,}'))} {emoji('5823329527085931340', '🪙')}\n"
+        f"تولید امروز: {bold(_ltr(f'{daily_minutes * production.coin_per_minute:,} / {coin_scale:,}'))}\n"
+        f"{_ore_bar(daily_minutes, daily_limit)}\n\n"
+        f"سقف تولید روزانه: {escape(daily_limit // 60)} ساعت؛ محمولهٔ برداشت‌نشده باقی می‌ماند\\.\n\n"
         f"{status}"
     )
 
 
 def _ore_bar(amount: int, scale: int) -> str:
-    """A stable eight-cell bar; Telegram custom emoji have variable visual edges."""
+    """Render eight adjoining custom-emoji cells in physical left-to-right order."""
     scale = max(1, scale)
-    filled = max(0, min(8, (8 * amount + scale - 1) // scale))
+    fill = max(0.0, min(8.0, 8 * amount / scale))
     percent = min(100, max(0, amount * 100 // scale))
-    return _ltr(f"`{'█' * filled}{'░' * (8 - filled)}`  {percent}%")
+    empty = ("5931534188657254206", "5933785859621920322", "5931275038920548077")
+    complete = ("5949744124142820550", "5949736114028814482", "5947346029153100052")
+    partial = (
+        ("5949346577674935537", "5949509477194537601", "5949308223616982431"),
+        ("5947466314007192098", "5947256955826363081", "5949707002740481824"),
+        ("5949257543002889576", "5949513969730330381", "5947323523524468309"),
+    )
+    cells = []
+    for index in range(8):
+        kind = 0 if index == 0 else 2 if index == 7 else 1
+        portion = max(0.0, min(1.0, fill - (7 - index)))
+        if portion <= 0:
+            icon_id = empty[kind]
+        elif portion >= 1:
+            icon_id = complete[kind]
+        else:
+            icon_id = partial[kind][min(2, int(portion * 3))]
+        cells.append(emoji(icon_id, "▫️"))
+    return _ltr("".join(cells)) + "  " + _ltr(f"{percent}%")
 
 
 def _ltr(value: str) -> str:

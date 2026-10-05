@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import MARKDOWN_V2, bold, emoji, escape, rich_plain, teacher_icon
 from app.bot.callbacks import LibraryCallback, LibraryTeacherCallback, StudyCallback
+from app.bot.keyboards.buffet import SHIELD_ICONS
 from app.bot.keyboards.library import (
     answer_keyboard,
     library_keyboard,
+    shield_library_keyboard,
     study_keyboard,
     teacher_library_detail_keyboard,
     teacher_library_keyboard,
@@ -32,6 +34,7 @@ from app.services.library_errors import (
 )
 from app.services.question_service import AnswerResult, QuestionService
 from app.services.school_errors import SchoolUserNotFound, TeacherNotFound
+from app.services.shield_service import ShieldService
 from app.services.study_service import (
     StudyAlreadyActive,
     StudyError,
@@ -46,6 +49,7 @@ question_service = QuestionService()
 user_service = UserService()
 study_service = StudyService()
 teacher_service = TeacherService()
+shield_service = ShieldService()
 logger = logging.getLogger(__name__)
 
 RESOURCE_LABELS = {
@@ -158,7 +162,7 @@ async def _show_library(target: Message | CallbackQuery) -> None:
 
     text = (
         f"{emoji('5825629907274703191', '📚')} {bold('کتابخانهٔ دانش')}\n\n"
-        f"{emoji('5877214659227946561', '📖')} سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها رو بشناس\\."
+        f"{emoji('5877214659227946561', '📖')} سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها و سپرها رو بشناس\\."
     )
     if isinstance(target, CallbackQuery):
         if target.message is not None:
@@ -247,6 +251,24 @@ async def _show_teacher_list(
             ),
             parse_mode=MARKDOWN_V2,
         )
+
+
+def _shield_library_text(shields: list) -> str:
+    lines = [
+        f"{emoji('5915888842568638290', '🛡️')} {bold('دانشنامهٔ سپرها')}",
+        "سپرها پس از رسیدن به سطح لازم در زرادخانه باز می‌شوند\\.",
+    ]
+    for shield in shields:
+        icon = emoji(SHIELD_ICONS.get(shield.name, "5825861861278490879"), "🛡️")
+        currency = "الماس" if shield.purchase_resource.value == "DIAMOND" else "طلا"
+        lines.append(
+            f"{icon} {bold(shield.name)}\n"
+            f"سطح بازشدن: {escape(shield.unlock_level)}\n"
+            f"مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
+            f"قیمت: {escape(shield.purchase_price)} {escape(currency)}\n"
+            f"{escape(shield.description or 'جلوگیری از حمله به دژ')}"
+        )
+    return "\n\n".join(lines)
 
 
 @router.message(
@@ -359,6 +381,15 @@ async def library_callback_handler(
                 await _notify_callback(callback, _study_reward_text(reward).strip())
         elif callback_data.action == "teachers":
             await _show_teacher_list(callback, session, 0)
+        elif callback_data.action == "shields":
+            shields = await shield_service.catalog(session, player_level=None)
+            if callback.message is not None:
+                await safe_edit_text(
+                    cast(Message, callback.message),
+                    _shield_library_text(shields),
+                    reply_markup=shield_library_keyboard(),
+                    parse_mode=MARKDOWN_V2,
+                )
         elif callback_data.action == "cancel":
             await state.clear()
             if callback.message is not None:

@@ -52,6 +52,49 @@ def test_mine_keeps_uncollected_balance_across_midnight() -> None:
     assert mine.today_banana == 1
 
 
+def test_mine_daily_cap_persists_after_collection_and_resets_next_day() -> None:
+    service = MineService(config=game_config)
+    noon = datetime(2026, 10, 5, 12, tzinfo=UTC)
+    cap = game_config.mine_max_catchup_minutes
+    mine = Mine(
+        level=1,
+        last_collected_at=noon - timedelta(minutes=10),
+        today=noon.date(),
+        today_coin=0,
+        today_diamond=0,
+        today_banana=0,
+        daily_produced_minutes=cap,
+    )
+
+    assert service._accrue(mine, now=noon) == 0
+    assert mine.today_coin == 0
+    assert mine.last_collected_at == noon
+
+    tomorrow = noon + timedelta(days=1)
+    assert service._accrue(mine, now=tomorrow) == cap
+    assert mine.daily_produced_minutes == cap
+    assert mine.today_coin == cap * game_config.mine_level(1).coin_per_minute
+
+
+def test_mine_daily_cap_applies_across_repeated_opens() -> None:
+    service = MineService(config=game_config)
+    now = datetime(2026, 10, 5, 18, tzinfo=UTC)
+    cap = game_config.mine_max_catchup_minutes
+    mine = Mine(
+        level=1,
+        last_collected_at=now - timedelta(minutes=10),
+        today=now.date(),
+        today_coin=0,
+        today_diamond=0,
+        today_banana=0,
+        daily_produced_minutes=cap - 5,
+    )
+    assert service._accrue(mine, now=now) == 5
+    assert service._accrue(mine, now=now + timedelta(minutes=10)) == 0
+    assert mine.daily_produced_minutes == cap
+    assert mine.today_coin == 5 * game_config.mine_level(1).coin_per_minute
+
+
 @pytest.mark.asyncio
 async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -> None:
     now = datetime.now(UTC)

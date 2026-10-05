@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,7 @@ class MineSnapshot:
     today_coin: int
     today_diamond: int
     today_banana: int
+    daily_produced_minutes: int = 0
 
 
 class MineService:
@@ -77,20 +78,40 @@ class MineService:
             today_coin=mine.today_coin,
             today_diamond=mine.today_diamond,
             today_banana=mine.today_banana,
+            daily_produced_minutes=mine.daily_produced_minutes or 0,
         )
 
-    def _accrue(self, mine: Mine) -> int:
-        now = datetime.now(UTC)
+    def _accrue(self, mine: Mine, *, now: datetime | None = None) -> int:
+        now = now or datetime.now(UTC)
         last = mine.last_collected_at
         if last.tzinfo is None:
             last = last.replace(tzinfo=UTC)
-        if mine.today != now.date():
-            mine.today = now.date()
-            # These legacy `today_*` columns are the uncollected wallet shown
-            # by the bot. Never erase an already-accrued balance at midnight.
+        limit = self.config.mine_max_catchup_minutes
         elapsed_minutes = max(0, int((now - last).total_seconds() // 60))
-        capped = elapsed_minutes > self.config.mine_max_catchup_minutes
-        elapsed_minutes = min(elapsed_minutes, self.config.mine_max_catchup_minutes)
+        capped = elapsed_minutes > limit
+        elapsed_minutes = min(elapsed_minutes, limit)
+        start = now - timedelta(minutes=elapsed_minutes) if capped else last
+        end = start + timedelta(minutes=elapsed_minutes)
+        midnight = datetime.combine(now.date(), time.min, tzinfo=UTC)
+        today_minutes = min(
+            elapsed_minutes,
+            max(0, int((end - max(start, midnight)).total_seconds() // 60)),
+        )
+        previous_minutes = elapsed_minutes - today_minutes
+        previous_used = (
+            (mine.daily_produced_minutes or 0)
+            if mine.today == start.date() and start.date() != now.date()
+            else 0
+        )
+        previous_credit = min(previous_minutes, max(0, limit - previous_used))
+        current_used = (
+            (mine.daily_produced_minutes or 0) if mine.today == now.date() else 0
+        )
+        current_credit = min(today_minutes, max(0, limit - current_used))
+        mine.today = now.date()
+        # The today_* fields are uncollected cargo and persist across midnight.
+        mine.daily_produced_minutes = current_used + current_credit
+        credited_minutes = previous_credit + current_credit
         if elapsed_minutes == 0:
             return 0
         production = self._production(mine)
@@ -100,15 +121,13 @@ class MineService:
             ("banana", production.banana_per_minute),
         )
         for field, rate in amounts:
-            amount = rate * elapsed_minutes
+            amount = rate * credited_minutes
             if amount == 0:
                 continue
             setattr(mine, f"today_{field}", getattr(mine, f"today_{field}") + amount)
         # Discard old backlog once the catch-up ceiling is reached.
-        mine.last_collected_at = (
-            now if capped else last + timedelta(minutes=elapsed_minutes)
-        )
-        return elapsed_minutes
+        mine.last_collected_at = now if capped or credited_minutes == 0 else end
+        return credited_minutes
 
     async def collect(
         self, session: AsyncSession, user_id: int
@@ -169,6 +188,7 @@ class MineService:
                 today_coin=0,
                 today_diamond=0,
                 today_banana=0,
+                daily_produced_minutes=mine.daily_produced_minutes or 0,
             ),
             amounts,
         )
@@ -232,4 +252,5 @@ class MineService:
             today_coin=mine.today_coin,
             today_diamond=mine.today_diamond,
             today_banana=mine.today_banana,
+            daily_produced_minutes=mine.daily_produced_minutes or 0,
         )

@@ -31,6 +31,9 @@ class Mine(Base):
             "today_diamond >= 0", name="ck_mines_today_diamond_non_negative"
         ),
         CheckConstraint("today_banana >= 0", name="ck_mines_today_banana_non_negative"),
+        CheckConstraint(
+            "daily_produced_minutes >= 0", name="ck_mines_daily_produced_non_negative"
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -54,6 +57,9 @@ class Mine(Base):
     )
     today_banana: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default="0"
+    )
+    daily_produced_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
     collection_count: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default="0"

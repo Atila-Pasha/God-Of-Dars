@@ -28,6 +28,27 @@ def library_keyboard() -> InlineKeyboardMarkup:
                     callback_data=LibraryCallback(action="teachers").pack(),
                 ),
             ],
+            [
+                InlineKeyboardButton(
+                    text="معرفی سپرها",
+                    icon_custom_emoji_id="5825861861278490879",
+                    callback_data=LibraryCallback(action="shields").pack(),
+                )
+            ],
+        ]
+    )
+
+
+def shield_library_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="بازگشت به کتابخانه",
+                    icon_custom_emoji_id="5235864325540815679",
+                    callback_data=LibraryCallback(action="back").pack(),
+                )
+            ]
         ]
     )
 
