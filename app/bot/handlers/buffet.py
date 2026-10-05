@@ -24,6 +24,7 @@ from app.bot.callbacks import (
     ShieldPurchaseCallback,
 )
 from app.bot.keyboards.buffet import (
+    SHIELD_ICONS,
     buffet_cancel_keyboard,
     buffet_keyboard,
     buffet_menu_keyboard,
@@ -188,13 +189,23 @@ async def group_purchase_message(
 
 
 def _resource_text(resources) -> str:
-    return f"🪙: {resources.coin}\n💎: {resources.diamond}"
+    return (
+        f"{emoji('5823329527085931340', '🪙')} طلا: {escape(f'{resources.coin:,}')}\n"
+        f"{emoji('5825753314570018832', '💎')} الماس: {escape(f'{resources.diamond:,}')}"
+    )
+
+
+def _conversion_banner(resources) -> str:
+    return (
+        f"{emoji('5451882707875276247', '🔄')} {bold('صرافی منابع')}\n\n"
+        "موجودی فعلی:\n\n" + _resource_text(resources) + "\n\nیک تبدیل را انتخاب کنید:"
+    )
 
 
 def _buffet_menu_banner() -> str:
     return (
         f"{emoji('5823511728188563725', '🍽️')} {bold('بازار و بوفه')}\n\n"
-        f"{emoji('5825699971076202989', '🪙')} دبیر بخر، سپر بردار یا منابع رو تبدیل کن\\.\n"
+        "« دبیر بخر، سپر بردار یا منابع رو تبدیل کن »\n\n"
         f"{emoji('5935912783261470019', '❓')} انتخاب با توئه\\."
     )
 
@@ -206,12 +217,12 @@ async def buffet_handler(message: Message, session: AsyncSession) -> None:
     try:
         await user_service.get_active_by_telegram_user_id(session, message.from_user.id)
         await message.answer(
-            _buffet_menu_banner(),
+            section_entry_banner("بوفه"),
             reply_markup=buffet_menu_keyboard(),
             parse_mode=MARKDOWN_V2,
         )
         await message.answer(
-            section_entry_banner("بوفه"),
+            _buffet_menu_banner(),
             reply_markup=buffet_menu_keyboard(),
             parse_mode=MARKDOWN_V2,
         )
@@ -250,10 +261,9 @@ async def buffet_conversion_message(
         if resources is None:
             raise UserInactiveError
         await message.answer(
-            "🔄 صرافی منابع\n\nموجودی فعلی تو:\n"
-            + _resource_text(resources)
-            + "\n\nیک تبدیل را انتخاب کنید:",
+            _conversion_banner(resources),
             reply_markup=buffet_keyboard(buffet_service.options()),
+            parse_mode=MARKDOWN_V2,
         )
     except (UserInactiveError, SchoolUserNotFound):
         await message.answer("حساب شما فعال نیست.", reply_markup=main_menu_keyboard())
@@ -331,24 +341,23 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
     resources = await buffet_service.resources(session, user.id)
     if resources is None:
         raise UserInactiveError
-    text = (
-        "🔄 صرافی منابع\n\nموجودی فعلی تو:\n"
-        + _resource_text(resources)
-        + "\n\nیک تبدیل را انتخاب کنید:"
-    )
+    text = _conversion_banner(resources)
     await safe_edit_text(
-        target.message, text, reply_markup=buffet_keyboard(buffet_service.options())
+        target.message,
+        text,
+        reply_markup=buffet_keyboard(buffet_service.options()),
+        parse_mode=MARKDOWN_V2,
     )
 
 
 def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str:
-    shield_icon = emoji("5825861861278490879", "🛡️")
+    shield_icon = emoji("5915888842568638290", "🛡️")
     time_icon = emoji("6039539366177541657", "⏳")
     level_icon = emoji("5825727141039317043", "🎖️")
     lines = [
-        f"{shield_icon} {bold('زرادخانهٔ سپرها')}",
+        f"{shield_icon} {bold('زرادخانه سپرها')} {shield_icon}",
         f"{level_icon} سطح فرمانده: {bold(player_level)}",
-        f"{shield_icon} {bold('وضعیت دفاعی شما')}",
+        "● وضعیت دفاعی شما:",
     ]
     if owned:
         for item in owned:
@@ -361,8 +370,12 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
                 f"{time_icon} زمان باقی‌مانده: {escape(minutes)} دقیقه"
             )
     else:
-        lines.append("هنوز سپر فعالی نداری\\.")
-    lines.append(f"{emoji('5825832256068918886', '🎁')} {bold('سپرهای قابل خرید')}")
+        lines.append("« هنوز سپر فعالی نداری »")
+    lines.append("────────────────────")
+    lines.append(
+        f"{emoji('5825898080737697438', '📜')} {bold('لیست سپرهای قابل خرید:')}"
+    )
+    header_count = len(lines)
     if not catalog:
         lines.append("فعلاً سپری برای سطح شما تعریف نشده است\\.")
     else:
@@ -375,15 +388,19 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
             )
             description = " ".join((shield.description or "").split())
             lines.append(
-                f"{shield_icon} {bold(shield.name)}\n"
+                f"{emoji(SHIELD_ICONS.get(shield.name, '5825861861278490879'), '🛡️')} {bold(shield.name)}\n\n"
                 f"{currency_icon} قیمت: {bold(shield.purchase_price)} "
                 f"{escape(_shield_currency(shield))}\n"
                 f"{time_icon} مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
-                f"{level_icon} سطح بازشدن: {escape(shield.unlock_level)}\n"
+                f"{emoji('5825699618888884083', '🎖️')} سطح بازشدن: {escape(shield.unlock_level)}\n"
                 "اثر: جلوگیری کامل از حمله"
                 + (f"\n{escape(description)}" if description else "")
             )
-    return "\n\n".join(lines)
+    heading = "\n\n".join(lines[:header_count])
+    shields = lines[header_count:]
+    return heading + (
+        "\n\n" + "\n\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n".join(shields) if shields else ""
+    )
 
 
 async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) -> None:
@@ -396,7 +413,7 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     catalog = await shield_service.catalog(session, player_level=user.level)
     text = _shield_catalog_banner(user.level, owned, catalog)
     reply_markup = (
-        shield_catalog_keyboard(catalog, owned)
+        shield_catalog_keyboard(catalog, owned, player_level=user.level)
         if catalog
         else shield_inventory_keyboard(owned)
     )

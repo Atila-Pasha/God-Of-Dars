@@ -108,8 +108,8 @@ async def test_random_attack_command_uses_durable_preview_and_reroll_keyboard(
     text = target.answer.await_args.args[0]
     assert target.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
     keyboard = target.answer.await_args.kwargs["reply_markup"]
-    assert "25 سکه" in text
-    assert "حریف دیگر" in keyboard.inline_keyboard[1][0].text
+    assert "25 سکه" not in text
+    assert keyboard.inline_keyboard[1][0].text == "جست و جوی حریف جدید (25)"
     assert len(keyboard.inline_keyboard[1][0].callback_data) <= 64
 
 
@@ -156,7 +156,7 @@ async def test_random_attack_reroll_commits_once_and_replaces_keyboard(
     reroll.assert_awaited_once_with(session, attacker_telegram_id=42, version=1)
     session.commit.assert_awaited_once()
     assert (
-        "حریف دیگر"
+        "جست و جوی حریف جدید"
         in event.message.edit_text.await_args.kwargs["reply_markup"]
         .inline_keyboard[1][0]
         .text

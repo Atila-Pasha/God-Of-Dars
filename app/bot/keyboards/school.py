@@ -62,24 +62,24 @@ def school_navigation_keyboard() -> ReplyKeyboardMarkup:
 def castle_keyboard(
     can_upgrade: bool, can_repair: bool = False
 ) -> InlineKeyboardMarkup:
-    buttons: list[InlineKeyboardButton] = []
-    if can_upgrade:
-        buttons.append(
-            InlineKeyboardButton(
-                text="⬆️ ارتقای دژ",
-                callback_data=CastleCallback(action="upgrade").pack(),
-            )
-        )
-    if can_repair:
-        buttons.append(
-            InlineKeyboardButton(
-                text="🔧 تعمیر دژ",
-                callback_data=CastleCallback(action="repair").pack(),
-            )
-        )
+    buttons: list[InlineKeyboardButton] = [
+        InlineKeyboardButton(
+            text="ارتقای دژ",
+            icon_custom_emoji_id="5866060208253441223",
+            style="success",
+            callback_data=CastleCallback(action="upgrade").pack(),
+        ),
+        InlineKeyboardButton(
+            text="🔧 تعمیر دژ",
+            style="success",
+            callback_data=CastleCallback(action="repair").pack(),
+        ),
+    ]
     buttons.append(
         InlineKeyboardButton(
-            text="🔙 مدرسه من",
+            text="بازگشت",
+            icon_custom_emoji_id="5235864325540815679",
+            style="danger",
             callback_data=CastleCallback(action="back").pack(),
         )
     )
@@ -121,6 +121,7 @@ def confirmation_keyboard(
             [
                 InlineKeyboardButton(
                     text="✅ تأیید",
+                    style="success",
                     callback_data=ConfirmationCallback(
                         action=action,
                         target_id=target_id,
@@ -130,6 +131,7 @@ def confirmation_keyboard(
                 ),
                 InlineKeyboardButton(
                     text="❌ لغو",
+                    style="danger",
                     callback_data=ConfirmationCallback(
                         action=action,
                         target_id=target_id,
@@ -218,7 +220,7 @@ def teacher_catalog_keyboard(
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"صفحه ۱ از {page_count} ▶️",
+                    text=f"صفحه 1 از {page_count} ▶️",
                     callback_data=TeacherCallback(
                         action="page", teacher_id=0, origin=origin, page=1
                     ).pack(),

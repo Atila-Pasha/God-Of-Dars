@@ -8,7 +8,6 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import (
-    DEFENSE,
     FORT,
     LEVEL,
     MARKDOWN_V2,
@@ -16,6 +15,7 @@ from app.bot.banners import (
     SCHOOL,
     UNLOCK,
     bold,
+    emoji,
     escape,
     purchase_banner,
     rich_plain,
@@ -46,6 +46,7 @@ from app.bot.keyboards.school import (
 )
 from app.bot.utils.telegram import group_user_request, safe_edit_text
 from app.core.enums import TeacherStatus
+from app.core.game_logic import GameConfigurationError
 from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
@@ -85,7 +86,6 @@ STATUS_ICONS = {
     TeacherStatus.DISABLED: "🔴",
     TeacherStatus.RECOVERING: "🔵",
 }
-PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
 def _number(value: int) -> str:
@@ -214,7 +214,7 @@ async def _school_view(
     else:
         unlocks = "▫️ به بالاترین سطح فرماندهی رسیده‌ای\\."
     unlock_heading = (
-        f"آیتم‌های جدید در سطح {next_level}:"
+        f"مسیر پیشرفت فرمانده | سطح {next_level}:"
         if user.level < castle_service.config.level_progression.max_level
         else "مسیر پیشرفت فرمانده"
     )
@@ -227,14 +227,11 @@ async def _school_view(
         f"{UNLOCK} {bold(unlock_heading)}\n"
         f"{unlocks}\n\n"
         f"{FORT} سطح دژ: {escape(_number(castle.level))}\n"
-        f"{DEFENSE} قدرت دفاعی: {escape(_number(castle.strength))}\n\n"
+        f"{emoji('5915633360734002967', '🛡️')} قدرت دفاعی: {escape(_number(castle.strength + castle.defense_power))}\n\n"
         f"● {bold('ظرفیت تیم دبیرها')}\n"
         f"`{progress}`  {escape(_number(capacity.owned))} / "
         f"{escape(_number(capacity.available))} "
         f"{escape(f'({percentage})')}"
-    )
-    await _send_or_edit(
-        target, text, reply_markup=school_keyboard(), parse_mode=MARKDOWN_V2
     )
     if isinstance(target, Message):
         await target.answer(
@@ -242,6 +239,9 @@ async def _school_view(
             reply_markup=section_back_keyboard(),
             parse_mode=MARKDOWN_V2,
         )
+    await _send_or_edit(
+        target, text, reply_markup=school_keyboard(), parse_mode=MARKDOWN_V2
+    )
 
 
 async def _castle_view(
@@ -251,13 +251,12 @@ async def _castle_view(
     user = await _user(session, target.from_user.id)
     castle = await castle_service.snapshot(session, user.id)
     text = (
-        "🏰 دژ مدرسه | خط مقدم دفاع\n"
-        f"✨ سطح دژ: {_number(castle.level)}\n"
-        f"⚔️ سلامت دژ: {_number(castle.strength)} / "
-        f"{_number(castle_service.config.castle_max_strength(castle.level))}\n"
-        f"🛡 قدرت سیستم دفاعی: {_number(castle.defense_power)}\n\n"
-        "🏗️ توان دفاعی نهایی\n"
-        f"قدرت کلی: {_number(castle.strength + castle.defense_power)} واحد"
+        f"{FORT} {bold('دژ مدرسه | خط مقدم دفاع')}\n\n"
+        f"● سطح دژ: {escape(castle.level)}\n\n"
+        f"{emoji('5213455977919039650', '❤️')} سلامت دژ: « {escape(castle.strength)} / "
+        f"{escape(castle_service.config.castle_max_strength(castle.level))} »\n"
+        f"{emoji('5917841858687411504', '🛡️')} قدرت سیستم دفاعی: « {escape(castle.defense_power)} »\n\n"
+        f"{emoji('5915888842568638290', '🛡️')} توان دفاعی نهایی: « {escape(castle.strength + castle.defense_power)} »"
     )
     castle_model = await castle_service.repository.get_by_user(
         session, user.id, for_update=False
@@ -273,6 +272,7 @@ async def _castle_view(
             castle_service.can_upgrade_level(castle.level),
             can_repair=can_repair,
         ),
+        parse_mode=MARKDOWN_V2,
     )
 
 
@@ -289,20 +289,20 @@ async def _teachers_view(
     teachers = await teacher_service.owned(session, user.id)
     catalog = await teacher_service.catalog(session, user.id)
     text_lines = [
-        "👨‍🏫 تیم دبیرهای من",
+        f"{emoji('5825625629487276345', '👨‍🏫')} {bold('تیم دبیرهای من')}",
         "",
-        f"🎖 سطح شما: {_number(user.level)}",
+        f"{LEVEL} سطح شما: {escape(_number(user.level))}",
         "",
-        "📊 ظرفیت استفاده‌شده",
+        f"{emoji('5825667690102006523', '📊')} ظرفیت استفاده‌شده:",
         (
-            f"{_progress_bar(capacity.owned, capacity.available)}  "
-            f"{_number(capacity.owned)} / {_number(capacity.available)} "
-            f"({_progress_percent(capacity.owned, capacity.available)})"
+            f"`{_progress_bar(capacity.owned, capacity.available)}`  "
+            f"{escape(_number(capacity.owned))} / {escape(_number(capacity.available))} "
+            f"{escape(f'({_progress_percent(capacity.owned, capacity.available)})')}"
         ),
         "",
     ]
     if teachers:
-        text_lines.append("👥 فهرست دبیرها")
+        text_lines.append(f"{emoji('5866218662481892680', '👥')} فهرست دبیرها")
     else:
         text_lines.append("🌱 هنوز دبیری به مدرسه‌تان اضافه نشده است.")
     await _send_or_edit(
@@ -319,6 +319,7 @@ async def _teachers_view(
             ),
             back_action="back_buffet" if from_buffet else "back_school",
         ),
+        parse_mode=MARKDOWN_V2,
     )
 
 
@@ -473,21 +474,24 @@ async def castle_callback_handler(
             )
             await _send_or_edit(
                 callback,
-                f"⬆️ ارتقای دژ\n\n"
-                f"سطح: {_number(castle.level)} → {_number(castle.level + 1)}\n"
-                f"هزینه: {_number(upgrade.diamond_cost)} الماس\n"
-                "\n📈 بعد از ارتقا:\n"
-                f"❤️ استحکام: {_number(castle.strength)} → "
-                f"{_number(castle.strength + upgrade.strength_delta)} "
-                f"(+{_number(upgrade.strength_delta)})\n"
-                f"🛡 قدرت دفاع: {_number(castle.defense_power)} → "
-                f"{_number(castle.defense_power + upgrade.defense_delta)} "
-                f"(+{_number(upgrade.defense_delta)})\n"
-                f"🍌 پاداش ارتقا: {_number(banana_reward)} موز\n\n"
-                "آیا می‌خواهی ارتقای دژ را انجام بدهم؟",
+                f"{FORT} {bold('ارتقای دژ')} {emoji('5866060208253441223', '⬆️')}\n"
+                "─────────────────────\n"
+                f"سطح: {escape(castle.level)} {emoji('5235470399730361615', '➡️')} {escape(castle.level + 1)}\n\n"
+                f"{emoji('5866369239740320716', '💎')} هزینه ارتقا: {escape(upgrade.diamond_cost)} الماس {emoji('5825753314570018832', '💎')}\n"
+                "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+                f"{emoji('5866218662481892680', '📈')} تغییرات بعد از ارتقا:\n\n"
+                f"{emoji('5213455977919039650', '❤️')} استحکام: {escape(castle.strength)} {emoji('5235470399730361615', '➡️')} "
+                f"{escape(castle.strength + upgrade.strength_delta)} "
+                f"{escape(f'(+{upgrade.strength_delta})')}\n\n"
+                f"{emoji('5917841858687411504', '🛡️')} قدرت دفاع: {escape(castle.defense_power)} {emoji('5235470399730361615', '➡️')} "
+                f"{escape(castle.defense_power + upgrade.defense_delta)} "
+                f"{escape(f'(+{upgrade.defense_delta})')}\n\n"
+                f"{emoji('5823415254633160881', '🍌')} پاداش ارتقا: {escape(banana_reward)} موز {emoji('5902520589356113908', '🍌')}\n\n"
+                f"{emoji('5935912783261470019', '❓')} آیا می‌خواهی ارتقای دژ را انجام بدهم؟",
                 reply_markup=confirmation_keyboard(
                     action="castle_upgrade", target_id=0
                 ),
+                parse_mode=MARKDOWN_V2,
             )
             await callback.answer()
             return
@@ -517,7 +521,7 @@ async def castle_callback_handler(
         await callback.answer(notice)
     except InsufficientDiamonds:
         await callback.answer("الماس کافی برای ارتقا ندارید.", show_alert=True)
-    except SchoolError:
+    except (SchoolError, GameConfigurationError):
         await callback.answer("ارتقای دژ در حال حاضر امکان‌پذیر نیست.", show_alert=True)
 
 

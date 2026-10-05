@@ -48,6 +48,12 @@ async def test_daily_button_shows_active_question_and_starts_answer_state(monkey
         "get_active_daily_question",
         AsyncMock(return_value=question),
     )
+    monkeypatch.setattr(library, "_user_id", AsyncMock(return_value=7))
+    monkeypatch.setattr(
+        library.question_service.repository,
+        "get_daily_answer",
+        AsyncMock(return_value=None),
+    )
     callback = SimpleNamespace(
         from_user=SimpleNamespace(id=42),
         message=SimpleNamespace(edit_text=AsyncMock()),
@@ -67,6 +73,44 @@ async def test_daily_button_shows_active_question_and_starts_answer_state(monkey
     callback.message.edit_text.assert_awaited_once()
     assert "۲ + ۲؟" in callback.message.edit_text.await_args.args[0]
     callback.answer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_daily_button_rejects_an_answered_question_before_entering_state(
+    monkeypatch,
+):
+    question = Question(
+        id=10,
+        scope=QuestionScope.DAILY,
+        question_text="2 + 2?",
+        correct_answer="4",
+        status=QuestionStatus.ACTIVE,
+    )
+    monkeypatch.setattr(
+        library.question_service,
+        "get_active_daily_question",
+        AsyncMock(return_value=question),
+    )
+    monkeypatch.setattr(library, "_user_id", AsyncMock(return_value=7))
+    monkeypatch.setattr(
+        library.question_service.repository,
+        "get_daily_answer",
+        AsyncMock(return_value=SimpleNamespace(id=1)),
+    )
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer=AsyncMock(), edit_text=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    state = AsyncMock()
+
+    await library.library_callback_handler(
+        callback, LibraryCallback(action="daily"), AsyncMock(), state
+    )
+
+    state.set_state.assert_not_awaited()
+    callback.message.edit_text.assert_not_awaited()
+    assert "قبلاً پاسخ" in callback.message.answer.await_args.args[0]
 
 
 @pytest.mark.asyncio

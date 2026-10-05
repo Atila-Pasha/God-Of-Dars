@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.banners import MARKDOWN_V2, bold, emoji, section_entry_banner
+from app.bot.banners import MARKDOWN_V2, bold, emoji, escape, section_entry_banner
 from app.bot.callbacks import LevelConfirmationCallback, ProfileCallback
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
@@ -43,7 +43,7 @@ PROFILE_LABEL = next(
 
 
 def _number(value: int) -> str:
-    return f"{value:,}".translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+    return f"{value:,}"
 
 
 def _name(snapshot: ProfileSnapshot) -> str:
@@ -68,7 +68,7 @@ def _accuracy(snapshot: ProfileSnapshot) -> str:
     if snapshot.answers_count == 0:
         return "هنوز رکوردی ثبت نشده"
     percent = round(snapshot.correct_answers / snapshot.answers_count * 100)
-    return f"{_number(percent)}٪"
+    return f"{_number(percent)}%"
 
 
 def _profile_text(snapshot: ProfileSnapshot) -> str:
@@ -151,28 +151,29 @@ def _profile_markup(target: Message | CallbackQuery):
 def _profile_identity_text(snapshot: ProfileSnapshot) -> str:
     user = snapshot.user
     return (
-        "👤 شناسنامهٔ فرمانده\n\n"
-        f"🏷 نام: {_name(snapshot)}\n"
-        f"📎 نام کاربری: {_username(snapshot)}\n"
-        f"📅 عضویت از: {_date(user.created_at)}\n"
-        f"🌟 سطح فرمانده: {_number(user.level)}\n"
-        f"👨‍🏫 تعداد دبیرها: {_number(snapshot.teachers_count)}\n"
-        f"🟢 دبیرهای فعال: {_number(snapshot.active_teachers_count)}"
+        f"{emoji('5825647731388981287', '⭐')} {bold('شناسنامهٔ فرمانده')} {emoji('5825647731388981287', '⭐')}\n\n"
+        f"● نام: {escape(_name(snapshot))}\n"
+        f"● نام کاربری: {escape(_username(snapshot))}\n\n"
+        f"{emoji('5825727141039317043', '🎖️')} سطح فرمانده: {escape(_number(user.level))}\n"
+        f"تعداد دبیرها: {escape(_number(snapshot.teachers_count))}\n"
+        f"دبیرهای فعال: {escape(_number(snapshot.active_teachers_count))}\n\n"
+        f"{emoji('6032594876506312598', '📅')} عضویت از: {escape(_date(user.created_at))}"
     )
 
 
 def _profile_war_text(snapshot: ProfileSnapshot) -> str:
     return (
-        "⚔️ کارنامهٔ میدان نبرد\n\n"
-        f"حمله‌های انجام‌شده: {_number(snapshot.attacks_sent)}\n"
-        f"حمله‌های موفق: {_number(snapshot.successful_attacks)}\n"
-        f"حمله‌های در انتظار: {_number(snapshot.pending_attacks)}\n"
-        f"حمله‌های دریافتی: {_number(snapshot.attacks_received)}\n"
-        f"آسیب واردشده: {_number(snapshot.damage_dealt)}\n\n"
-        "غنیمت‌های ثبت‌شده:\n"
-        f"سکه: {_number(snapshot.loot_coin)}\n"
-        f"الماس: {_number(snapshot.loot_diamond)}\n"
-        f"موز دریافتی از حمله: {_number(snapshot.loot_banana)}"
+        f"{emoji('5918187663684280099', '⚔️')} {bold('کارنامهٔ میدان نبرد')}\n"
+        "─────────────────────\n\n"
+        f"● حمله‌های انجام‌شده: {escape(_number(snapshot.attacks_sent))}\n"
+        f"● حمله‌های موفق: {escape(_number(snapshot.successful_attacks))}\n"
+        f"● حمله‌های در انتظار: {escape(_number(snapshot.pending_attacks))}\n"
+        f"● حمله‌های دریافتی: {escape(_number(snapshot.attacks_received))}\n\n"
+        f"{emoji('5276032951342088188', '💥')} آسیب واردشده: {escape(_number(snapshot.damage_dealt))} DMG\n\n"
+        f"{emoji('5825832256068918886', '🎁')} غنیمت‌های ثبت‌شده:\n\n"
+        f"{emoji('5825699971076202989', '🪙')} طلا: {escape(_number(snapshot.loot_coin))}\n"
+        f"{emoji('5825753314570018832', '💎')} الماس: {escape(_number(snapshot.loot_diamond))}\n"
+        f"{emoji('5902520589356113908', '🍌')} موز دریافتی از حمله: {escape(_number(snapshot.loot_banana))}"
     )
 
 
@@ -182,23 +183,26 @@ def _profile_assets_text(snapshot: ProfileSnapshot) -> str:
     castle = user.castle
     defense_power = castle.defense.defense_power if castle and castle.defense else 0
     return (
-        "🏰 خزانه و قلمرو\n\n"
-        f"سکه: {_number(resources.coin if resources else 0)}\n"
-        f"الماس: {_number(resources.diamond if resources else 0)}\n"
-        f"موز: {_number(resources.banana if resources else 0)}\n\n"
-        f"سطح دژ: {_number(castle.level if castle else 0)}\n"
-        f"استحکام دژ: {_number(castle.strength if castle else 0)}\n"
-        f"قدرت دفاع: {_number(defense_power)}"
+        f"{emoji('5823403314624080082', '🏰')} {bold('خزانه و قلمرو')}\n"
+        "─────────────────────\n"
+        "● خزانه:\n\n"
+        f"{emoji('5825699971076202989', '🪙')} طلا: {escape(_number(resources.coin if resources else 0))}\n"
+        f"{emoji('5825753314570018832', '💎')} الماس: {escape(_number(resources.diamond if resources else 0))}\n"
+        f"{emoji('5902520589356113908', '🍌')} موز: {escape(_number(resources.banana if resources else 0))}\n\n"
+        "● قلمرو:\n\n"
+        f"{emoji('5825546447470206916', '🏰')} سطح دژ: {escape(_number(castle.level if castle else 0))}\n"
+        f"{emoji('5213455977919039650', '❤️')} استحکام دژ: {escape(_number(castle.strength if castle else 0))}\n"
+        f"{emoji('5917841858687411504', '🛡️')} قدرت دفاع: {escape(_number(defense_power))}"
     )
 
 
 def _profile_knowledge_text(snapshot: ProfileSnapshot) -> str:
     return (
-        "📚 دانش و اتحادها\n\n"
-        f"پاسخ‌های درست: {_number(snapshot.correct_answers)} از "
-        f"{_number(snapshot.answers_count)}\n"
-        f"دقت: {_accuracy(snapshot)}\n"
-        f"دوستان دعوت‌شده: {_number(snapshot.referrals_count)}"
+        f"{emoji('5825629907274703191', '📚')} {bold('دانش و اتحادها')}\n\n"
+        f"{emoji('5825709849500985213', '✅')} پاسخ‌های درست: {escape(_number(snapshot.correct_answers))} از "
+        f"{escape(_number(snapshot.answers_count))}\n"
+        f"● دقت: {escape(_accuracy(snapshot))}\n\n"
+        f"{emoji('5879719754737913980', '🤝')} دوستان دعوت‌شده: {escape(_number(snapshot.referrals_count))}"
     )
 
 
@@ -265,9 +269,16 @@ async def _show_profile_section(
     if isinstance(target, CallbackQuery):
         if target.message is None:
             return
-        await safe_edit_text(target.message, text, reply_markup=_profile_markup(target))
+        await safe_edit_text(
+            target.message,
+            text,
+            reply_markup=_profile_markup(target),
+            parse_mode=MARKDOWN_V2,
+        )
     else:
-        await target.answer(text, reply_markup=_profile_markup(target))
+        await target.answer(
+            text, reply_markup=_profile_markup(target), parse_mode=MARKDOWN_V2
+        )
 
 
 async def _show_error(target: Message | CallbackQuery) -> None:
@@ -399,13 +410,13 @@ async def profile_handler(message: Message, session: AsyncSession) -> None:
                 "knowledge": "knowledge",
             }.get(command_name)
         if section is not None:
-            await _show_profile_section(message, session, section)
             if message_text == PROFILE_LABEL:
                 await message.answer(
                     section_entry_banner("پروفایل"),
                     reply_markup=section_back_keyboard(),
                     parse_mode=MARKDOWN_V2,
                 )
+            await _show_profile_section(message, session, section)
         elif not message_text:
             await _show_profile(message, session)
         else:

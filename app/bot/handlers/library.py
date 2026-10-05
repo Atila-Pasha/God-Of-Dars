@@ -11,7 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.banners import MARKDOWN_V2, bold, rich_plain, teacher_icon
+from app.bot.banners import MARKDOWN_V2, bold, emoji, escape, rich_plain, teacher_icon
 from app.bot.callbacks import LibraryCallback, LibraryTeacherCallback, StudyCallback
 from app.bot.keyboards.library import (
     answer_keyboard,
@@ -158,7 +158,7 @@ async def _show_library(target: Message | CallbackQuery) -> None:
 
     text = (
         f"{emoji('5825629907274703191', '📚')} {bold('کتابخانهٔ دانش')}\n\n"
-        "سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها رو بشناس\\."
+        f"{emoji('5877214659227946561', '📖')} سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها رو بشناس\\."
     )
     if isinstance(target, CallbackQuery):
         if target.message is not None:
@@ -170,15 +170,15 @@ async def _show_library(target: Message | CallbackQuery) -> None:
                 parse_mode=MARKDOWN_V2,
             )
     else:
-        await target.answer(
-            text, reply_markup=library_keyboard(), parse_mode=MARKDOWN_V2
-        )
         if isinstance(target, Message):
             await target.answer(
                 section_entry_banner("کتابخانه"),
                 reply_markup=section_back_keyboard(),
                 parse_mode=MARKDOWN_V2,
             )
+        await target.answer(
+            text, reply_markup=library_keyboard(), parse_mode=MARKDOWN_V2
+        )
 
 
 async def _safe_callback_answer(
@@ -194,21 +194,22 @@ async def _safe_callback_answer(
         logger.debug("Ignoring an expired or already-answered library callback")
 
 
-async def _notify_callback(callback: CallbackQuery, text: str) -> None:
+async def _notify_callback(
+    callback: CallbackQuery, text: str, *, parse_mode: str | None = None
+) -> None:
     if callback.message is None:
         return
     try:
-        await callback.message.answer(text)
+        await callback.message.answer(text, parse_mode=parse_mode)
     except TelegramAPIError:
         logger.debug("Could not send library callback notice")
 
 
 def _teacher_list_text(page: int, page_count: int) -> str:
     return (
-        "👨‍🏫 تالار معرفی دبیرها\n"
-        "\n"
-        f"صفحه {page + 1} از {page_count}\n\n"
-        "برای دیدن پروندهٔ کامل، یک دبیر رو انتخاب کن 👇"
+        f"{emoji('5825697157872623308', '👨‍🏫')} {bold('تالار معرفی دبیرها')}\n\n"
+        f"« صفحه {page + 1} از {page_count} »\n\n"
+        f"برای دیدن پروندهٔ کامل، یک دبیر رو انتخاب کن {emoji('5888976517362355346', '👇')}"
     )
 
 
@@ -244,6 +245,7 @@ async def _show_teacher_list(
             reply_markup=teacher_library_keyboard(
                 items, page=page, page_count=page_count
             ),
+            parse_mode=MARKDOWN_V2,
         )
 
 
@@ -306,6 +308,17 @@ async def library_callback_handler(
             if daily_question is None:
                 await _notify_callback(callback, "فعلاً سؤال روزانه‌ای وجود ندارد.")
                 return
+            user_id = await _user_id(session, callback)
+            prior = await question_service.repository.get_daily_answer(
+                session, question_id=daily_question.id, user_id=user_id
+            )
+            if prior is not None:
+                await _notify_callback(
+                    callback,
+                    f"{emoji('5834600998739381814', '🛑')} این سؤال را قبلاً پاسخ داده‌اید\\.",
+                    parse_mode=MARKDOWN_V2,
+                )
+                return
             await state.set_state(LibraryState.waiting_daily_answer)
             await state.update_data(question_id=daily_question.id)
             if callback.message is not None:
@@ -315,6 +328,11 @@ async def library_callback_handler(
                     _question_text(daily_question, title="📅 سؤال روزانه"),
                     reply_markup=answer_keyboard(),
                 )
+        elif callback_data.action == "answer":
+            if await state.get_state() == LibraryState.waiting_daily_answer.state:
+                await _notify_callback(callback, "جواب رو ارسال کن.")
+            else:
+                await _notify_callback(callback, "ابتدا سؤال روزانه را باز کن.")
         elif callback_data.action == "group":
             await _notify_callback(
                 callback,
@@ -326,7 +344,9 @@ async def library_callback_handler(
             if active is not None and reward is None:
                 await _notify_callback(
                     callback,
-                    f"📖 مطالعه فعال است. زمان باقی‌مانده: {_study_time(active.ends_at)}",
+                    f"{emoji('5823388325188214894', '✅')} {bold('ساعت مطالعه فعال است.')}\n\n"
+                    f"> زمان باقی‌مانده: {escape(_study_time(active.ends_at))}",
+                    parse_mode=MARKDOWN_V2,
                 )
                 return
             if callback.message is not None:

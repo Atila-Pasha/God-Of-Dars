@@ -556,6 +556,9 @@ class AttackService:
             if teacher is None:
                 raise TeacherNotOwned
             teachers.append(teacher)
+        await self._ensure_target_attackable(
+            session, target.id, tuple(item.teacher.name for item in teachers)
+        )
         return await self._attack_with_teachers(session, attacker, target, teachers)
 
     async def start_attack_by_ids(
@@ -606,6 +609,9 @@ class AttackService:
                 raise InvalidTeacherState
             teachers.append(teacher)
 
+        await self._ensure_target_attackable(
+            session, target.id, tuple(item.teacher.name for item in teachers)
+        )
         castle = await self.castle_service.battle_snapshot(session, target.id)
         resolve_at = datetime.now(UTC) + duration
         attack_command_id = str(uuid4())
@@ -716,8 +722,16 @@ class AttackService:
         teacher_icon = attack.teacher_emoji_snapshot or (
             teacher.teacher.emoji if teacher is not None else None
         )
+        command_names = (teacher_name,)
+        if attack.attack_command_id is not None:
+            names = await session.scalars(
+                select(Attack.teacher_name_snapshot).where(
+                    Attack.attack_command_id == attack.attack_command_id
+                )
+            )
+            command_names = tuple(name for name in names if name) or command_names
         if await self.castle_service.shield_service.has_active_shield(
-            session, target.id
+            session, target.id, command_names
         ):
             now = datetime.now(UTC)
             attack.status = AttackStatus.RESOLVED
@@ -752,7 +766,7 @@ class AttackService:
             teacher.current_hp if teacher is not None else 0,
         )
         castle_result = await self.castle_service.receive_attack_damage(
-            session, target.id, castle_damage
+            session, target.id, castle_damage, teacher_names=command_names
         )
         loot = self._loot(
             target,
@@ -941,7 +955,11 @@ class AttackService:
     async def _preview_with_teachers(
         self, session, attacker, target, teachers
     ) -> AttackPreview:
-        await self._ensure_target_attackable(session, target.id)
+        names = tuple(item.teacher.name for item in teachers)
+        if names:
+            await self._ensure_target_attackable(session, target.id, names)
+        else:
+            await self._ensure_target_attackable(session, target.id)
         castle = await self.castle_service.battle_snapshot(session, target.id)
         resolved = [
             self.config.attack_rules.resolve(
@@ -954,7 +972,7 @@ class AttackService:
         mitigated_damages = [
             (
                 await self.castle_service.shield_service.mitigate_attack(
-                    session, target.id, raw_damage
+                    session, target.id, raw_damage, teacher_names=names
                 )
             ).remaining_damage
             for raw_damage, _injury in resolved
@@ -1085,7 +1103,8 @@ class AttackService:
             if teacher.status is not TeacherStatus.ACTIVE:
                 raise InvalidTeacherState
         _, castles = await lock_attack_dependencies(session, (attacker, target))
-        await self._ensure_target_attackable(session, target.id)
+        names = tuple(item.teacher.name for item in teachers)
+        await self._ensure_target_attackable(session, target.id, names)
         target_castle = castles.get(target.id)
         if target_castle is None:
             raise AttackTargetNotRegistered
@@ -1111,7 +1130,7 @@ class AttackService:
                 teacher.current_hp,
             )
             castle_damage_result = await self.castle_service.receive_attack_damage(
-                session, target.id, damage
+                session, target.id, damage, teacher_names=names
             )
             applied_damage = castle_damage_result.applied_damage
             if injury:
@@ -1212,11 +1231,20 @@ class AttackService:
         )
 
     async def _ensure_target_attackable(
-        self, session: AsyncSession, target_id: int
+        self,
+        session: AsyncSession,
+        target_id: int,
+        teacher_names: tuple[str, ...] | None = None,
     ) -> None:
-        if await self.castle_service.shield_service.has_active_shield(
-            session, target_id
-        ):
+        shield_service = self.castle_service.shield_service
+        protected = (
+            await shield_service.has_active_shield(session, target_id)
+            if teacher_names is None
+            else await shield_service.has_active_shield(
+                session, target_id, teacher_names
+            )
+        )
+        if protected:
             raise TargetProtectedByShield
 
     def _loot(

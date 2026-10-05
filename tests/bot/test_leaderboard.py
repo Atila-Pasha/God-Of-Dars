@@ -66,11 +66,11 @@ def test_fighter_board_renders_markdown_style_table_and_viewer_rank() -> None:
 
     assert "رتبه" in text
     assert "اکانت" in text
-    assert "🥇 ۱" in text
+    assert "🥇 1" in text
     assert "@ali" in text
-    assert "۱۲" in text
-    assert "۳,۴۵۶" in text
-    assert "#۱ — @ali" in text
+    assert "12" in text
+    assert "3,456" in text
+    assert "#1 — @ali" in text
 
     entities = leaderboard_content("fighter", (entry,), entry).as_kwargs()["entities"]
     assert any(entity.type == "pre" for entity in entities)

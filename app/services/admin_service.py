@@ -97,7 +97,7 @@ class AdminService:
     ) -> tuple[User, int] | None:
         """Increase a user's level without spending their earned XP."""
         if amount < 1:
-            raise ValueError("مقدار افزایش لول باید حداقل ۱ باشد.")
+            raise ValueError("مقدار افزایش لول باید حداقل 1 باشد.")
         user = await UserRepository().get_by_id_for_update(session, user_id)
         if user is None:
             return None

@@ -100,13 +100,13 @@ async def _show(target, session: AsyncSession, user_id: int):
             target.message, text, reply_markup=markup, parse_mode=MARKDOWN_V2
         )
     else:
-        await target.answer(text, reply_markup=markup, parse_mode=MARKDOWN_V2)
         if isinstance(target, Message):
             await target.answer(
                 section_entry_banner("فعالیت‌های روزانه"),
                 reply_markup=section_back_keyboard(),
                 parse_mode=MARKDOWN_V2,
             )
+        await target.answer(text, reply_markup=markup, parse_mode=MARKDOWN_V2)
 
 
 @router.message(F.text == DAILY_LABEL)

@@ -45,7 +45,7 @@ class ShieldService:
     ) -> list[Shield]:
         result = await session.execute(
             select(Shield)
-            .where(Shield.is_active.is_(True), Shield.unlock_level <= player_level)
+            .where(Shield.is_active.is_(True))
             .order_by(Shield.unlock_level, Shield.id)
         )
         return list(result.scalars().all())
@@ -64,18 +64,35 @@ class ShieldService:
         )
         return list(result.scalars().unique().all())
 
-    async def has_active_shield(self, session: AsyncSession, user_id: int) -> bool:
+    @staticmethod
+    def _kazemi_bypassed(shield: Shield, teacher_names: tuple[str, ...] | None) -> bool:
+        return shield.name == "سپر کاظمی" and (
+            teacher_names is None
+            or any("موسوی" in name or "قلمچی" in name for name in teacher_names)
+        )
+
+    async def has_active_shield(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        teacher_names: tuple[str, ...] | None = None,
+    ) -> bool:
         now = datetime.now(UTC)
         result = await session.execute(
-            select(UserShield.id)
+            select(UserShield)
             .where(
                 UserShield.user_id == user_id,
                 UserShield.active_until.is_not(None),
                 UserShield.active_until > now,
             )
+            .options(selectinload(UserShield.shield))
+            .order_by(UserShield.is_equipped.desc(), UserShield.id)
             .limit(1)
         )
-        return result.scalar_one_or_none() is not None
+        active = result.scalar_one_or_none()
+        return active is not None and not self._kazemi_bypassed(
+            active.shield, teacher_names
+        )
 
     async def get_shield(self, session: AsyncSession, shield_id: int) -> Shield | None:
         result = await session.execute(select(Shield).where(Shield.id == shield_id))
@@ -183,11 +200,20 @@ class ShieldService:
         raise ShieldNotPurchasable
 
     async def consume_for_attack(
-        self, session: AsyncSession, user_id: int, incoming_damage: int
+        self,
+        session: AsyncSession,
+        user_id: int,
+        incoming_damage: int,
+        *,
+        teacher_names: tuple[str, ...] | None = None,
     ) -> ShieldMitigation:
         """Block an attack completely while a timed shield is active."""
         return await self.mitigate_attack(
-            session, user_id, incoming_damage, for_update=True
+            session,
+            user_id,
+            incoming_damage,
+            for_update=True,
+            teacher_names=teacher_names,
         )
 
     async def mitigate_attack(
@@ -197,6 +223,7 @@ class ShieldService:
         incoming_damage: int,
         *,
         for_update: bool = False,
+        teacher_names: tuple[str, ...] | None = None,
     ) -> ShieldMitigation:
         """Return complete protection when the user has an active timed shield."""
         if incoming_damage < 0:
@@ -217,7 +244,7 @@ class ShieldService:
             statement = statement.with_for_update()
         result = await session.execute(statement)
         active = result.scalar_one_or_none()
-        if active is None:
+        if active is None or self._kazemi_bypassed(active.shield, teacher_names or ()):
             return ShieldMitigation(incoming_damage, 0, incoming_damage)
         self.validate(active.shield)
         return ShieldMitigation(incoming_damage, incoming_damage, 0)

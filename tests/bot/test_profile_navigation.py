@@ -62,9 +62,9 @@ async def test_profile_handler_shows_rich_live_stats(monkeypatch) -> None:
 
     text = message.answer.await_args.args[0]
     assert "آرش دلاور" in text
-    assert "💎 الماس: ۳۵" in text
-    assert "حمله‌های موفق: ۶" in text
-    assert "دقت: ۷۵٪" in text
+    assert "💎 الماس: 35" in text
+    assert "حمله‌های موفق: 6" in text
+    assert "دقت: 75%" in text
     assert message.answer.await_args.kwargs["reply_markup"].inline_keyboard
     message.answer.assert_awaited_once()
 

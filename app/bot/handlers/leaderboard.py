@@ -57,7 +57,7 @@ def _is_group_leaderboard(message: Message) -> bool:
 
 
 def _number(value: int) -> str:
-    return f"{value:,}".translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+    return f"{value:,}"
 
 
 def _account(entry: LeaderboardEntry) -> str:

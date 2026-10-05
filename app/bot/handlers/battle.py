@@ -24,7 +24,6 @@ from app.bot.banners import (
     attack_result_banner,
     bold,
     emoji,
-    escape,
     section_entry_banner,
 )
 from app.bot.callbacks import (
@@ -257,12 +256,10 @@ def _random_attack_preview_content(selection: RandomAttackPreview) -> str:
     remaining_seconds = max(
         0, int((selection.expires_at - datetime.now(UTC)).total_seconds())
     )
-    remaining_minutes = max(1, (remaining_seconds + 59) // 60)
     return (
         attack_preview_banner(selection.preview)
         + "\n\n"
-        + f"{emoji('5823192436024813346', '🎲')} حریف تا حدود {remaining_minutes} دقیقه ثابت می‌ماند\n"
-        + f"{emoji('6039539366177541657', '♻️')} دیدن حریف دیگر: {escape(selection.reroll_coin_cost)} سکه"
+        + f"{emoji('5825746176334373354', '⏳')} حریف تا حدود {max(1, (remaining_seconds + 59) // 60)} دقیقه ثابت می‌ماند\\."
     )
 
 
@@ -299,7 +296,8 @@ def _random_attack_confirmation_keyboard(
             ],
             [
                 InlineKeyboardButton(
-                    text=f"♻️ حریف دیگر ({selection.reroll_coin_cost} 🪙)",
+                    text=f"جست و جوی حریف جدید ({selection.reroll_coin_cost})",
+                    icon_custom_emoji_id="5825699971076202989",
                     callback_data=RandomAttackCallback(
                         action="reroll",
                         attacker_id=selection.preview.attacker_id,
@@ -372,7 +370,8 @@ def _attack_type_keyboard() -> InlineKeyboardMarkup:
                     ).pack(),
                 ),
                 InlineKeyboardButton(
-                    text="🎯 حمله با آیدی",
+                    text="حمله با آیدی",
+                    icon_custom_emoji_id="5879898257873702573",
                     callback_data=AttackMenuCallback(action="choose", mode="id").pack(),
                 ),
             ]
@@ -508,8 +507,9 @@ async def attack_menu_handler(message: Message, state: FSMContext) -> None:
         parse_mode=MARKDOWN_V2,
     )
     await message.answer(
-        "انتخاب نوع حمله\n\nیکی از روش‌های زیر را انتخاب کنید:",
+        f"انتخاب نوع حمله {emoji('5935912783261470019', '❓')}\n\nیکی از روش‌های زیر را انتخاب کنید:",
         reply_markup=_attack_type_keyboard(),
+        parse_mode=MARKDOWN_V2,
     )
 
 
@@ -530,9 +530,10 @@ async def id_attack_menu_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(AttackMenuStates.waiting_target)
     await message.answer(
-        "🎯 آیدی کاربر هدف را بفرستید.\n\n"
-        "می‌توانید نام کاربری مثل @player یا آیدی عددی تلگرام را وارد کنید.",
+        f"{emoji('5877355078888722361', '🎯')} آیدی کاربر هدف را بفرستید\\.\n\n"
+        "می‌توانید نام کاربری مثل @player یا آیدی عددی تلگرام را وارد کنید\\.",
         reply_markup=section_back_keyboard(),
+        parse_mode=MARKDOWN_V2,
     )
 
 

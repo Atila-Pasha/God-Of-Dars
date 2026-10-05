@@ -12,19 +12,22 @@ def leaderboard_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=("✓ " if active_kind == "commander" else "") + "👑 فرمانده",
+                text=("✓ " if active_kind == "commander" else "") + "فرمانده",
+                icon_custom_emoji_id="5825647731388981287",
                 callback_data=LeaderboardCallback(
                     action="commander", period=active_period
                 ).pack(),
             ),
             InlineKeyboardButton(
-                text=("✓ " if active_kind == "student" else "") + "📚 دانش‌آموز",
+                text=("✓ " if active_kind == "student" else "") + "دانش‌آموز",
+                icon_custom_emoji_id="5918211539407478280",
                 callback_data=LeaderboardCallback(
                     action="student", period=active_period
                 ).pack(),
             ),
             InlineKeyboardButton(
-                text=("✓ " if active_kind == "fighter" else "") + "⚔️ مبارز",
+                text=("✓ " if active_kind == "fighter" else "") + "مبارز",
+                icon_custom_emoji_id="5915633360734002967",
                 callback_data=LeaderboardCallback(
                     action="fighter", period=active_period
                 ).pack(),

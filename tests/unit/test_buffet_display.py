@@ -26,13 +26,16 @@ def test_buffet_conversion_buttons_show_only_resource_emojis() -> None:
         )
     )
 
-    assert markup.inline_keyboard[0][0].text == "💎 ➜ 🪙"
+    assert markup.inline_keyboard[0][0].text == "تبدیل الماس به طلا"
+    assert markup.inline_keyboard[0][0].icon_custom_emoji_id is None
 
 
 def test_buffet_resource_messages_show_only_resource_emojis() -> None:
     assert _resource_display(ResourceType.DIAMOND) == "💎"
     assert _resource_display(ResourceType.COIN) == "🪙"
-    assert _resource_text(SimpleNamespace(coin=12, diamond=3)) == "🪙: 12\n💎: 3"
+    text = _resource_text(SimpleNamespace(coin=12, diamond=3))
+    assert "طلا: 12" in text and "الماس: 3" in text
+    assert "tg://emoji?id=5823329527085931340" in text
 
 
 @pytest.mark.asyncio

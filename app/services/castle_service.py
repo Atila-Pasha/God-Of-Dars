@@ -181,14 +181,19 @@ class CastleService:
         return await self.snapshot(session, user_id)
 
     async def receive_attack_damage(
-        self, session: AsyncSession, user_id: int, incoming_damage: int
+        self,
+        session: AsyncSession,
+        user_id: int,
+        incoming_damage: int,
+        *,
+        teacher_names: tuple[str, ...] | None = None,
     ) -> CastleDamageResult:
         """Apply incoming damage after consuming the equipped buffet shield."""
         castle = await self.repository.get_by_user(session, user_id, for_update=True)
         if castle is None:
             raise CastleNotFound
         mitigation = await self.shield_service.consume_for_attack(
-            session, user_id, incoming_damage
+            session, user_id, incoming_damage, teacher_names=teacher_names
         )
         before = castle.strength
         castle.strength = max(0, before - mitigation.remaining_damage)

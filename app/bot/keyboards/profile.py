@@ -16,13 +16,15 @@ def profile_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text="👤 اطلاعات پروفایل",
+                text="اطلاعات پروفایل",
+                icon_custom_emoji_id="6032994772321309200",
                 callback_data=ProfileCallback(
                     action="profile", owner_id=owner_id
                 ).pack(),
             ),
             InlineKeyboardButton(
-                text="⚔️ اطلاعات جنگ",
+                text="اطلاعات جنگ",
+                icon_custom_emoji_id="5915633360734002967",
                 callback_data=ProfileCallback(action="war", owner_id=owner_id).pack(),
             ),
         ],
@@ -47,6 +49,7 @@ def profile_keyboard(
                 [
                     InlineKeyboardButton(
                         text="⬆️ ارتقای سطح",
+                        style="success",
                         callback_data=ProfileCallback(
                             action="upgrade", owner_id=owner_id
                         ).pack(),
@@ -78,10 +81,12 @@ def level_confirmation_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="✅ افزایش سطح",
+                    style="success",
                     callback_data=LevelConfirmationCallback(decision="confirm").pack(),
                 ),
                 InlineKeyboardButton(
                     text="❌ لغو",
+                    style="danger",
                     callback_data=LevelConfirmationCallback(decision="cancel").pack(),
                 ),
             ]

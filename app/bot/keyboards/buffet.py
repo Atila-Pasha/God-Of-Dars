@@ -31,13 +31,9 @@ def buffet_keyboard(options: tuple[BuffetConversion, ...]) -> InlineKeyboardMark
             [
                 InlineKeyboardButton(
                     text=(
-                        f"{RESOURCE_EMOJIS[option.source.value]} ➜ "
-                        f"{RESOURCE_EMOJIS[option.target.value]}"
-                    ),
-                    # The generic custom-emoji decorator cannot infer the
-                    # source when both currencies are present in the label.
-                    icon_custom_emoji_id=premium_emoji_id(
-                        RESOURCE_EMOJIS[option.source.value]
+                        "تبدیل الماس به طلا"
+                        if option.source.value == "DIAMOND"
+                        else "تبدیل طلا به الماس"
                     ),
                     callback_data=callback_data,
                 ),
@@ -98,17 +94,25 @@ def buffet_cancel_keyboard() -> InlineKeyboardMarkup:
 
 
 def shield_catalog_keyboard(
-    shields: list[Shield], owned: list[UserShield] | None = None
+    shields: list[Shield],
+    owned: list[UserShield] | None = None,
+    *,
+    player_level: int = 1,
 ) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
-                text=f"{shield.name} — {shield.duration_minutes} دقیقه",
-                icon_custom_emoji_id=premium_emoji_id("🛡"),
+                text=f"{shield.name} — سطح {shield.unlock_level}"
+                if shield.unlock_level > player_level
+                else shield.name,
+                icon_custom_emoji_id=SHIELD_ICONS.get(
+                    shield.name, premium_emoji_id("🛡")
+                ),
                 callback_data=ShieldCallback(action="buy", shield_id=shield.id).pack(),
             )
         ]
         for shield in shields
+        if shield.unlock_level <= player_level
     ]
     rows.append(
         [
@@ -121,18 +125,29 @@ def shield_catalog_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+SHIELD_ICONS = {
+    "سپر زنگ تفریح": "5825861861278490879",
+    "سپر آلودگی هوا": "5917839500750364054",
+    "سپر محمدی": "5915796556606348792",
+    "سپر کاظمی": "5917954648823570305",
+    "سپر خسروپناه": "5915702157520150395",
+}
+
+
 def shield_purchase_confirmation(shield: Shield) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ تأیید خرید",
+                    style="success",
                     callback_data=ShieldPurchaseCallback(
                         decision="confirm", shield_id=shield.id
                     ).pack(),
                 ),
                 InlineKeyboardButton(
                     text="❌ لغو",
+                    style="danger",
                     callback_data=ShieldPurchaseCallback(
                         decision="cancel", shield_id=shield.id
                     ).pack(),

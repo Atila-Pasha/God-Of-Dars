@@ -19,7 +19,8 @@ def library_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="📖 ثبت مطالعه",
+                    text="ثبت ساعت مطالعه",
+                    icon_custom_emoji_id="5825736654391876714",
                     callback_data=LibraryCallback(action="study").pack(),
                 ),
                 InlineKeyboardButton(
@@ -59,7 +60,7 @@ def answer_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="✍️ پاسخ دادن",
-                    callback_data=LibraryCallback(action="daily").pack(),
+                    callback_data=LibraryCallback(action="answer").pack(),
                 ),
                 InlineKeyboardButton(
                     text="❌ لغو",
@@ -89,7 +90,8 @@ def teacher_library_keyboard(
     if page > 0:
         navigation.append(
             InlineKeyboardButton(
-                text="◀️ قبلی",
+                text="قبلی",
+                icon_custom_emoji_id="5235470399730361615",
                 callback_data=LibraryTeacherCallback(
                     action="page", page=page - 1
                 ).pack(),
@@ -98,7 +100,8 @@ def teacher_library_keyboard(
     if page < page_count - 1:
         navigation.append(
             InlineKeyboardButton(
-                text="بعدی ▶️",
+                text="بعدی",
+                icon_custom_emoji_id="5233475649414373111",
                 callback_data=LibraryTeacherCallback(
                     action="page", page=page + 1
                 ).pack(),

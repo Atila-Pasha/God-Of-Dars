@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import (
+    BANANA,
     COIN,
     DIAMOND,
     FORT,
@@ -13,7 +14,6 @@ from app.bot.banners import (
     bold,
     emoji,
     escape,
-    rich_banner,
     section_entry_banner,
 )
 from app.bot.callbacks import MineCallback
@@ -51,18 +51,49 @@ def _mine_text(snapshot) -> str:
         if ready
         else f"{emoji('6039539366177541657', '⏳')} کوره‌ها مشغول کارند؛ کمی دیگر سر بزن\\."
     )
+    coin_scale = max(
+        1, production.coin_per_minute * mine_service.config.mine_max_catchup_minutes
+    )
+    diamond_scale = max(
+        1, production.diamond_per_minute * mine_service.config.mine_max_catchup_minutes
+    )
     return (
         f"{emoji('5823474022670671455', '⛏️')} {bold('معدن فرماندهی')} {emoji('5935912783261470019', '✨')}\n\n"
         f"{FORT} سطح معدن: {bold(snapshot.level)}\n"
         f"{emoji('6039539366177541657', '⚙️')} زمان تولید محاسبه‌شده: {escape(snapshot.collected_minutes)} دقیقه\n\n"
-        f"{emoji('5823611946955447648', '✨')} {bold('توان تولید در هر دقیقه')}\n"
-        f"{COIN}    طلا: {escape(production.coin_per_minute)}\n"
-        f"{DIAMOND}    الماس: {escape(production.diamond_per_minute)}\n\n"
-        f"{LOOT} {bold('محمولهٔ فعلی معدن')}\n"
-        f"{COIN}    طلا: {bold(snapshot.today_coin)}\n"
-        f"{DIAMOND}    الماس: {bold(snapshot.today_diamond)}\n\n"
+        f"{emoji('6007857303695400402', '📈')} {bold('تولید در هر دقیقه')}:\n\n"
+        f"{COIN} طلا: {escape(production.coin_per_minute)}\n"
+        f"{DIAMOND} الماس: {escape(production.diamond_per_minute)}\n\n"
+        f"{LOOT} {bold('محمولهٔ فعلی معدن')}:\n\n"
+        f"{DIAMOND} {bold('معدن الماس')}\n"
+        f"موجودی: {bold(f'{snapshot.today_diamond:,} / {diamond_scale:,}')} {DIAMOND}\n"
+        f"{_ore_bar(snapshot.today_diamond, diamond_scale)}\n\n"
+        f"{emoji('5823329527085931340', '🪙')} {bold('معدن طلا')}\n"
+        f"موجودی: {bold(f'{snapshot.today_coin:,} / {coin_scale:,}')} {emoji('5823329527085931340', '🪙')}\n"
+        f"{_ore_bar(snapshot.today_coin, coin_scale)}\n\n"
+        f"مقیاس نوار: تولید {escape(mine_service.config.mine_max_catchup_minutes // 60)} ساعت؛ برداشت محدودیت ظرفیت ندارد\\.\n\n"
         f"{status}"
     )
+
+
+def _ore_bar(amount: int, scale: int) -> str:
+    """Render the supplied eight-piece bar, preserving its rounded ends."""
+    scale = max(1, scale)
+    filled = max(0, min(8, (8 * amount + scale - 1) // scale))
+    pieces = []
+    for index in range(8):
+        if index < filled:
+            identifier = (
+                "5947346029153100052"
+                if index == 0
+                else "5947466314007192098"
+                if index == filled - 1
+                else "5949736114028814482"
+            )
+        else:
+            identifier = "5931534188657254206" if index == 7 else "5933785859621920322"
+        pieces.append(emoji(identifier, "🟩" if index < filled else "⬛"))
+    return "".join(pieces)
 
 
 def _upgrade_text(snapshot, next_level) -> str:
@@ -71,18 +102,14 @@ def _upgrade_text(snapshot, next_level) -> str:
         next_level.diamond_cost or 0
     )
     return (
-        "⬆️ ارتقای معدن | پیش‌نمایش\n"
-        "\n"
-        f"سطح فعلی: {snapshot.level}\n"
-        f"سطح بعدی: {snapshot.level + 1}\n\n"
-        "📈 تولید جدید در هر دقیقه:\n"
-        f"🪙 طلا: {next_level.coin_per_minute} "
-        f"(تغییر: {next_level.coin_per_minute - current.coin_per_minute:+d})\n"
-        f"💎 الماس: {next_level.diamond_per_minute} "
-        f"(تغییر: {next_level.diamond_per_minute - current.diamond_per_minute:+d})\n\n"
-        f"💎 هزینه ارتقا: {next_level.diamond_cost} الماس\n\n"
-        f"🍌 پاداش ارتقا: {banana_reward} موز\n\n"
-        "🔥 آماده‌ای تولید معدن رو یک پله منفجر کنی؟"
+        f"{emoji('5866060208253441223', '⬆️')} {bold('ارتقای معدن | پیش‌نمایش')} {emoji('5282843764451195532', '✨')}\n\n"
+        f"{bold('سطح:')} {escape(snapshot.level)} {emoji('5235470399730361615', '➡️')} {escape(snapshot.level + 1)}\n\n"
+        f"{emoji('6007857303695400402', '📈')} {bold('تولید جدید در هر دقیقه:')}\n\n"
+        f"{COIN} {bold('طلا:')} {bold(next_level.coin_per_minute)}  « تغییر: {escape(f'{next_level.coin_per_minute - current.coin_per_minute:+d}')} »\n"
+        f"{DIAMOND} {bold('الماس:')} {bold(next_level.diamond_per_minute)}  « تغییر: {escape(f'{next_level.diamond_per_minute - current.diamond_per_minute:+d}')} »\n\n"
+        f"{emoji('5823196980100211145', '💎')} {bold('هزینه ارتقا:')} {escape(next_level.diamond_cost)} الماس {DIAMOND}\n\n"
+        f"{emoji('5825447362574688486', '🎁')} {bold('پاداش ارتقا:')} {escape(banana_reward)} {bold('موز')} {BANANA}\n\n"
+        f"{emoji('5832384984593206481', '🔥')} آماده‌ای تولید معدن رو یک پله منفجر کنی؟"
     )
 
 
@@ -105,13 +132,13 @@ async def _show(target: Message | CallbackQuery, session: AsyncSession) -> None:
             target.message, text, reply_markup=markup, parse_mode=MARKDOWN_V2
         )
     else:
-        await target.answer(text, reply_markup=markup, parse_mode=MARKDOWN_V2)
         if isinstance(target, Message):
             await target.answer(
                 section_entry_banner("معدن"),
                 reply_markup=section_back_keyboard(),
                 parse_mode=MARKDOWN_V2,
             )
+        await target.answer(text, reply_markup=markup, parse_mode=MARKDOWN_V2)
 
 
 async def mine_handler(message: Message, session: AsyncSession | None = None) -> None:
@@ -178,7 +205,7 @@ async def mine_callback(
                 raise MineUpgradeUnavailable from exc
             await safe_edit_text(
                 callback.message,
-                rich_banner(_upgrade_text(snapshot, next_level)),
+                _upgrade_text(snapshot, next_level),
                 reply_markup=mine_upgrade_confirmation_keyboard(),
                 parse_mode=MARKDOWN_V2,
             )
