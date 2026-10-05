@@ -103,6 +103,16 @@ def _progress_percent(value: int, maximum: int) -> str:
     return _number(round(max(0, min(value, maximum)) / maximum * 100)) + "%"
 
 
+def _teacher_hp_banner(current_hp: int, max_hp: int) -> str:
+    """Keep the custom-emoji chart on its own line in right-to-left messages."""
+    amount = f"\u2066{_number(current_hp)} / {_number(max_hp)} HP\u2069"
+    return (
+        f"{emoji('5213455977919039650', '❤️')} جان دبیر: {bold(amount)} "
+        f"{escape(f'({_progress_percent(current_hp, max_hp)})')}\n"
+        f"{_progress_bar(current_hp, max_hp)}"
+    )
+
+
 def _teacher_purchase_error(error: Exception) -> str:
     if isinstance(error, (TeacherSlotLocked, TeacherLimitReached)):
         return (
@@ -334,8 +344,6 @@ async def _teacher_view(
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
     details = f"🎖 سطح: {_number(teacher.level)}\n⚔️ قدرت ضربه: {damage_text}\n"
     after_bar = (
-        f"   {_number(teacher.current_hp)} / {_number(teacher.teacher.max_hp)} "
-        f"({_progress_percent(teacher.current_hp, teacher.teacher.max_hp)})\n"
         f"📌 وضعیت: {_status(teacher)}\n"
         f"✨ توانایی: {teacher.teacher.ability_text or 'تنظیم نشده'}\n\n"
         f"⏳ {_recovery_text(teacher)}"
@@ -344,7 +352,7 @@ async def _teacher_view(
         f"{teacher_icon(teacher.teacher.emoji)}    "
         f"{bold(f'پروندهٔ عملیاتی | {teacher.teacher.name}')}\n\n"
         f"{rich_plain(details)}"
-        f"{emoji('5213455977919039650', '❤️')} جان: {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)}\n"
+        f"{_teacher_hp_banner(teacher.current_hp, teacher.teacher.max_hp)}\n\n"
         f"{rich_plain(after_bar)}"
     )
     await _send_or_edit(
@@ -377,10 +385,7 @@ async def _hospital_view(
             lines.extend(
                 [
                     f"{rich_plain(_status_icon(teacher))} {escape(teacher.teacher.name)}  •  {escape(_status(teacher))}",
-                    (
-                        f"{emoji('5213455977919039650', '❤️')} {_progress_bar(teacher.current_hp, teacher.teacher.max_hp)} "
-                        f"{escape(_number(teacher.current_hp))} / {escape(_number(teacher.teacher.max_hp))}"
-                    ),
+                    _teacher_hp_banner(teacher.current_hp, teacher.teacher.max_hp),
                     f"{emoji('6039539366177541657', '⏳')} {escape(_recovery_text(teacher))}",
                     "",
                 ]

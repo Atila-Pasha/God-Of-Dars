@@ -16,6 +16,20 @@ def test_school_capacity_bar_uses_green_premium_pieces() -> None:
     assert bar.startswith("\u2066") and bar.endswith("\u2069")
 
 
+@pytest.mark.parametrize("hp, percent", [(0, "0%"), (73, "73%"), (100, "100%")])
+def test_teacher_hp_chart_has_its_own_line_and_matches_remaining_hp(
+    hp: int, percent: str
+) -> None:
+    text = school._teacher_hp_banner(hp, 100)
+    label, chart = text.split("\n")
+
+    assert f"{hp} / 100 HP" in label
+    assert percent in label
+    assert "tg://emoji?id=594" in chart if hp else "tg://emoji?id=593" in chart
+    assert chart.startswith("\u2066") and chart.endswith("\u2069")
+    assert "جان دبیر" not in chart
+
+
 @pytest.mark.asyncio
 async def test_empty_teacher_section_escapes_markdown_and_keeps_premium_bar(
     monkeypatch,
