@@ -58,8 +58,8 @@ def _mine_text(snapshot) -> str:
     if diamond_scale:
         diamond_stock = (
             f"موجودی قابل برداشت: {bold(_ltr(f'{snapshot.today_diamond:,}'))} {DIAMOND}\n"
-            f"تولید امروز: {bold(_ltr(f'{daily_minutes * production.diamond_per_minute:,} / {diamond_scale:,}'))}\n"
-            f"{_ore_bar(daily_minutes, daily_limit)}"
+            f"{_ore_bar(snapshot.today_diamond, diamond_scale)}\n"
+            f"تولید امروز: {bold(_ltr(f'{daily_minutes * production.diamond_per_minute:,} / {diamond_scale:,}'))}"
         )
     else:
         diamond_stock = (
@@ -79,8 +79,9 @@ def _mine_text(snapshot) -> str:
         f"{diamond_stock}\n\n"
         f"{emoji('5823329527085931340', '🪙')} {bold('معدن طلا')}\n"
         f"موجودی قابل برداشت: {bold(_ltr(f'{snapshot.today_coin:,}'))} {emoji('5823329527085931340', '🪙')}\n"
-        f"تولید امروز: {bold(_ltr(f'{daily_minutes * production.coin_per_minute:,} / {coin_scale:,}'))}\n"
-        f"{_ore_bar(daily_minutes, daily_limit)}\n\n"
+        f"{_ore_bar(snapshot.today_coin, coin_scale)}\n"
+        f"تولید امروز: {bold(_ltr(f'{daily_minutes * production.coin_per_minute:,} / {coin_scale:,}'))}\n\n"
+        f"مقیاس نوار محموله: سقف تولید یک روز؛ محمولهٔ بیشتر، نوار را کامل نشان می‌دهد\\.\n"
         f"سقف تولید روزانه: {escape(daily_limit // 60)} ساعت؛ محمولهٔ برداشت‌نشده باقی می‌ماند\\.\n\n"
         f"{status}"
     )
