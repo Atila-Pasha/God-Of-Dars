@@ -51,7 +51,7 @@ class TeacherCallback(CallbackData, prefix="teacher"):
 
 
 class HospitalCallback(CallbackData, prefix="hospital"):
-    action: Literal["activate", "recover", "instant", "discharge", "back"]
+    action: Literal["activate", "recover", "instant", "discharge", "upgrade", "back"]
     teacher_id: int
 
 
@@ -64,6 +64,7 @@ class ConfirmationCallback(CallbackData, prefix="confirm"):
         "teacher_sell",
         "teacher_activate",
         "hospital_instant_recover",
+        "hospital_upgrade",
     ]
     target_id: int
     decision: Literal["confirm", "cancel"]

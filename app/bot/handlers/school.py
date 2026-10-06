@@ -54,6 +54,8 @@ from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
     AttackInProgress,
     CastleNeedsRepair,
+    HospitalFull,
+    HospitalUpgradeUnavailable,
     InsufficientCoins,
     InsufficientDiamonds,
     SchoolError,
@@ -380,10 +382,24 @@ async def _hospital_view(
 ) -> None:
     user = await _user(session, target.from_user.id)
     patients = await hospital_service.patients(session, user.id)
+    hospital = await hospital_service.snapshot(session, user.id)
     lines = [
         f"{emoji('5825570280243732195', '🏥')} {bold('بیمارستان مدرسه')}",
         "",
+        f"{emoji('5825727141039317043', '🎖')} {escape('سطح بیمارستان:')} {escape(_number(hospital.level))}",
+        f"{emoji('5213455977919039650', '❤️')} {escape('تخت‌های اشغال‌شده:')} {escape(_number(hospital.occupied))} {escape('/')} {escape(_number(hospital.capacity))}",
+        f"{emoji('6039539366177541657', '⏳')} {escape('سرعت بهبود:')} {escape(_number(hospital.speed_percent))}{escape('%')}",
+        "",
     ]
+    if hospital.upgrade_cost is not None:
+        lines.append(
+            f"{emoji('5866060208253441223', '⬆️')} {escape('ارتقای بعدی:')} "
+            f"{escape(_number(hospital.next_capacity))} {escape('تخت، سرعت')} "
+            f"{escape(_number(hospital.next_speed_percent))}{escape('%')} "
+            f"{escape('با')} {escape(_number(hospital.upgrade_cost))} {escape('الماس')} "
+            f"{escape('(سطح فرمانده')} {escape(_number(hospital.required_player_level))}{escape(')')}"
+        )
+        lines.append("")
     if not patients:
         lines.append(escape("در حال حاضر دبیر مصدوم یا غیرفعالی ندارید."))
     else:
@@ -404,6 +420,8 @@ async def _hospital_view(
             can_activate=hospital_service.can_activate(),
             can_recover=hospital_service.can_begin_recovery(),
             instant_recovery_cost=hospital_service.instant_recovery_cost(),
+            can_upgrade=hospital.upgrade_cost is not None
+            and hospital.player_level >= (hospital.required_player_level or 1),
         ),
         parse_mode=MARKDOWN_V2,
     )
@@ -688,6 +706,11 @@ async def teacher_callback_handler(
             )
             await _teacher_view(callback, session, callback_data.teacher_id)
             await callback.answer("دبیر به بیمارستان فرستاده شد.")
+    except HospitalFull:
+        await callback.answer(
+            "تخت‌های بیمارستان پر هستند. دبیر بهبود‌یافته را ترخیص کن یا بیمارستان را ارتقا بده.",
+            show_alert=True,
+        )
     except InsufficientDiamonds:
         await callback.answer("الماس کافی برای ارتقا ندارید.", show_alert=True)
     except SchoolError:
@@ -733,7 +756,10 @@ async def confirmation_callback_handler(
                 return
             if callback_data.action == "castle_upgrade":
                 await _castle_view(callback, session)
-            elif callback_data.action == "hospital_instant_recover":
+            elif callback_data.action in {
+                "hospital_instant_recover",
+                "hospital_upgrade",
+            }:
                 await _hospital_view(callback, session)
             else:
                 if callback_data.origin == "buffet":
@@ -759,6 +785,10 @@ async def confirmation_callback_handler(
             )
             await _hospital_view(callback, session)
             notice = "دبیر با پرداخت الماس فوراً بهبود پیدا کرد."
+        elif callback_data.action == "hospital_upgrade":
+            await hospital_service.upgrade(session, user.id)
+            await _hospital_view(callback, session)
+            notice = "بیمارستان ارتقا پیدا کرد؛ بستری‌های جدید سریع‌تر بهبود می‌یابند."
         elif callback_data.action == "teacher_buy":
             purchased_teacher = await teacher_service.buy(
                 session, user.id, callback_data.target_id
@@ -868,6 +898,31 @@ async def hospital_callback_handler(
             )
             await callback.answer()
             return
+        elif callback_data.action == "upgrade":
+            hospital = await hospital_service.snapshot(session, user.id)
+            if hospital.upgrade_cost is None or hospital.player_level < (
+                hospital.required_player_level or 1
+            ):
+                raise HospitalUpgradeUnavailable
+            reward = hospital_service.config.upgrade_banana_reward(
+                hospital.upgrade_cost
+            )
+            await _send_or_edit(
+                callback,
+                f"{emoji('5866060208253441223', '⬆️')} {bold('ارتقای بیمارستان')}\n\n"
+                f"{escape('سطح:')} {escape(_number(hospital.level))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.level + 1))}\n"
+                f"{escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_capacity))}\n"
+                f"{escape('سرعت بهبود:')} {escape(_number(hospital.speed_percent))}{escape('%')} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_speed_percent))}{escape('%')}\n\n"
+                f"{emoji('5825753314570018832', '💎')} {escape('هزینه:')} {escape(_number(hospital.upgrade_cost))} {escape('الماس')}\n"
+                f"{emoji('5902520589356113908', '🍌')} {escape('پاداش:')} {escape(_number(reward))} {escape('موز')}\n\n"
+                f"{bold('ارتقا را تأیید می‌کنی؟')}",
+                reply_markup=confirmation_keyboard(
+                    action="hospital_upgrade", target_id=0
+                ),
+                parse_mode=MARKDOWN_V2,
+            )
+            await callback.answer()
+            return
         elif callback_data.action == "back":
             await _school_view(callback, session)
             await callback.answer()
@@ -876,5 +931,10 @@ async def hospital_callback_handler(
             notice = None
         await _hospital_view(callback, session)
         await callback.answer(notice)
+    except HospitalFull:
+        await callback.answer(
+            "تخت‌های بیمارستان پر هستند. دبیر بهبود‌یافته را ترخیص کن یا بیمارستان را ارتقا بده.",
+            show_alert=True,
+        )
     except SchoolError:
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)

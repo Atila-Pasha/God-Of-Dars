@@ -208,7 +208,7 @@ class CastleService:
         return CastleDamageResult(
             incoming_damage=mitigation.incoming_damage,
             blocked_damage=mitigation.blocked_damage,
-            applied_damage=mitigation.remaining_damage,
+            applied_damage=min(before, mitigation.remaining_damage),
             castle_strength_before=before,
             castle_strength_after=castle.strength,
         )

@@ -82,6 +82,7 @@ def user(level: int = 1) -> User:
         telegram_user_id=42,
         first_name="Ali",
         level=level,
+        hospital_level=1,
     )
 
 
@@ -492,7 +493,9 @@ async def test_damaged_active_teacher_can_enter_hospital_before_zero_hp() -> Non
     castle_service = SimpleNamespace(
         snapshot=AsyncMock(return_value=SimpleNamespace(strength=100))
     )
-    session = SimpleNamespace(add=lambda item: None, flush=AsyncMock())
+    session = SimpleNamespace(
+        add=lambda item: None, flush=AsyncMock(), scalar=AsyncMock(return_value=0)
+    )
     service = HospitalService(
         repository,
         castle_service,

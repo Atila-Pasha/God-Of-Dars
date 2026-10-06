@@ -613,8 +613,10 @@ async def test_attack_resource_lock_prevents_stale_reward_overwrite() -> None:
     service = AttackService()
     original_receive = service.castle_service.receive_attack_damage
 
-    async def receive_and_pause(session, user_id, incoming_damage):
-        result = await original_receive(session, user_id, incoming_damage)
+    async def receive_and_pause(session, user_id, incoming_damage, *, teacher_names=None):
+        result = await original_receive(
+            session, user_id, incoming_damage, teacher_names=teacher_names
+        )
         paused.set()
         await reward_started.wait()
         release.set()

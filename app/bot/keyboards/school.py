@@ -94,6 +94,7 @@ ConfirmationAction = Literal[
     "teacher_sell",
     "teacher_activate",
     "hospital_instant_recover",
+    "hospital_upgrade",
 ]
 TeacherAction = Literal[
     "view",
@@ -389,8 +390,22 @@ def hospital_keyboard(
     can_activate: bool,
     can_recover: bool,
     instant_recovery_cost: int | None = None,
+    can_upgrade: bool = False,
 ) -> InlineKeyboardMarkup:
     rows = []
+    if can_upgrade:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="ارتقای بیمارستان",
+                    icon_custom_emoji_id="5866060208253441223",
+                    style="success",
+                    callback_data=HospitalCallback(
+                        action="upgrade", teacher_id=0
+                    ).pack(),
+                )
+            ]
+        )
     for teacher in teachers:
         if HospitalService.ready_for_discharge(teacher):
             rows.append(
@@ -416,7 +431,13 @@ def hospital_keyboard(
                     )
                 ]
             )
-        elif teacher.status is TeacherStatus.INJURED and can_recover:
+        elif (
+            teacher.status is TeacherStatus.INJURED
+            or (
+                teacher.status is TeacherStatus.ACTIVE
+                and teacher.current_hp < teacher.teacher.max_hp
+            )
+        ) and can_recover:
             rows.append(
                 [
                     InlineKeyboardButton(
@@ -447,7 +468,9 @@ def hospital_keyboard(
     rows.append(
         [
             InlineKeyboardButton(
-                text="🔙 مدرسه من",
+                text="بازگشت",
+                icon_custom_emoji_id="5235864325540815679",
+                style="danger",
                 callback_data=HospitalCallback(action="back", teacher_id=0).pack(),
             )
         ]

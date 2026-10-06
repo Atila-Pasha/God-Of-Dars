@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ResourceType, TeacherStatus
@@ -10,10 +12,28 @@ from app.repositories.teacher import TeacherRepository
 from app.services.castle_service import CastleService
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
+    HospitalFull,
+    HospitalUpgradeUnavailable,
+    InsufficientDiamonds,
     InvalidTeacherState,
     OperationNotConfigured,
+    ResourceNotFound,
+    SchoolUserNotFound,
     TeacherNotOwned,
 )
+
+
+@dataclass(frozen=True)
+class HospitalSnapshot:
+    level: int
+    capacity: int
+    occupied: int
+    speed_percent: int
+    next_capacity: int | None
+    next_speed_percent: int | None
+    upgrade_cost: int | None
+    required_player_level: int | None
+    player_level: int
 
 
 class HospitalService:
@@ -38,6 +58,76 @@ class HospitalService:
         return self.config.instant_recovery_diamond_cost
 
     @staticmethod
+    async def _occupied(session: AsyncSession, user_id: int) -> int:
+        return int(
+            await session.scalar(
+                select(func.count(Recovery.id))
+                .join(UserTeacher, Recovery.user_teacher_id == UserTeacher.id)
+                .where(UserTeacher.user_id == user_id, Recovery.completed_at.is_(None))
+            )
+            or 0
+        )
+
+    async def snapshot(self, session: AsyncSession, user_id: int) -> HospitalSnapshot:
+        user = await self.repository.get_user(session, user_id)
+        if user is None:
+            raise SchoolUserNotFound
+        level = user.hospital_level
+        current = self.config.hospital_level(level)
+        next_level = self.config.hospital_levels.get(level + 1)
+        return HospitalSnapshot(
+            level=level,
+            capacity=current.capacity,
+            occupied=await self._occupied(session, user_id),
+            speed_percent=current.speed_percent,
+            next_capacity=next_level.capacity if next_level else None,
+            next_speed_percent=next_level.speed_percent if next_level else None,
+            upgrade_cost=next_level.diamond_cost if next_level else None,
+            required_player_level=next_level.required_player_level
+            if next_level
+            else None,
+            player_level=user.level,
+        )
+
+    async def upgrade(self, session: AsyncSession, user_id: int) -> int:
+        user = await self.repository.get_user_for_update(session, user_id)
+        if user is None:
+            raise SchoolUserNotFound
+        next_level = self.config.hospital_levels.get(user.hospital_level + 1)
+        if (
+            next_level is None
+            or next_level.diamond_cost is None
+            or user.level < next_level.required_player_level
+        ):
+            raise HospitalUpgradeUnavailable
+        resources = await self.repository.get_resources_for_update(session, user_id)
+        if resources is None:
+            raise ResourceNotFound
+        if resources.diamond < next_level.diamond_cost:
+            raise InsufficientDiamonds
+        await ResourceService.debit_diamond(
+            session,
+            resources,
+            user_id=user_id,
+            amount=next_level.diamond_cost,
+            reason="HOSPITAL_UPGRADE",
+            reference_type="USER",
+            reference_id=user_id,
+        )
+        await ResourceService.credit_banana(
+            session,
+            resources,
+            user_id=user_id,
+            amount=self.config.upgrade_banana_reward(next_level.diamond_cost),
+            reason="HOSPITAL_UPGRADE_XP",
+            reference_type="USER",
+            reference_id=user_id,
+        )
+        user.hospital_level += 1
+        await session.flush()
+        return user.hospital_level
+
+    @staticmethod
     def ready_for_discharge(
         teacher: UserTeacher, *, now: datetime | None = None
     ) -> bool:
@@ -55,6 +145,7 @@ class HospitalService:
     async def discharge(
         self, session: AsyncSession, user_id: int, user_teacher_id: int
     ) -> UserTeacher:
+        await self.repository.get_user_for_update(session, user_id)
         teacher = await self.repository.get_owned_for_update(
             session, user_id, user_teacher_id
         )
@@ -78,6 +169,8 @@ class HospitalService:
     async def instant_recover(
         self, session: AsyncSession, user_id: int, user_teacher_id: int
     ) -> UserTeacher:
+        await self.repository.get_user_for_update(session, user_id)
+        resources = await self.repository.get_resources_for_update(session, user_id)
         teacher = await self.repository.get_owned_for_update(
             session, user_id, user_teacher_id
         )
@@ -94,7 +187,6 @@ class HospitalService:
         cost = self.config.instant_recovery_diamond_cost
         if cost is None:
             raise OperationNotConfigured
-        resources = await self.repository.get_resources_for_update(session, user_id)
         await ResourceService.debit(
             session,
             resources,
@@ -137,11 +229,18 @@ class HospitalService:
                 TeacherStatus.DISABLED,
                 TeacherStatus.RECOVERING,
             }
+            or (
+                teacher.status is TeacherStatus.ACTIVE
+                and teacher.current_hp < teacher.teacher.max_hp
+            )
         ]
 
     async def begin_recovery(
         self, session: AsyncSession, user_id: int, user_teacher_id: int
     ) -> UserTeacher:
+        user = await self.repository.get_user_for_update(session, user_id)
+        if user is None:
+            raise SchoolUserNotFound
         teacher = await self.repository.get_owned_for_update(
             session, user_id, user_teacher_id
         )
@@ -160,9 +259,15 @@ class HospitalService:
             raise InvalidTeacherState
         if any(recovery.completed_at is None for recovery in teacher.recoveries):
             raise InvalidTeacherState
+        if (
+            await self._occupied(session, user_id)
+            >= self.config.hospital_level(user.hospital_level).capacity
+        ):
+            raise HospitalFull
         try:
-            duration_minutes = self.config.recovery_minutes(
-                (await self.castle_service.snapshot(session, user_id)).strength
+            duration_minutes = self.config.hospital_recovery_minutes(
+                (await self.castle_service.snapshot(session, user_id)).strength,
+                user.hospital_level,
             )
         except GameConfigurationError as exc:
             raise OperationNotConfigured from exc

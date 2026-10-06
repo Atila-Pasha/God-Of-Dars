@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import tomllib
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -126,6 +127,14 @@ class MineLevel:
 
 
 @dataclass(frozen=True)
+class HospitalLevel:
+    capacity: int
+    speed_percent: int
+    diamond_cost: int | None = None
+    required_player_level: int = 1
+
+
+@dataclass(frozen=True)
 class LevelProgression:
     """XP required to move from each level; values are balance-editable."""
 
@@ -225,6 +234,7 @@ class GameConfig:
     teacher_max_level: int = 500
     teacher_sell_ratio: float | None = None
     recovery_minutes_by_strength: tuple[tuple[int, int], ...] = ()
+    hospital_levels: dict[int, HospitalLevel] = field(default_factory=dict)
     initial_castle_strength: int = 0
     initial_defense_power: int = 0
     referral_reward_resource: ResourceType = ResourceType.DIAMOND
@@ -281,6 +291,28 @@ class GameConfig:
             if strength < 0 or strength <= previous_strength or minutes <= 0:
                 raise ValueError("recovery strength thresholds are invalid")
             previous_strength = strength
+        if self.hospital_levels:
+            if 1 not in self.hospital_levels or sorted(self.hospital_levels) != list(
+                range(1, max(self.hospital_levels) + 1)
+            ):
+                raise ValueError("hospital levels must be consecutive from 1")
+            previous_capacity = previous_speed = 0
+            for level, hospital in sorted(self.hospital_levels.items()):
+                if (
+                    hospital.capacity < 1
+                    or hospital.capacity < previous_capacity
+                    or hospital.speed_percent < 100
+                    or hospital.speed_percent < previous_speed
+                    or hospital.required_player_level < 1
+                    or (hospital.diamond_cost is not None and hospital.diamond_cost < 0)
+                ):
+                    raise ValueError("hospital progression is invalid")
+                if level > 1 and hospital.diamond_cost is None:
+                    raise ValueError("hospital upgrade cost is missing")
+                previous_capacity, previous_speed = (
+                    hospital.capacity,
+                    hospital.speed_percent,
+                )
         if (
             self.teacher_sell_ratio is not None
             and not 0 <= self.teacher_sell_ratio <= 1
@@ -541,6 +573,26 @@ class GameConfig:
         if duration <= 0:
             raise GameConfigurationError("Teacher recovery duration is not configured")
         return duration
+
+    def hospital_level(self, level: int) -> HospitalLevel:
+        if not self.hospital_levels:
+            if level != 1:
+                raise GameConfigurationError("Hospital level is not configured")
+            return HospitalLevel(capacity=1, speed_percent=100)
+        try:
+            return self.hospital_levels[level]
+        except KeyError as exc:
+            raise GameConfigurationError("Hospital level is not configured") from exc
+
+    def hospital_recovery_minutes(self, castle_strength: int, level: int) -> int:
+        return max(
+            1,
+            math.ceil(
+                self.recovery_minutes(castle_strength)
+                * 100
+                / self.hospital_level(level).speed_percent
+            ),
+        )
 
     @property
     def recovery_is_configured(self) -> bool:
@@ -812,6 +864,19 @@ class GameConfig:
             teacher_max_level=int(teacher_upgrade_data.get("max_level", 500)),
             teacher_sell_ratio=data.get("teacher_sell_ratio"),
             recovery_minutes_by_strength=recovery,
+            hospital_levels={
+                int(level.removeprefix("level_")): HospitalLevel(
+                    capacity=int(values["capacity"]),
+                    speed_percent=int(values["speed_percent"]),
+                    diamond_cost=(
+                        None
+                        if values.get("diamond_cost") is None
+                        else int(values["diamond_cost"])
+                    ),
+                    required_player_level=int(values.get("required_player_level", 1)),
+                )
+                for level, values in hospital_data.get("levels", {}).items()
+            },
             initial_castle_strength=int(data.get("initial_castle_strength", 0)),
             initial_defense_power=int(data.get("initial_defense_power", 0)),
             referral_reward_resource=ResourceType(

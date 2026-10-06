@@ -76,6 +76,14 @@ class TeacherInHospital(SchoolError):
     """The selected teacher is recovering and cannot join a battle."""
 
 
+class HospitalFull(SchoolError):
+    """All hospital beds are occupied until discharge."""
+
+
+class HospitalUpgradeUnavailable(SchoolError):
+    """The next hospital level is locked or the hospital is at its maximum."""
+
+
 class AttackInProgress(SchoolError):
     """The player must wait for the currently active attack to finish."""
 

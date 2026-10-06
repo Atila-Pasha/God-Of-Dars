@@ -47,6 +47,37 @@ random_selection_ttl_seconds = 900
 [hospital]
 instant_recovery_diamond_cost = 15
 
+# The duration is the castle-based recovery time divided by speed_percent.
+# A bed stays occupied until its teacher is discharged.
+[hospital.levels.level_1]
+capacity = 1
+speed_percent = 100
+required_player_level = 1
+
+[hospital.levels.level_2]
+capacity = 2
+speed_percent = 125
+diamond_cost = 120
+required_player_level = 3
+
+[hospital.levels.level_3]
+capacity = 3
+speed_percent = 160
+diamond_cost = 350
+required_player_level = 7
+
+[hospital.levels.level_4]
+capacity = 4
+speed_percent = 200
+diamond_cost = 800
+required_player_level = 12
+
+[hospital.levels.level_5]
+capacity = 5
+speed_percent = 250
+diamond_cost = 1600
+required_player_level = 20
+
 [castle_repair]
 # Repair cost is proportional to missing castle strength.
 diamond_cost_per_100_strength = 5

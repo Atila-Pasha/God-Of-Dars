@@ -771,7 +771,7 @@ class AttackService:
         loot = self._loot(
             target,
             castle_result.applied_damage,
-            attack.target_castle_strength_snapshot,
+            castle_result.castle_strength_before,
             attack.teacher_damage_snapshot,
         )
         loot["loot_banana"] = 0
@@ -780,6 +780,8 @@ class AttackService:
             teacher.current_hp = max(0, teacher.current_hp - injury)
             if teacher.current_hp == 0:
                 await session.delete(teacher)
+            else:
+                teacher.status = TeacherStatus.INJURED
 
         now = datetime.now(UTC)
         attack.status = AttackStatus.RESOLVED
@@ -801,10 +803,14 @@ class AttackService:
                 else f"attack:{attack.id}"
             ),
         )
-        xp_awarded = await self._claim_attack_xp(
-            session,
-            attack_command_id=attack.attack_command_id,
-            attack_id=attack.id,
+        xp_awarded = (
+            await self._claim_attack_xp(
+                session,
+                attack_command_id=attack.attack_command_id,
+                attack_id=attack.id,
+            )
+            if castle_result.applied_damage > 0
+            else False
         )
         if xp_awarded:
             attack.loot_banana = self.config.attack_rules.banana_reward
@@ -850,7 +856,7 @@ class AttackService:
             loot_diamond=attack.loot_diamond,
             loot_banana=attack.loot_banana,
             teacher_details=((teacher_name, teacher_ability, teacher_icon),),
-            castle_strength_before=attack.target_castle_strength_snapshot,
+            castle_strength_before=castle_result.castle_strength_before,
             source_chat_id=attack.source_chat_id,
         )
 
@@ -1137,6 +1143,8 @@ class AttackService:
                 teacher.current_hp = max(0, teacher.current_hp - injury)
                 if teacher.current_hp == 0:
                     await session.delete(teacher)
+                else:
+                    teacher.status = TeacherStatus.INJURED
             loot = self._loot(
                 target,
                 applied_damage,
@@ -1156,7 +1164,7 @@ class AttackService:
                 resolved_at=now,
                 attack_command_id=attack_command_id,
                 teacher_damage_snapshot=teacher_damage,
-                target_castle_strength_snapshot=target_castle.strength,
+                target_castle_strength_snapshot=castle_damage_result.castle_strength_before,
                 target_defense_power_snapshot=target_castle.defense.defense_power,
                 result_damage=applied_damage,
                 loot_coin=loot["loot_coin"],
@@ -1178,10 +1186,14 @@ class AttackService:
             key: sum(item[3][key] for item in teacher_results)
             for key in ("loot_coin", "loot_diamond", "loot_banana")
         }
-        xp_awarded = await self._claim_attack_xp(
-            session,
-            attack_command_id=attack_command_id,
-            attack_id=last_attack.id,
+        xp_awarded = (
+            await self._claim_attack_xp(
+                session,
+                attack_command_id=attack_command_id,
+                attack_id=last_attack.id,
+            )
+            if total_damage > 0
+            else False
         )
         total_loot["loot_banana"] = (
             self.config.attack_rules.banana_reward if xp_awarded else 0

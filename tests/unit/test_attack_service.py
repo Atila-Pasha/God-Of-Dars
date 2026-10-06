@@ -7,7 +7,31 @@ from app.bot.utils.attack import teacher_phrase
 from app.core.enums import ResourceType
 from app.core.game_logic import AttackRules, CastleRepairRules, GameConfig
 from app.services.attack_service import AttackService
+from app.services.castle_service import CastleService
 from app.services.school_errors import CannotAttackSelf, TargetProtectedByShield
+
+
+@pytest.mark.asyncio
+async def test_castle_damage_never_exceeds_remaining_strength() -> None:
+    castle = SimpleNamespace(strength=20)
+    service = CastleService()
+    service.repository = SimpleNamespace(get_by_user=AsyncMock(return_value=castle))
+    service.shield_service = SimpleNamespace(
+        consume_for_attack=AsyncMock(
+            return_value=SimpleNamespace(
+                incoming_damage=100,
+                blocked_damage=0,
+                remaining_damage=100,
+            )
+        )
+    )
+    session = SimpleNamespace(flush=AsyncMock())
+
+    first = await service.receive_attack_damage(session, 1, 100)
+    second = await service.receive_attack_damage(session, 1, 100)
+
+    assert (first.applied_damage, first.castle_strength_after) == (20, 0)
+    assert (second.applied_damage, second.castle_strength_after) == (0, 0)
 
 
 @pytest.mark.parametrize(

@@ -43,6 +43,9 @@ class User(Base):
         Index("ix_users_level_id", "level", "id"),
         CheckConstraint("level >= 1", name="ck_users_level_positive"),
         CheckConstraint(
+            "hospital_level >= 1", name="ck_users_hospital_level_positive"
+        ),
+        CheckConstraint(
             "referrer_id IS NULL OR referrer_id <> id",
             name="ck_users_cannot_refer_self",
         ),
@@ -54,6 +57,9 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String(255), nullable=False)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     level: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    hospital_level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
     is_active: Mapped[bool] = mapped_column(
