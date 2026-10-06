@@ -9,7 +9,6 @@ from app.core.game_logic import GameConfig, GameConfigurationError, game_config
 from app.models.recovery import Recovery
 from app.models.user_teacher import UserTeacher
 from app.repositories.teacher import TeacherRepository
-from app.services.castle_service import CastleService
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
     HospitalFull,
@@ -28,10 +27,8 @@ class HospitalSnapshot:
     level: int
     capacity: int
     occupied: int
-    speed_percent: int
-    recovery_minutes: int | None
+    recovery_minutes: int
     next_capacity: int | None
-    next_speed_percent: int | None
     next_recovery_minutes: int | None
     upgrade_cost: int | None
     required_player_level: int | None
@@ -42,12 +39,10 @@ class HospitalService:
     def __init__(
         self,
         repository: TeacherRepository | None = None,
-        castle_service: CastleService | None = None,
         *,
         config: GameConfig | None = None,
     ) -> None:
         self.repository = repository or TeacherRepository()
-        self.castle_service = castle_service or CastleService()
         self.config = config or game_config
 
     def can_activate(self) -> bool:
@@ -77,27 +72,14 @@ class HospitalService:
         level = user.hospital_level
         current = self.config.hospital_level(level)
         next_level = self.config.hospital_levels.get(level + 1)
-        strength = (
-            (await self.castle_service.snapshot(session, user_id)).strength
-            if self.config.recovery_is_configured
-            else None
-        )
         return HospitalSnapshot(
             level=level,
             capacity=current.capacity,
             occupied=await self._occupied(session, user_id),
-            speed_percent=current.speed_percent,
-            recovery_minutes=(
-                self.config.hospital_recovery_minutes(strength, level)
-                if strength is not None
-                else None
-            ),
+            recovery_minutes=current.recovery_minutes,
             next_capacity=next_level.capacity if next_level else None,
-            next_speed_percent=next_level.speed_percent if next_level else None,
             next_recovery_minutes=(
-                self.config.hospital_recovery_minutes(strength, level + 1)
-                if strength is not None and next_level is not None
-                else None
+                next_level.recovery_minutes if next_level is not None else None
             ),
             upgrade_cost=next_level.diamond_cost if next_level else None,
             required_player_level=next_level.required_player_level
@@ -283,8 +265,7 @@ class HospitalService:
             raise HospitalFull
         try:
             duration_minutes = self.config.hospital_recovery_minutes(
-                (await self.castle_service.snapshot(session, user_id)).strength,
-                user.hospital_level,
+                user.hospital_level
             )
         except GameConfigurationError as exc:
             raise OperationNotConfigured from exc

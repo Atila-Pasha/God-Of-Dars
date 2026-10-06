@@ -47,34 +47,34 @@ random_selection_ttl_seconds = 900
 [hospital]
 instant_recovery_diamond_cost = 15
 
-# The duration is the castle-based recovery time divided by speed_percent.
+# Each level has a fixed recovery duration independent of the castle.
 # A bed stays occupied until its teacher is discharged.
 [hospital.levels.level_1]
 capacity = 1
-speed_percent = 100
+recovery_minutes = 240
 required_player_level = 1
 
 [hospital.levels.level_2]
 capacity = 2
-speed_percent = 125
+recovery_minutes = 192
 diamond_cost = 120
 required_player_level = 3
 
 [hospital.levels.level_3]
 capacity = 3
-speed_percent = 160
+recovery_minutes = 150
 diamond_cost = 350
 required_player_level = 7
 
 [hospital.levels.level_4]
 capacity = 4
-speed_percent = 200
+recovery_minutes = 120
 diamond_cost = 800
 required_player_level = 12
 
 [hospital.levels.level_5]
 capacity = 5
-speed_percent = 250
+recovery_minutes = 96
 diamond_cost = 1600
 required_player_level = 20
 
@@ -301,26 +301,6 @@ defense_delta = 20
 diamond_cost = 2400
 strength_delta = 70
 defense_delta = 30
-
-# ---------------------------------------------------------------------------
-
-# Castle recovery
-
-#
-
-# Lower strength means longer recovery. As the castle becomes stronger,
-
-# recovery becomes faster, preventing high-level castles from becoming
-
-# permanently crippled after an attack.
-
-# ---------------------------------------------------------------------------
-
-[recovery_minutes]
-strength_0 = 240
-strength_150 = 180
-strength_250 = 120
-strength_400 = 90
 
 # ---------------------------------------------------------------------------
 

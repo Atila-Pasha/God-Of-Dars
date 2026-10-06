@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.enums import TeacherStatus
 from app.db.session import AsyncSessionLocal, engine
+from app.models.castle import Castle
 from app.models.recovery import Recovery
 from app.models.resource import Resource
 from app.models.teacher import Teacher
@@ -82,6 +83,10 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
         assert (before.level, before.capacity, before.occupied) == (1, 1, 1)
         assert before.recovery_minutes == 240
         assert before.next_recovery_minutes == 192
+        assert (
+            await session.scalar(select(Castle.id).where(Castle.user_id == user_id))
+            is None
+        )
         first = await session.scalar(
             select(Recovery).where(Recovery.completed_at.is_(None))
         )

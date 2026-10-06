@@ -37,10 +37,8 @@ async def test_hospital_banner_shows_time_and_bed_emoji_without_upgrade_details(
                 level=1,
                 capacity=1,
                 occupied=0,
-                speed_percent=100,
                 recovery_minutes=240,
                 next_capacity=2,
-                next_speed_percent=125,
                 next_recovery_minutes=192,
                 upgrade_cost=120,
                 required_player_level=3,
@@ -56,6 +54,7 @@ async def test_hospital_banner_shows_time_and_bed_emoji_without_upgrade_details(
     banner = send.await_args.args[1]
     assert "5275983061001977055" in banner
     assert "4 ساعت" in banner
+    assert "دژ" not in banner
     assert "ارتقای بعدی" not in banner
     assert "120" not in banner
     markup = send.await_args.kwargs["reply_markup"]
@@ -83,10 +82,8 @@ async def test_locked_hospital_upgrade_still_shows_time_change(monkeypatch) -> N
                 level=1,
                 capacity=1,
                 occupied=0,
-                speed_percent=100,
                 recovery_minutes=240,
                 next_capacity=2,
-                next_speed_percent=125,
                 next_recovery_minutes=192,
                 upgrade_cost=120,
                 required_player_level=3,
@@ -104,6 +101,7 @@ async def test_locked_hospital_upgrade_still_shows_time_change(monkeypatch) -> N
     banner = send.await_args.args[1]
     assert "4 ساعت" in banner
     assert "3 ساعت و 12 دقیقه" in banner
+    assert "دژ" not in banner
     assert "5275983061001977055" in banner
     assert "هنوز برای سطح شما باز نشده" in banner.replace("\\", "")
     markup = send.await_args.kwargs["reply_markup"]

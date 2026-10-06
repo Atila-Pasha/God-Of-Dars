@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import tomllib
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -129,7 +128,7 @@ class MineLevel:
 @dataclass(frozen=True)
 class HospitalLevel:
     capacity: int
-    speed_percent: int
+    recovery_minutes: int
     diamond_cost: int | None = None
     required_player_level: int = 1
 
@@ -233,7 +232,6 @@ class GameConfig:
     teacher_upgrade_round_to: int = 5
     teacher_max_level: int = 500
     teacher_sell_ratio: float | None = None
-    recovery_minutes_by_strength: tuple[tuple[int, int], ...] = ()
     hospital_levels: dict[int, HospitalLevel] = field(default_factory=dict)
     initial_castle_strength: int = 0
     initial_defense_power: int = 0
@@ -286,33 +284,30 @@ class GameConfig:
             if slots < 0 or (ownership_limit is not None and slots > ownership_limit):
                 raise ValueError("teacher slot capacity is outside the valid range")
             previous_level = level
-        previous_strength = -1
-        for strength, minutes in self.recovery_minutes_by_strength:
-            if strength < 0 or strength <= previous_strength or minutes <= 0:
-                raise ValueError("recovery strength thresholds are invalid")
-            previous_strength = strength
         if self.hospital_levels:
             if 1 not in self.hospital_levels or sorted(self.hospital_levels) != list(
                 range(1, max(self.hospital_levels) + 1)
             ):
                 raise ValueError("hospital levels must be consecutive from 1")
-            previous_capacity = previous_speed = 0
+            previous_capacity = 0
+            previous_minutes = None
             for level, hospital in sorted(self.hospital_levels.items()):
                 if (
                     hospital.capacity < 1
                     or hospital.capacity < previous_capacity
-                    or hospital.speed_percent < 100
-                    or hospital.speed_percent < previous_speed
+                    or hospital.recovery_minutes < 1
+                    or (
+                        previous_minutes is not None
+                        and hospital.recovery_minutes > previous_minutes
+                    )
                     or hospital.required_player_level < 1
                     or (hospital.diamond_cost is not None and hospital.diamond_cost < 0)
                 ):
                     raise ValueError("hospital progression is invalid")
                 if level > 1 and hospital.diamond_cost is None:
                     raise ValueError("hospital upgrade cost is missing")
-                previous_capacity, previous_speed = (
-                    hospital.capacity,
-                    hospital.speed_percent,
-                )
+                previous_capacity = hospital.capacity
+                previous_minutes = hospital.recovery_minutes
         if (
             self.teacher_sell_ratio is not None
             and not 0 <= self.teacher_sell_ratio <= 1
@@ -564,39 +559,22 @@ class GameConfig:
             raise GameConfigurationError("Teacher sell price cannot be negative")
         return price
 
-    def recovery_minutes(self, castle_strength: int) -> int:
-        duration = 0
-        for minimum_strength, minutes in self.recovery_minutes_by_strength:
-            if castle_strength < minimum_strength:
-                break
-            duration = minutes
-        if duration <= 0:
-            raise GameConfigurationError("Teacher recovery duration is not configured")
-        return duration
-
     def hospital_level(self, level: int) -> HospitalLevel:
         if not self.hospital_levels:
             if level != 1:
                 raise GameConfigurationError("Hospital level is not configured")
-            return HospitalLevel(capacity=1, speed_percent=100)
+            return HospitalLevel(capacity=1, recovery_minutes=240)
         try:
             return self.hospital_levels[level]
         except KeyError as exc:
             raise GameConfigurationError("Hospital level is not configured") from exc
 
-    def hospital_recovery_minutes(self, castle_strength: int, level: int) -> int:
-        return max(
-            1,
-            math.ceil(
-                self.recovery_minutes(castle_strength)
-                * 100
-                / self.hospital_level(level).speed_percent
-            ),
-        )
+    def hospital_recovery_minutes(self, level: int) -> int:
+        return self.hospital_level(level).recovery_minutes
 
     @property
     def recovery_is_configured(self) -> bool:
-        return bool(self.recovery_minutes_by_strength)
+        return bool(self.hospital_levels)
 
     def buffet_conversion(
         self, source: ResourceType, target: ResourceType
@@ -730,15 +708,6 @@ class GameConfig:
                 for level, capacity in data.get("teacher_slots", {}).items()
             )
         )
-        recovery = tuple(
-            sorted(
-                (
-                    int(strength.removeprefix("strength_")),
-                    int(minutes),
-                )
-                for strength, minutes in data.get("recovery_minutes", {}).items()
-            )
-        )
         referral_reward = data.get("referral_reward", {})
         referral_reward_amount_raw = referral_reward.get("inviter_amount")
         referral_reward_amount = (
@@ -863,11 +832,10 @@ class GameConfig:
             teacher_upgrade_round_to=int(teacher_upgrade_data.get("round_to", 5)),
             teacher_max_level=int(teacher_upgrade_data.get("max_level", 500)),
             teacher_sell_ratio=data.get("teacher_sell_ratio"),
-            recovery_minutes_by_strength=recovery,
             hospital_levels={
                 int(level.removeprefix("level_")): HospitalLevel(
                     capacity=int(values["capacity"]),
-                    speed_percent=int(values["speed_percent"]),
+                    recovery_minutes=int(values["recovery_minutes"]),
                     diamond_cost=(
                         None
                         if values.get("diamond_cost") is None

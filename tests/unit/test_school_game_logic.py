@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.enums import TeacherStatus
-from app.core.game_logic import CastleRepairRules, CastleUpgrade, GameConfig
+from app.core.game_logic import (
+    CastleRepairRules,
+    CastleUpgrade,
+    GameConfig,
+    HospitalLevel,
+)
 from app.models.castle import Castle
 from app.models.defense import Defense
 from app.models.recovery import Recovery
@@ -490,16 +495,14 @@ async def test_damaged_active_teacher_can_enter_hospital_before_zero_hp() -> Non
         teacher=model,
         owned=owned,
     )
-    castle_service = SimpleNamespace(
-        snapshot=AsyncMock(return_value=SimpleNamespace(strength=100))
-    )
     session = SimpleNamespace(
         add=lambda item: None, flush=AsyncMock(), scalar=AsyncMock(return_value=0)
     )
     service = HospitalService(
         repository,
-        castle_service,
-        config=GameConfig(recovery_minutes_by_strength=((0, 5),)),
+        config=GameConfig(
+            hospital_levels={1: HospitalLevel(capacity=1, recovery_minutes=5)}
+        ),
     )
 
     result = await service.begin_recovery(session, 10, owned.id)

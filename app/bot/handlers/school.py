@@ -78,7 +78,7 @@ router = Router(name="school")
 user_service = UserService()
 castle_service = CastleService()
 teacher_service = TeacherService()
-hospital_service = HospitalService(castle_service=castle_service)
+hospital_service = HospitalService()
 
 SCHOOL_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "school"
@@ -405,7 +405,7 @@ async def _hospital_view(
         "",
         f"{emoji('5825727141039317043', '🎖')} {escape('سطح بیمارستان:')} {escape(_number(hospital.level))}",
         f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌های اشغال‌شده:')} {escape(_number(hospital.occupied))} {escape('/')} {escape(_number(hospital.capacity))}",
-        f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر با وضعیت فعلی دژ:')} {escape(_duration_text(hospital.recovery_minutes))}",
+        f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر:')} {escape(_duration_text(hospital.recovery_minutes))}",
         "",
     ]
     if not patients:
@@ -938,7 +938,7 @@ async def hospital_callback_handler(
                 f"{emoji('5866060208253441223', '⬆️')} {bold('ارتقای بیمارستان')}\n\n"
                 f"{escape('سطح:')} {escape(_number(hospital.level))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.level + 1))}\n"
                 f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_capacity))}\n"
-                f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر با وضعیت فعلی دژ:')}\n"
+                f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر:')}\n"
                 f"{escape(_duration_text(hospital.recovery_minutes))} {emoji('5235470399730361615', '➡️')} {escape(_duration_text(hospital.next_recovery_minutes))}\n\n"
                 f"{emoji('5825753314570018832', '💎')} {escape('هزینه:')} {escape(_number(hospital.upgrade_cost))} {escape('الماس')}\n"
                 f"{emoji('5902520589356113908', '🍌')} {escape('پاداش:')} {escape(_number(reward))} {escape('موز')}\n\n"
