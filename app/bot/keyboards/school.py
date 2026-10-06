@@ -70,8 +70,8 @@ def castle_keyboard(
             callback_data=CastleCallback(action="upgrade").pack(),
         ),
         InlineKeyboardButton(
-            text="🔧 تعمیر دژ",
-            style="success",
+            text="تعمیر دژ",
+            icon_custom_emoji_id="5341715473882955310",
             callback_data=CastleCallback(action="repair").pack(),
         ),
     ]
