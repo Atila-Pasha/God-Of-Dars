@@ -8,6 +8,7 @@ from app.models.castle import Castle
 from app.repositories.castle import CastleRepository
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
+    CastleNeedsRepair,
     CastleNotFound,
     CastleUpgradeUnavailable,
     InsufficientDiamonds,
@@ -76,7 +77,10 @@ class CastleService:
         )
 
     def can_upgrade(self, castle: Castle) -> bool:
-        return self.can_upgrade_level(castle.level)
+        return (
+            self.can_upgrade_level(castle.level)
+            and self.repair_quote(castle).missing_strength == 0
+        )
 
     def can_upgrade_level(self, castle_level: int) -> bool:
         try:
@@ -147,6 +151,9 @@ class CastleService:
             upgrade = self.config.castle_upgrade(castle.level)
         except GameConfigurationError as exc:
             raise CastleUpgradeUnavailable from exc
+
+        if self.repair_quote(castle).missing_strength > 0:
+            raise CastleNeedsRepair
 
         if resources.diamond < upgrade.diamond_cost:
             raise InsufficientDiamonds

@@ -53,6 +53,7 @@ from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
     AttackInProgress,
+    CastleNeedsRepair,
     InsufficientCoins,
     InsufficientDiamonds,
     SchoolError,
@@ -258,6 +259,13 @@ async def _castle_view(
 ) -> None:
     user = await _user(session, target.from_user.id)
     castle = await castle_service.snapshot(session, user.id)
+    castle_model = await castle_service.repository.get_by_user(
+        session, user.id, for_update=False
+    )
+    can_repair = (
+        castle_model is not None
+        and castle_service.repair_quote(castle_model).missing_strength > 0
+    )
     text = (
         f"{FORT} {bold('دژ مدرسه | خط مقدم دفاع')}\n\n"
         f"● سطح دژ: {escape(castle.level)}\n\n"
@@ -265,13 +273,11 @@ async def _castle_view(
         f"{escape(castle_service.config.castle_max_strength(castle.level))} »\n"
         f"{emoji('5917841858687411504', '🛡️')} قدرت سیستم دفاعی: « {escape(castle.defense_power)} »\n\n"
         f"{emoji('5915888842568638290', '🛡️')} توان دفاعی نهایی: « {escape(castle.strength + castle.defense_power)} »"
-    )
-    castle_model = await castle_service.repository.get_by_user(
-        session, user.id, for_update=False
-    )
-    can_repair = (
-        castle_model is not None
-        and castle_service.repair_quote(castle_model).missing_strength > 0
+        + (
+            "\n\nدژ آسیب‌دیده است؛ برای ارتقا ابتدا آن را تعمیر کن\\."
+            if can_repair
+            else ""
+        )
     )
     await _send_or_edit(
         target,
@@ -469,6 +475,13 @@ async def castle_callback_handler(
         elif callback_data.action == "upgrade":
             user = await _user(session, callback.from_user.id)
             castle = await castle_service.snapshot(session, user.id)
+            if castle.strength < castle_service.config.castle_max_strength(
+                castle.level
+            ):
+                await callback.answer(
+                    "اول دژ را تعمیر کن، بعد ارتقا بده.", show_alert=True
+                )
+                return
             upgrade = castle_service.config.castle_upgrade(castle.level)
             banana_reward = castle_service.config.upgrade_banana_reward(
                 upgrade.diamond_cost
@@ -792,6 +805,10 @@ async def confirmation_callback_handler(
     except InsufficientDiamonds:
         await session.rollback()
         await callback.answer("الماس کافی برای تعمیر یا ارتقا ندارید.", show_alert=True)
+    except CastleNeedsRepair:
+        await session.rollback()
+        await _castle_view(callback, session)
+        await callback.answer("اول دژ را تعمیر کن، بعد ارتقا بده.", show_alert=True)
     except (
         TeacherAlreadyOwned,
         TeacherLimitReached,

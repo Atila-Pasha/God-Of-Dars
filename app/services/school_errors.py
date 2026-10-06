@@ -88,6 +88,10 @@ class CastleUpgradeUnavailable(SchoolError):
     pass
 
 
+class CastleNeedsRepair(CastleUpgradeUnavailable):
+    """A damaged castle must be repaired before its level can increase."""
+
+
 class OperationNotConfigured(SchoolError):
     pass
 

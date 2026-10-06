@@ -15,6 +15,7 @@ from app.models.user_teacher import UserTeacher
 from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
+    CastleNeedsRepair,
     InsufficientDiamonds,
     InvalidTeacherState,
     TeacherLocked,
@@ -324,6 +325,44 @@ async def test_castle_upgrade_changes_defense_and_deducts_diamonds() -> None:
     assert castle.strength == 15
     assert castle.defense.defense_power == 6
     assert repository.resources.diamond == 70
+
+
+@pytest.mark.asyncio
+async def test_damaged_castle_must_be_repaired_before_upgrade() -> None:
+    castle = Castle(
+        id=3,
+        user_id=10,
+        level=1,
+        strength=0,
+        defense=Defense(defense_power=4),
+    )
+    repository = FakeCastleRepository(
+        user=user(),
+        resources=SimpleNamespace(coin=0, diamond=100),
+        castle=castle,
+    )
+    service = CastleService(
+        repository,
+        config=GameConfig(
+            initial_castle_strength=100,
+            castle_upgrade_by_level={
+                1: CastleUpgrade(diamond_cost=30, strength_delta=5, defense_delta=2)
+            },
+            castle_repair=CastleRepairRules(
+                diamond_cost_per_100_strength=5, minimum_diamond_cost=1
+            ),
+        ),
+    )
+    session = SimpleNamespace(add=lambda item: None, flush=AsyncMock())
+
+    with pytest.raises(CastleNeedsRepair):
+        await service.upgrade(session, 10)
+    assert (castle.level, castle.strength, repository.resources.diamond) == (1, 0, 100)
+
+    await service.repair(session, 10)
+    await service.upgrade(session, 10)
+    assert (castle.level, castle.strength, castle.defense.defense_power) == (2, 105, 6)
+    assert repository.resources.diamond == 65
 
 
 @pytest.mark.asyncio
