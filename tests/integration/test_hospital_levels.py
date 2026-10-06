@@ -80,6 +80,8 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
     async with AsyncSessionLocal() as session, session.begin():
         before = await service.snapshot(session, user_id)
         assert (before.level, before.capacity, before.occupied) == (1, 1, 1)
+        assert before.recovery_minutes == 240
+        assert before.next_recovery_minutes == 192
         first = await session.scalar(
             select(Recovery).where(Recovery.completed_at.is_(None))
         )
@@ -90,6 +92,7 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
         await service.upgrade(session, user_id)
         after = await service.snapshot(session, user_id)
         assert (after.level, after.capacity, after.occupied) == (2, 2, 1)
+        assert after.recovery_minutes == 192
 
     async with AsyncSessionLocal() as session, session.begin():
         other = next(item for item in teacher_ids if item != first.user_teacher_id)

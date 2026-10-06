@@ -4,7 +4,12 @@ from datetime import datetime
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import (
@@ -94,6 +99,18 @@ STATUS_ICONS = {
 
 def _number(value: int) -> str:
     return str(value)
+
+
+def _duration_text(minutes: int | None) -> str:
+    if minutes is None:
+        return "تنظیم نشده"
+    hours, remaining = divmod(minutes, 60)
+    parts = []
+    if hours:
+        parts.append(f"{_number(hours)} ساعت")
+    if remaining or not parts:
+        parts.append(f"{_number(remaining)} دقیقه")
+    return " و ".join(parts)
 
 
 def _progress_bar(value: int, maximum: int, *, width: int = 8) -> str:
@@ -387,19 +404,10 @@ async def _hospital_view(
         f"{emoji('5825570280243732195', '🏥')} {bold('بیمارستان مدرسه')}",
         "",
         f"{emoji('5825727141039317043', '🎖')} {escape('سطح بیمارستان:')} {escape(_number(hospital.level))}",
-        f"{emoji('5213455977919039650', '❤️')} {escape('تخت‌های اشغال‌شده:')} {escape(_number(hospital.occupied))} {escape('/')} {escape(_number(hospital.capacity))}",
-        f"{emoji('6039539366177541657', '⏳')} {escape('سرعت بهبود:')} {escape(_number(hospital.speed_percent))}{escape('%')}",
+        f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌های اشغال‌شده:')} {escape(_number(hospital.occupied))} {escape('/')} {escape(_number(hospital.capacity))}",
+        f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر با وضعیت فعلی دژ:')} {escape(_duration_text(hospital.recovery_minutes))}",
         "",
     ]
-    if hospital.upgrade_cost is not None:
-        lines.append(
-            f"{emoji('5866060208253441223', '⬆️')} {escape('ارتقای بعدی:')} "
-            f"{escape(_number(hospital.next_capacity))} {escape('تخت، سرعت')} "
-            f"{escape(_number(hospital.next_speed_percent))}{escape('%')} "
-            f"{escape('با')} {escape(_number(hospital.upgrade_cost))} {escape('الماس')} "
-            f"{escape('(سطح فرمانده')} {escape(_number(hospital.required_player_level))}{escape(')')}"
-        )
-        lines.append("")
     if not patients:
         lines.append(escape("در حال حاضر دبیر مصدوم یا غیرفعالی ندارید."))
     else:
@@ -420,8 +428,7 @@ async def _hospital_view(
             can_activate=hospital_service.can_activate(),
             can_recover=hospital_service.can_begin_recovery(),
             instant_recovery_cost=hospital_service.instant_recovery_cost(),
-            can_upgrade=hospital.upgrade_cost is not None
-            and hospital.player_level >= (hospital.required_player_level or 1),
+            can_upgrade=hospital.upgrade_cost is not None,
         ),
         parse_mode=MARKDOWN_V2,
     )
@@ -900,25 +907,44 @@ async def hospital_callback_handler(
             return
         elif callback_data.action == "upgrade":
             hospital = await hospital_service.snapshot(session, user.id)
-            if hospital.upgrade_cost is None or hospital.player_level < (
-                hospital.required_player_level or 1
-            ):
+            if hospital.upgrade_cost is None:
                 raise HospitalUpgradeUnavailable
             reward = hospital_service.config.upgrade_banana_reward(
                 hospital.upgrade_cost
+            )
+            can_confirm = hospital.player_level >= (hospital.required_player_level or 1)
+            reply_markup = (
+                confirmation_keyboard(action="hospital_upgrade", target_id=0)
+                if can_confirm
+                else InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="بازگشت به بیمارستان",
+                                icon_custom_emoji_id="5235864325540815679",
+                                style="danger",
+                                callback_data=ConfirmationCallback(
+                                    action="hospital_upgrade",
+                                    target_id=0,
+                                    decision="cancel",
+                                ).pack(),
+                            )
+                        ]
+                    ]
+                )
             )
             await _send_or_edit(
                 callback,
                 f"{emoji('5866060208253441223', '⬆️')} {bold('ارتقای بیمارستان')}\n\n"
                 f"{escape('سطح:')} {escape(_number(hospital.level))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.level + 1))}\n"
-                f"{escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_capacity))}\n"
-                f"{escape('سرعت بهبود:')} {escape(_number(hospital.speed_percent))}{escape('%')} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_speed_percent))}{escape('%')}\n\n"
+                f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_capacity))}\n"
+                f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر با وضعیت فعلی دژ:')}\n"
+                f"{escape(_duration_text(hospital.recovery_minutes))} {emoji('5235470399730361615', '➡️')} {escape(_duration_text(hospital.next_recovery_minutes))}\n\n"
                 f"{emoji('5825753314570018832', '💎')} {escape('هزینه:')} {escape(_number(hospital.upgrade_cost))} {escape('الماس')}\n"
                 f"{emoji('5902520589356113908', '🍌')} {escape('پاداش:')} {escape(_number(reward))} {escape('موز')}\n\n"
-                f"{bold('ارتقا را تأیید می‌کنی؟')}",
-                reply_markup=confirmation_keyboard(
-                    action="hospital_upgrade", target_id=0
-                ),
+                f"{escape('سطح فرمانده لازم:')} {escape(_number(hospital.required_player_level))}\n\n"
+                f"{bold('ارتقا را تأیید می‌کنی؟' if can_confirm else 'این ارتقا هنوز برای سطح شما باز نشده است.')}",
+                reply_markup=reply_markup,
                 parse_mode=MARKDOWN_V2,
             )
             await callback.answer()
