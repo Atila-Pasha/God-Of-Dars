@@ -405,18 +405,37 @@ async def _hospital_view(
         "",
         f"{emoji('5825727141039317043', '🎖')} {escape('سطح بیمارستان:')} {escape(_number(hospital.level))}",
         f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌های اشغال‌شده:')} {escape(_number(hospital.occupied))} {escape('/')} {escape(_number(hospital.capacity))}",
-        f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر:')} {escape(_duration_text(hospital.recovery_minutes))}",
+        f"{emoji('6039539366177541657', '⏳')} {bold('سرعت بهبود بیمارستان')}",
+        f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')}",
+        "",
+        escape("زمان بستری جدید بر اساس جان ازدست‌رفتهٔ هر دبیر حساب می‌شود."),
         "",
     ]
     if not patients:
         lines.append(escape("در حال حاضر دبیر مصدوم یا غیرفعالی ندارید."))
     else:
         for teacher in patients:
+            missing_hp = max(0, teacher.teacher.max_hp - teacher.current_hp)
             lines.extend(
                 [
                     f"{rich_plain(_status_icon(teacher))} {escape(teacher.teacher.name)}  •  {escape(_status(teacher))}",
                     _teacher_hp_banner(teacher.current_hp, teacher.teacher.max_hp),
-                    f"{emoji('6039539366177541657', '⏳')} {escape(_recovery_text(teacher))}",
+                    *(
+                        [
+                            f"{emoji('5825570280243732195', '🩸')} {escape('آسیب:')} {escape(_number(missing_hp))} {escape('HP')}  •  {escape('زمان بستری:')} {escape(_duration_text(hospital_service.config.hospital_recovery_minutes(hospital.level, missing_hp)))}"
+                        ]
+                        if missing_hp
+                        and teacher.status
+                        in {TeacherStatus.INJURED, TeacherStatus.ACTIVE}
+                        else []
+                    ),
+                    *(
+                        [
+                            f"{emoji('6039539366177541657', '⏳')} {escape(_recovery_text(teacher))}"
+                        ]
+                        if teacher.status is TeacherStatus.RECOVERING
+                        else []
+                    ),
                     "",
                 ]
             )
@@ -938,8 +957,12 @@ async def hospital_callback_handler(
                 f"{emoji('5866060208253441223', '⬆️')} {bold('ارتقای بیمارستان')}\n\n"
                 f"{escape('سطح:')} {escape(_number(hospital.level))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.level + 1))}\n"
                 f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_capacity))}\n"
-                f"{emoji('6039539366177541657', '⏳')} {escape('زمان بهبود هر دبیر:')}\n"
-                f"{escape(_duration_text(hospital.recovery_minutes))} {emoji('5235470399730361615', '➡️')} {escape(_duration_text(hospital.next_recovery_minutes))}\n\n"
+                f"{emoji('6039539366177541657', '⏳')} {bold('سرعت بهبود بیمارستان')}\n"
+                f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')} {emoji('5235470399730361615', '➡️')} {bold(f'{hospital.next_heal_hp_per_hour} HP در ساعت')}\n\n"
+                f"{emoji('5825570280243732195', '🩸')} {escape('نمونه برای 80 HP آسیب:')} "
+                f"{escape(_duration_text(hospital_service.config.hospital_recovery_minutes(hospital.level, 80)))} "
+                f"{emoji('5235470399730361615', '➡️')} "
+                f"{escape(_duration_text(hospital_service.config.hospital_recovery_minutes(hospital.level + 1, 80)))}\n\n"
                 f"{emoji('5825753314570018832', '💎')} {escape('هزینه:')} {escape(_number(hospital.upgrade_cost))} {escape('الماس')}\n"
                 f"{emoji('5902520589356113908', '🍌')} {escape('پاداش:')} {escape(_number(reward))} {escape('موز')}\n\n"
                 f"{escape('سطح فرمانده لازم:')} {escape(_number(hospital.required_player_level))}\n\n"

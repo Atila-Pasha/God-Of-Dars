@@ -37,9 +37,9 @@ async def test_hospital_banner_shows_time_and_bed_emoji_without_upgrade_details(
                 level=1,
                 capacity=1,
                 occupied=0,
-                recovery_minutes=240,
+                heal_hp_per_hour=60,
                 next_capacity=2,
-                next_recovery_minutes=192,
+                next_heal_hp_per_hour=75,
                 upgrade_cost=120,
                 required_player_level=3,
                 player_level=1,
@@ -53,7 +53,8 @@ async def test_hospital_banner_shows_time_and_bed_emoji_without_upgrade_details(
 
     banner = send.await_args.args[1]
     assert "5275983061001977055" in banner
-    assert "4 ساعت" in banner
+    assert "> *60 HP در ساعت*" in banner.replace("\\", "")
+    assert "جان ازدست" in banner.replace("\\", "")
     assert "دژ" not in banner
     assert "ارتقای بعدی" not in banner
     assert "120" not in banner
@@ -82,9 +83,9 @@ async def test_locked_hospital_upgrade_still_shows_time_change(monkeypatch) -> N
                 level=1,
                 capacity=1,
                 occupied=0,
-                recovery_minutes=240,
+                heal_hp_per_hour=60,
                 next_capacity=2,
-                next_recovery_minutes=192,
+                next_heal_hp_per_hour=75,
                 upgrade_cost=120,
                 required_player_level=3,
                 player_level=1,
@@ -99,8 +100,10 @@ async def test_locked_hospital_upgrade_still_shows_time_change(monkeypatch) -> N
     )
 
     banner = send.await_args.args[1]
-    assert "4 ساعت" in banner
-    assert "3 ساعت و 12 دقیقه" in banner
+    assert "60 HP در ساعت" in banner.replace("\\", "")
+    assert "75 HP در ساعت" in banner.replace("\\", "")
+    assert "1 ساعت و 20 دقیقه" in banner.replace("\\", "")
+    assert "1 ساعت و 4 دقیقه" in banner.replace("\\", "")
     assert "دژ" not in banner
     assert "5275983061001977055" in banner
     assert "هنوز برای سطح شما باز نشده" in banner.replace("\\", "")

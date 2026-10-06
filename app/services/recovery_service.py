@@ -27,9 +27,9 @@ class HospitalSnapshot:
     level: int
     capacity: int
     occupied: int
-    recovery_minutes: int
+    heal_hp_per_hour: int
     next_capacity: int | None
-    next_recovery_minutes: int | None
+    next_heal_hp_per_hour: int | None
     upgrade_cost: int | None
     required_player_level: int | None
     player_level: int
@@ -76,10 +76,10 @@ class HospitalService:
             level=level,
             capacity=current.capacity,
             occupied=await self._occupied(session, user_id),
-            recovery_minutes=current.recovery_minutes,
+            heal_hp_per_hour=current.heal_hp_per_hour,
             next_capacity=next_level.capacity if next_level else None,
-            next_recovery_minutes=(
-                next_level.recovery_minutes if next_level is not None else None
+            next_heal_hp_per_hour=(
+                next_level.heal_hp_per_hour if next_level is not None else None
             ),
             upgrade_cost=next_level.diamond_cost if next_level else None,
             required_player_level=next_level.required_player_level
@@ -251,10 +251,8 @@ class HospitalService:
             raise InvalidTeacherState
         if teacher.status not in {TeacherStatus.INJURED, TeacherStatus.ACTIVE}:
             raise InvalidTeacherState
-        if (
-            teacher.status is TeacherStatus.ACTIVE
-            and teacher.current_hp >= teacher.teacher.max_hp
-        ):
+        missing_hp = teacher.teacher.max_hp - teacher.current_hp
+        if missing_hp <= 0:
             raise InvalidTeacherState
         if any(recovery.completed_at is None for recovery in teacher.recoveries):
             raise InvalidTeacherState
@@ -265,7 +263,7 @@ class HospitalService:
             raise HospitalFull
         try:
             duration_minutes = self.config.hospital_recovery_minutes(
-                user.hospital_level
+                user.hospital_level, missing_hp
             )
         except GameConfigurationError as exc:
             raise OperationNotConfigured from exc

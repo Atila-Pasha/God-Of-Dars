@@ -128,7 +128,7 @@ class MineLevel:
 @dataclass(frozen=True)
 class HospitalLevel:
     capacity: int
-    recovery_minutes: int
+    heal_hp_per_hour: int
     diamond_cost: int | None = None
     required_player_level: int = 1
 
@@ -290,16 +290,13 @@ class GameConfig:
             ):
                 raise ValueError("hospital levels must be consecutive from 1")
             previous_capacity = 0
-            previous_minutes = None
+            previous_heal_rate = 0
             for level, hospital in sorted(self.hospital_levels.items()):
                 if (
                     hospital.capacity < 1
                     or hospital.capacity < previous_capacity
-                    or hospital.recovery_minutes < 1
-                    or (
-                        previous_minutes is not None
-                        and hospital.recovery_minutes > previous_minutes
-                    )
+                    or hospital.heal_hp_per_hour < 1
+                    or hospital.heal_hp_per_hour < previous_heal_rate
                     or hospital.required_player_level < 1
                     or (hospital.diamond_cost is not None and hospital.diamond_cost < 0)
                 ):
@@ -307,7 +304,7 @@ class GameConfig:
                 if level > 1 and hospital.diamond_cost is None:
                     raise ValueError("hospital upgrade cost is missing")
                 previous_capacity = hospital.capacity
-                previous_minutes = hospital.recovery_minutes
+                previous_heal_rate = hospital.heal_hp_per_hour
         if (
             self.teacher_sell_ratio is not None
             and not 0 <= self.teacher_sell_ratio <= 1
@@ -563,14 +560,17 @@ class GameConfig:
         if not self.hospital_levels:
             if level != 1:
                 raise GameConfigurationError("Hospital level is not configured")
-            return HospitalLevel(capacity=1, recovery_minutes=240)
+            return HospitalLevel(capacity=1, heal_hp_per_hour=60)
         try:
             return self.hospital_levels[level]
         except KeyError as exc:
             raise GameConfigurationError("Hospital level is not configured") from exc
 
-    def hospital_recovery_minutes(self, level: int) -> int:
-        return self.hospital_level(level).recovery_minutes
+    def hospital_recovery_minutes(self, level: int, missing_hp: int) -> int:
+        if missing_hp < 0:
+            raise ValueError("Missing HP cannot be negative")
+        rate = self.hospital_level(level).heal_hp_per_hour
+        return (missing_hp * 60 + rate - 1) // rate
 
     @property
     def recovery_is_configured(self) -> bool:
@@ -835,7 +835,7 @@ class GameConfig:
             hospital_levels={
                 int(level.removeprefix("level_")): HospitalLevel(
                     capacity=int(values["capacity"]),
-                    recovery_minutes=int(values["recovery_minutes"]),
+                    heal_hp_per_hour=int(values["heal_hp_per_hour"]),
                     diamond_cost=(
                         None
                         if values.get("diamond_cost") is None

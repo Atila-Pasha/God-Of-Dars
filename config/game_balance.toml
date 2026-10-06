@@ -47,34 +47,34 @@ random_selection_ttl_seconds = 900
 [hospital]
 instant_recovery_diamond_cost = 15
 
-# Each level has a fixed recovery duration independent of the castle.
+# Recovery duration depends on the teacher's missing HP and the hospital rate.
 # A bed stays occupied until its teacher is discharged.
 [hospital.levels.level_1]
 capacity = 1
-recovery_minutes = 240
+heal_hp_per_hour = 60
 required_player_level = 1
 
 [hospital.levels.level_2]
 capacity = 2
-recovery_minutes = 192
+heal_hp_per_hour = 75
 diamond_cost = 120
 required_player_level = 3
 
 [hospital.levels.level_3]
 capacity = 3
-recovery_minutes = 150
+heal_hp_per_hour = 90
 diamond_cost = 350
 required_player_level = 7
 
 [hospital.levels.level_4]
 capacity = 4
-recovery_minutes = 120
+heal_hp_per_hour = 120
 diamond_cost = 800
 required_player_level = 12
 
 [hospital.levels.level_5]
 capacity = 5
-recovery_minutes = 96
+heal_hp_per_hour = 150
 diamond_cost = 1600
 required_player_level = 20
 

@@ -118,6 +118,21 @@ def owned_teacher(model: Teacher) -> UserTeacher:
     )
 
 
+def test_hospital_duration_scales_with_missing_hp_and_level() -> None:
+    config = GameConfig(
+        hospital_levels={
+            1: HospitalLevel(capacity=1, heal_hp_per_hour=60),
+            2: HospitalLevel(capacity=2, heal_hp_per_hour=75, diamond_cost=120),
+            3: HospitalLevel(capacity=3, heal_hp_per_hour=90, diamond_cost=350),
+        }
+    )
+
+    assert config.hospital_recovery_minutes(1, 4) == 4
+    assert config.hospital_recovery_minutes(1, 80) == 80
+    assert config.hospital_recovery_minutes(2, 80) == 64
+    assert config.hospital_recovery_minutes(3, 4) == 3
+
+
 @pytest.mark.asyncio
 async def test_level_capacity_is_configurable_and_clamped() -> None:
     config = GameConfig(
@@ -501,7 +516,7 @@ async def test_damaged_active_teacher_can_enter_hospital_before_zero_hp() -> Non
     service = HospitalService(
         repository,
         config=GameConfig(
-            hospital_levels={1: HospitalLevel(capacity=1, recovery_minutes=5)}
+            hospital_levels={1: HospitalLevel(capacity=1, heal_hp_per_hour=60)}
         ),
     )
 

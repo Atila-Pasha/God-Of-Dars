@@ -81,8 +81,8 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
     async with AsyncSessionLocal() as session, session.begin():
         before = await service.snapshot(session, user_id)
         assert (before.level, before.capacity, before.occupied) == (1, 1, 1)
-        assert before.recovery_minutes == 240
-        assert before.next_recovery_minutes == 192
+        assert before.heal_hp_per_hour == 60
+        assert before.next_heal_hp_per_hour == 75
         assert (
             await session.scalar(select(Castle.id).where(Castle.user_id == user_id))
             is None
@@ -97,7 +97,7 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
         await service.upgrade(session, user_id)
         after = await service.snapshot(session, user_id)
         assert (after.level, after.capacity, after.occupied) == (2, 2, 1)
-        assert after.recovery_minutes == 192
+        assert after.heal_hp_per_hour == 75
 
     async with AsyncSessionLocal() as session, session.begin():
         other = next(item for item in teacher_ids if item != first.user_teacher_id)
@@ -115,8 +115,8 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
             second.recovery_end_at - second.recovery_started_at
         ).total_seconds() / 60
         assert second_minutes < first_minutes
-        assert first_minutes == 240
-        assert second_minutes == 192
+        assert first_minutes == 50
+        assert second_minutes == 40
         # A finished but not discharged patient still occupies a bed.
         current_first = next(
             item for item in rows if item.user_teacher_id == first.user_teacher_id
