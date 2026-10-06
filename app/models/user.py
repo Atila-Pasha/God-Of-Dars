@@ -62,6 +62,9 @@ class User(Base):
     hospital_level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
+    last_slogan_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

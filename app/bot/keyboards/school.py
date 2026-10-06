@@ -441,7 +441,7 @@ def hospital_keyboard(
             rows.append(
                 [
                     InlineKeyboardButton(
-                        text=f"🩹 شروع بهبودی {teacher.teacher.name}",
+                        text=f"🩹 شروع درمان {teacher.teacher.name}",
                         callback_data=HospitalCallback(
                             action="recover", teacher_id=teacher.id
                         ).pack(),
@@ -456,7 +456,7 @@ def hospital_keyboard(
                 [
                     InlineKeyboardButton(
                         text=(
-                            f"⚡ بهبود فوری {teacher.teacher.name} "
+                            f"⚡ درمان فوری {teacher.teacher.name} "
                             f"({instant_recovery_cost} 💎)"
                         ),
                         callback_data=HospitalCallback(

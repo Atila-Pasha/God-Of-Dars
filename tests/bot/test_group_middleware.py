@@ -16,7 +16,7 @@ def test_group_policy_allows_profile_aliases_and_god() -> None:
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/profile")
     )
-    for text in ("پروفایل", "اطلاعات پروفایل", "کاربر", "اطلاعات کاربر", "گاد"):
+    for text in ("پروفایل", "اطلاعات پروفایل", "کاربر", "اطلاعات کاربر", "گاد", "من خدای درسم"):
         assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/leaderbord")

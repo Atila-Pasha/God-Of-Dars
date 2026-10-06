@@ -223,7 +223,7 @@ class GroupAccessMiddleware(BaseMiddleware):
         text = (message.text or "").strip()
         if not text:
             return False
-        if text in GROUP_PROFILE_ALIASES or text == "گاد":
+        if text in GROUP_PROFILE_ALIASES or text in {"گاد", "من خدای درسم"}:
             return True
         # These are intentionally plain-text group commands. Require a word
         # boundary so ordinary messages such as "حملهای..." are not commands.

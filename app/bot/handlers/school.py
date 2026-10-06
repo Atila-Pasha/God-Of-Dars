@@ -87,7 +87,7 @@ STATUS_LABELS = {
     TeacherStatus.ACTIVE: "فعال",
     TeacherStatus.INJURED: "مصدوم",
     TeacherStatus.DISABLED: "غیرفعال",
-    TeacherStatus.RECOVERING: "در حال بهبودی",
+    TeacherStatus.RECOVERING: "در حال درمان",
 }
 STATUS_ICONS = {
     TeacherStatus.ACTIVE: "🟢",
@@ -171,7 +171,7 @@ async def _user(session: AsyncSession, telegram_user_id: int):
 
 def _status(teacher: UserTeacher) -> str:
     if HospitalService.ready_for_discharge(teacher):
-        return "بهبود یافته؛ در انتظار ترخیص"
+        return "درمان کامل شده؛ در انتظار ترخیص"
     return STATUS_LABELS.get(teacher.status, teacher.status.value)
 
 
@@ -181,16 +181,16 @@ def _status_icon(teacher: UserTeacher) -> str:
 
 def _recovery_text(teacher: UserTeacher) -> str:
     if HospitalService.ready_for_discharge(teacher):
-        return "دبیر بهبود پیدا کرده ولی ترخیص نشده؛ به بیمارستان برو و ترخیصش کن."
+        return "درمان دبیر کامل شده ولی ترخیص نشده؛ به بیمارستان برو و ترخیصش کن."
     recovery = next(
         (item for item in teacher.recoveries if item.completed_at is None), None
     )
     if recovery is None:
-        return "زمان بهبودی: تنظیم نشده"
+        return "زمان درمان: تنظیم نشده"
     end_at = recovery.recovery_end_at
     if end_at.tzinfo is None:
         end_at = end_at.replace(tzinfo=datetime.now().astimezone().tzinfo)
-    return f"پایان بهبودی: {end_at.astimezone().strftime('%Y-%m-%d %H:%M')}"
+    return f"پایان درمان: {end_at.astimezone().strftime('%Y-%m-%d %H:%M')}"
 
 
 async def _send_or_edit(
@@ -405,7 +405,7 @@ async def _hospital_view(
         "",
         f"{emoji('5825727141039317043', '🎖')} {escape('سطح بیمارستان:')} {escape(_number(hospital.level))}",
         f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌های اشغال‌شده:')} {escape(_number(hospital.occupied))} {escape('/')} {escape(_number(hospital.capacity))}",
-        f"{emoji('6039539366177541657', '⏳')} {bold('سرعت بهبود بیمارستان')}",
+        f"{emoji('6039539366177541657', '⏳')} {bold('سرعت درمان بیمارستان')}",
         f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')}",
         "",
         escape("زمان بستری جدید بر اساس جان ازدست‌رفتهٔ هر دبیر حساب می‌شود."),
@@ -694,7 +694,7 @@ async def teacher_callback_handler(
             )
             if owned.current_hp < owned.teacher.max_hp:
                 await callback.answer(
-                    "جان دبیرت باید کامل بهبود پیدا کنه.",
+                    "جان دبیرت باید با درمان کامل بشه.",
                     show_alert=True,
                 )
                 return
@@ -734,7 +734,7 @@ async def teacher_callback_handler(
             await callback.answer("دبیر به بیمارستان فرستاده شد.")
     except HospitalFull:
         await callback.answer(
-            "تخت‌های بیمارستان پر هستند. دبیر بهبود‌یافته را ترخیص کن یا بیمارستان را ارتقا بده.",
+            "تخت‌های بیمارستان پر هستند. دبیر درمان‌شده را ترخیص کن یا بیمارستان را ارتقا بده.",
             show_alert=True,
         )
     except InsufficientDiamonds:
@@ -810,11 +810,11 @@ async def confirmation_callback_handler(
                 session, user.id, callback_data.target_id
             )
             await _hospital_view(callback, session)
-            notice = "دبیر با پرداخت الماس فوراً بهبود پیدا کرد."
+            notice = "دبیر با پرداخت الماس فوراً درمان شد."
         elif callback_data.action == "hospital_upgrade":
             await hospital_service.upgrade(session, user.id)
             await _hospital_view(callback, session)
-            notice = "بیمارستان ارتقا پیدا کرد؛ بستری‌های جدید سریع‌تر بهبود می‌یابند."
+            notice = "بیمارستان ارتقا پیدا کرد؛ بستری‌های جدید سریع‌تر درمان می‌شوند."
         elif callback_data.action == "teacher_buy":
             purchased_teacher = await teacher_service.buy(
                 session, user.id, callback_data.target_id
@@ -901,7 +901,7 @@ async def hospital_callback_handler(
             await hospital_service.begin_recovery(
                 session, user.id, callback_data.teacher_id
             )
-            notice = "فرآیند بهبودی دبیر آغاز شد."
+            notice = "فرآیند درمان دبیر آغاز شد."
         elif callback_data.action == "discharge":
             await hospital_service.discharge(session, user.id, callback_data.teacher_id)
             notice = "دبیر ترخیص شد و دوباره فعال است."
@@ -914,9 +914,9 @@ async def hospital_callback_handler(
             )
             await _send_or_edit(
                 callback,
-                f"⚡ بهبود فوری دبیر «{owned.teacher.name}»\n\n"
+                f"⚡ درمان فوری دبیر «{owned.teacher.name}»\n\n"
                 f"هزینه: {_number(cost)} 💎\n"
-                "با پرداخت الماس، دبیر فوراً کاملاً بهبود پیدا می‌کند.\n"
+                "با پرداخت الماس، دبیر فوراً کاملاً درمان می‌شود.\n"
                 "آیا ادامه می‌دهی؟",
                 reply_markup=confirmation_keyboard(
                     action="hospital_instant_recover", target_id=owned.id
@@ -957,7 +957,7 @@ async def hospital_callback_handler(
                 f"{emoji('5866060208253441223', '⬆️')} {bold('ارتقای بیمارستان')}\n\n"
                 f"{escape('سطح:')} {escape(_number(hospital.level))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.level + 1))}\n"
                 f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_capacity))}\n"
-                f"{emoji('6039539366177541657', '⏳')} {bold('سرعت بهبود بیمارستان')}\n"
+                f"{emoji('6039539366177541657', '⏳')} {bold('سرعت درمان بیمارستان')}\n"
                 f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')} {emoji('5235470399730361615', '➡️')} {bold(f'{hospital.next_heal_hp_per_hour} HP در ساعت')}\n\n"
                 f"{emoji('5825570280243732195', '🩸')} {escape('نمونه برای 80 HP آسیب:')} "
                 f"{escape(_duration_text(hospital_service.config.hospital_recovery_minutes(hospital.level, 80)))} "
@@ -982,7 +982,7 @@ async def hospital_callback_handler(
         await callback.answer(notice)
     except HospitalFull:
         await callback.answer(
-            "تخت‌های بیمارستان پر هستند. دبیر بهبود‌یافته را ترخیص کن یا بیمارستان را ارتقا بده.",
+            "تخت‌های بیمارستان پر هستند. دبیر درمان‌شده را ترخیص کن یا بیمارستان را ارتقا بده.",
             show_alert=True,
         )
     except SchoolError:

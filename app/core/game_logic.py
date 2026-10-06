@@ -251,6 +251,8 @@ class GameConfig:
     chance_box_rules: ChanceBoxRules = field(default_factory=ChanceBoxRules)
     attack_rules: AttackRules = field(default_factory=AttackRules)
     instant_recovery_diamond_cost: int | None = None
+    slogan_reward_banana: int = 2
+    slogan_cooldown_seconds: int = 3600
     upgrade_banana_per_diamond: int = 1
     upgrade_banana_minimum: int = 1
     upgrade_banana_maximum: int = 500
@@ -261,6 +263,8 @@ class GameConfig:
             raise ValueError("max_owned_teacher_slots must be positive")
         if self.max_attack_teachers < 1:
             raise ValueError("max_attack_teachers must be positive")
+        if self.slogan_reward_banana < 1 or self.slogan_cooldown_seconds < 1:
+            raise ValueError("slogan reward and cooldown must be positive")
         if (
             self.upgrade_banana_per_diamond < 1
             or self.upgrade_banana_minimum < 0
@@ -728,6 +732,7 @@ class GameConfig:
         attack_data = data.get("attack", {})
         teacher_upgrade_data = data.get("teacher_upgrade", {})
         hospital_data = data.get("hospital", {})
+        slogan_data = data.get("slogan", {})
         mine_data = data.get("mine", {})
         progression = data.get("progression", {})
         study_packs = {
@@ -923,6 +928,8 @@ class GameConfig:
                 if hospital_data.get("instant_recovery_diamond_cost") is None
                 else int(hospital_data["instant_recovery_diamond_cost"])
             ),
+            slogan_reward_banana=int(slogan_data.get("reward_banana", 2)),
+            slogan_cooldown_seconds=int(slogan_data.get("cooldown_seconds", 3600)),
             upgrade_banana_per_diamond=int(
                 upgrade_rewards.get("banana_per_diamond", 10)
             ),

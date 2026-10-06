@@ -62,7 +62,9 @@ class UserRepository:
             .options(selectinload(User.resources))
         )
         if for_update:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
+            )
         result = await session.execute(statement)
         return result.scalar_one_or_none()
 

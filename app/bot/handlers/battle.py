@@ -461,7 +461,7 @@ async def _report_error(message: Message, error: Exception) -> None:
     elif isinstance(error, TeacherNotOwned):
         await message.answer("این دبیر را هنوز نخریده‌اید.")
     elif isinstance(error, TeacherInHospital):
-        await message.answer("این دبیر در حال بهبود است و فعلاً نمی‌تواند حمله کند.")
+        await message.answer("این دبیر در حال درمان است و فعلاً نمی‌تواند حمله کند.")
     elif isinstance(error, AttackInProgress):
         await message.answer(
             "⚔️ حمله فعال دارید؛ پس از پایان آن می‌توانید دوباره حمله کنید."
