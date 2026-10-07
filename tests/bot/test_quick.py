@@ -80,4 +80,10 @@ def test_slogan_lines_do_not_repeat_for_one_user(monkeypatch) -> None:
     ]
     assert len(set(first_cycle)) == len(quick.SLOGAN_HEADERS)
     assert quick._fresh_choice(quick.SLOGAN_HEADERS, 42, history) != first_cycle[-1]
-    assert len(quick.SLOGANS) == 5
+    assert quick.SLOGANS == (
+        "من خدای درسم",
+        "امروز درس رو فتح میکنم",
+        "هر روز از دیروز بهترم",
+        "با دانش قلعه میسازم",
+        "تا آخر مسیر میجنگم",
+    )

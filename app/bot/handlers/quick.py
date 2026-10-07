@@ -21,10 +21,10 @@ router = Router(name="quick_replies")
 slogan_service = SloganService()
 SLOGANS = (
     "من خدای درسم",
-    "امروز درس رو فتح می‌کنم",
+    "امروز درس رو فتح میکنم",
     "هر روز از دیروز بهترم",
-    "با دانش قلعه می‌سازم",
-    "تا آخر مسیر می‌جنگم",
+    "با دانش قلعه میسازم",
+    "تا آخر مسیر میجنگم",
 )
 
 # Each response has its own premium emoji. Telegram displays the fallback icon
