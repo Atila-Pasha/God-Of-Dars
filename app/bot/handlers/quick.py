@@ -1,4 +1,4 @@
-"""Quick commander replies and five phrases sharing one hourly reward."""
+"""Quick commander replies and nine phrases sharing one hourly reward."""
 
 from random import choice
 
@@ -25,6 +25,10 @@ SLOGANS = (
     "هر روز از دیروز بهترم",
     "با دانش قلعه میسازم",
     "تا آخر مسیر میجنگم",
+    "کیری قویم و",
+    "من خدام",
+    "میجنگم",
+    "یا خدا",
 )
 
 # Each response has its own premium emoji. Telegram displays the fallback icon
@@ -195,5 +199,5 @@ async def slogan_timer_handler(
         )
     else:
         await callback.answer(
-            "وقت شعار بعدی رسیده! یکی از پنج شعار رو بگو.", show_alert=True
+            "وقت شعار بعدی رسیده! یکی از نه شعار رو بگو.", show_alert=True
         )
