@@ -49,7 +49,7 @@ instant_recovery_diamond_cost = 15
 
 [slogan]
 # A small recurring bonus compared with a successful battle (20 bananas).
-reward_banana = 2
+reward_banana = 3
 cooldown_seconds = 3600
 
 # Recovery duration depends on the teacher's missing HP and the hospital rate.

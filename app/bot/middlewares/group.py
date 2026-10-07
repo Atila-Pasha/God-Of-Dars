@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.custom_emojis import reset_group_reply_context, set_group_reply_context
+from app.bot.handlers.quick import SLOGANS
 from app.bot.keyboards.main_menu import MENU_SECTION_LABELS
 from app.core.config import settings
 from app.services.group_service import GroupService
@@ -223,7 +224,7 @@ class GroupAccessMiddleware(BaseMiddleware):
         text = (message.text or "").strip()
         if not text:
             return False
-        if text in GROUP_PROFILE_ALIASES or text in {"گاد", "من خدای درسم"}:
+        if text in GROUP_PROFILE_ALIASES or text == "گاد" or text in SLOGANS:
             return True
         # These are intentionally plain-text group commands. Require a word
         # boundary so ordinary messages such as "حملهای..." are not commands.
@@ -281,5 +282,6 @@ class GroupAccessMiddleware(BaseMiddleware):
                 "chance_box:",
                 "library:",
                 "library_teacher:",
+                "slogan:",
             )
         )

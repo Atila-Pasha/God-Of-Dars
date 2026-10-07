@@ -251,7 +251,7 @@ class GameConfig:
     chance_box_rules: ChanceBoxRules = field(default_factory=ChanceBoxRules)
     attack_rules: AttackRules = field(default_factory=AttackRules)
     instant_recovery_diamond_cost: int | None = None
-    slogan_reward_banana: int = 2
+    slogan_reward_banana: int = 3
     slogan_cooldown_seconds: int = 3600
     upgrade_banana_per_diamond: int = 1
     upgrade_banana_minimum: int = 1
@@ -629,8 +629,12 @@ class GameConfig:
             base = self.mine_levels[base_level]
             steps = level - base_level
             return MineLevel(
+                # Gold grows at every level so rounding cannot make a paid
+                # upgrade do nothing. Diamonds retain their slower curve to
+                # preserve the existing shield and progression economy.
                 coin_per_minute=max(
-                    0, round(base.coin_per_minute * self.mine_coin_growth**steps)
+                    base.coin_per_minute + steps,
+                    round(base.coin_per_minute * self.mine_coin_growth**steps),
                 ),
                 diamond_per_minute=max(
                     0, round(base.diamond_per_minute * self.mine_diamond_growth**steps)
@@ -928,7 +932,7 @@ class GameConfig:
                 if hospital_data.get("instant_recovery_diamond_cost") is None
                 else int(hospital_data["instant_recovery_diamond_cost"])
             ),
-            slogan_reward_banana=int(slogan_data.get("reward_banana", 2)),
+            slogan_reward_banana=int(slogan_data.get("reward_banana", 3)),
             slogan_cooldown_seconds=int(slogan_data.get("cooldown_seconds", 3600)),
             upgrade_banana_per_diamond=int(
                 upgrade_rewards.get("banana_per_diamond", 10)

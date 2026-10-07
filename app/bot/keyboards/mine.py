@@ -22,7 +22,9 @@ def mine_keyboard(*, can_upgrade: bool) -> InlineKeyboardMarkup:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="⬆️ ارتقای معدن",
+                    text="ارتقای معدن",
+                    icon_custom_emoji_id="5866060208253441223",
+                    style="success",
                     callback_data=MineCallback(action="upgrade").pack(),
                 )
             ]
@@ -36,10 +38,12 @@ def mine_upgrade_confirmation_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="✅ تأیید ارتقا",
+                    style="success",
                     callback_data=MineCallback(action="confirm_upgrade").pack(),
                 ),
                 InlineKeyboardButton(
                     text="❌ لغو",
+                    style="danger",
                     callback_data=MineCallback(action="cancel_upgrade").pack(),
                 ),
             ]

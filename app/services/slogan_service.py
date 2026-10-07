@@ -18,6 +18,7 @@ from app.services.user_service import UserInactiveError
 class SloganClaim:
     reward_banana: int
     retry_after_seconds: int = 0
+    current_banana: int = 0
 
     @property
     def awarded(self) -> bool:
@@ -33,6 +34,24 @@ class SloganService:
     ) -> None:
         self.repository = repository or UserRepository()
         self.config = config or game_config
+
+    def _remaining_seconds(self, last: datetime | None, now: datetime) -> int:
+        if last is None:
+            return 0
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        remaining = (
+            last + timedelta(seconds=self.config.slogan_cooldown_seconds) - now
+        ).total_seconds()
+        return max(0, ceil(remaining))
+
+    async def remaining_seconds(
+        self, session: AsyncSession, telegram_user_id: int
+    ) -> int:
+        user = await self.repository.get_by_telegram_user_id(session, telegram_user_id)
+        if user is None:
+            raise SchoolUserNotFound
+        return self._remaining_seconds(user.last_slogan_at, datetime.now(UTC))
 
     async def claim(
         self,
@@ -50,18 +69,13 @@ class SloganService:
         if not user.is_active:
             raise UserInactiveError
         now = now or datetime.now(UTC)
-        last = user.last_slogan_at
-        if last is not None:
-            if last.tzinfo is None:
-                last = last.replace(tzinfo=UTC)
-            remaining = (
-                last + timedelta(seconds=self.config.slogan_cooldown_seconds) - now
-            ).total_seconds()
-            if remaining > 0:
-                return SloganClaim(
-                    reward_banana=self.config.slogan_reward_banana,
-                    retry_after_seconds=ceil(remaining),
-                )
+        remaining = self._remaining_seconds(user.last_slogan_at, now)
+        if remaining:
+            return SloganClaim(
+                reward_banana=self.config.slogan_reward_banana,
+                retry_after_seconds=remaining,
+                current_banana=user.resources.banana if user.resources else 0,
+            )
 
         if user.resources is None:
             user.resources = Resource(coin=0, diamond=0, banana=0)
@@ -77,4 +91,7 @@ class SloganService:
         )
         user.last_slogan_at = now
         await session.flush()
-        return SloganClaim(reward_banana=self.config.slogan_reward_banana)
+        return SloganClaim(
+            reward_banana=self.config.slogan_reward_banana,
+            current_banana=user.resources.banana,
+        )

@@ -47,6 +47,14 @@ def test_first_diamond_mine_level_is_reachable_before_passive_income() -> None:
     assert game_config.mine_level(2).diamond_cost == 120
 
 
+def test_every_high_level_mine_upgrade_increases_production() -> None:
+    for level in range(6, game_config.mine_max_level):
+        before = game_config.mine_level(level)
+        after = game_config.mine_level(level + 1)
+        assert after.coin_per_minute >= before.coin_per_minute + 1
+        assert after.diamond_per_minute >= before.diamond_per_minute
+
+
 def test_diamond_teacher_sale_refunds_equivalent_coin_value() -> None:
     assert (
         game_config.teacher_sell_price(

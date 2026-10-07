@@ -66,3 +66,7 @@ def test_mine_shows_independent_collection_buttons() -> None:
         "mine:collect_coin",
         "mine:collect_diamond",
     ]
+
+    upgrade = mine_keyboard(can_upgrade=True).inline_keyboard[1][0]
+    assert upgrade.style == "success"
+    assert upgrade.icon_custom_emoji_id == "5866060208253441223"

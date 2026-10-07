@@ -181,3 +181,7 @@ class MineCallback(CallbackData, prefix="mine"):
         "cancel_upgrade",
         "back",
     ]
+
+
+class SloganCallback(CallbackData, prefix="slogan"):
+    user_id: int
