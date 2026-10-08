@@ -8,8 +8,10 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from sqlalchemy import text
 
 from app.bot import create_dispatcher
+from app.bot.shutdown import drain_updates
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.core.runtime_health import monitor_runtime
 from app.db.session import engine
 from app.workers.runtime import run_workers
 
@@ -23,7 +25,7 @@ async def verify_database() -> None:
 
 
 async def run_main_bot(stop_event: asyncio.Event) -> None:
-    dispatcher = create_dispatcher()
+    dispatcher = create_dispatcher() if settings.RUNTIME_ROLE != "attacks" else None
     bot_session = (
         AiohttpSession(
             proxy=settings.TELEGRAM_PROXY, limit=settings.TELEGRAM_HTTP_LIMIT
@@ -36,6 +38,19 @@ async def run_main_bot(stop_event: asyncio.Event) -> None:
             run_workers(bot),
             name="background-workers",
         )
+        if dispatcher is None:
+            try:
+                stop_task = asyncio.create_task(stop_event.wait())
+                await asyncio.wait(
+                    (stop_task, worker_task), return_when=asyncio.FIRST_COMPLETED
+                )
+                if worker_task.done():
+                    await worker_task
+            finally:
+                stop_task.cancel()
+                worker_task.cancel()
+                await asyncio.gather(stop_task, worker_task, return_exceptions=True)
+            return
         polling_task = asyncio.create_task(
             dispatcher.start_polling(
                 bot,
@@ -54,6 +69,7 @@ async def run_main_bot(stop_event: asyncio.Event) -> None:
             if (stop_task in done or worker_task in done) and not polling_task.done():
                 await dispatcher.stop_polling()
             await polling_task
+            await drain_updates(dispatcher)
             if worker_task.done():
                 # Do not silently keep polling if the worker task group exits
                 # or crashes unexpectedly.
@@ -80,9 +96,16 @@ async def main() -> None:
         with suppress(NotImplementedError):
             loop.add_signal_handler(shutdown_signal, stop_event.set)
 
-    tasks = [asyncio.create_task(run_main_bot(stop_event), name="main-bot")]
+    tasks = [
+        asyncio.create_task(run_main_bot(stop_event), name="main-bot"),
+    ]
+    monitor_task = asyncio.create_task(monitor_runtime(), name="runtime-health")
 
-    if settings.ADMIN_BOT_TOKEN and settings.admin_id_set:
+    if (
+        settings.RUNTIME_ROLE != "attacks"
+        and settings.ADMIN_BOT_TOKEN
+        and settings.admin_id_set
+    ):
         from admin.main import run_admin_bot
 
         tasks.append(
@@ -92,7 +115,7 @@ async def main() -> None:
             )
         )
         logger.info("Admin bot will be started alongside the main bot")
-    else:
+    elif settings.RUNTIME_ROLE != "attacks":
         logger.warning(
             "Admin bot was not started: configure both ADMIN_BOT_TOKEN and ADMIN_IDS"
         )
@@ -100,6 +123,8 @@ async def main() -> None:
     try:
         await asyncio.gather(*tasks)
     finally:
+        monitor_task.cancel()
+        await asyncio.gather(monitor_task, return_exceptions=True)
         for task in tasks:
             if not task.done():
                 task.cancel()

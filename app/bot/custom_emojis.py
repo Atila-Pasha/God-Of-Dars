@@ -407,6 +407,9 @@ def install() -> None:
     @wraps(original_call)
     async def call(self: Bot, method: Any, *args: Any, **kwargs: Any) -> Any:
         _decorate_method(method, use_rich_banners=self.token == settings.BOT_TOKEN)
+        # Long polling must not occupy or wait for an outgoing API slot.
+        if method.__class__.__name__ == "GetUpdates":
+            return await original_call(self, method, *args, **kwargs)
         reply_fallback_used = False
         for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
             try:

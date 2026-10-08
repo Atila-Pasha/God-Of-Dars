@@ -92,3 +92,6 @@ The historical API migration remains in the Alembic chain so existing
 databases can upgrade safely. The current head then removes its six API-only
 tables. Back up any retired API authentication or audit data before deploying;
 the downgrade restores empty table structures, not deleted rows.
+
+For the 4-vCPU / 8-GiB production deployment, worker separation, monitoring,
+load-test interpretation and rollback, see [the capacity runbook](docs/capacity.md).

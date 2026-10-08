@@ -12,6 +12,13 @@ from app.core.config import settings
 engine_options: dict[str, Any] = {"echo": settings.ENVIRONMENT == "development"}
 if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
     engine_options.update(
+        connect_args={
+            "server_settings": {
+                "statement_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
+                "lock_timeout": str(settings.DB_LOCK_TIMEOUT_MS),
+                "application_name": f"godofdars-{settings.RUNTIME_ROLE}",
+            }
+        },
         pool_size=settings.DB_POOL_SIZE,
         max_overflow=settings.DB_MAX_OVERFLOW,
         pool_timeout=settings.DB_POOL_TIMEOUT,

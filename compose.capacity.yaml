@@ -1,0 +1,77 @@
+# Production overlay for the measured 4-vCPU / 8-GiB host.
+# docker compose -f compose.yaml -f compose.capacity.yaml up -d --build
+services:
+  postgres:
+    shm_size: 512mb
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1536MB
+      - -c
+      - effective_cache_size=5GB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_connections=120
+      - -c
+      - max_worker_processes=4
+      - -c
+      - max_parallel_workers=4
+      - -c
+      - max_parallel_workers_per_gather=2
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - log_min_duration_statement=1000
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+  bot:
+    image: godofdars:capacity-20261008
+    environment:
+      RUNTIME_ROLE: bot
+      DB_POOL_SIZE: 32
+      DB_MAX_OVERFLOW: 8
+      BOT_CONCURRENCY_LIMIT: 160
+      TELEGRAM_API_CONCURRENCY: 25
+      TELEGRAM_HTTP_LIMIT: 100
+      NOTIFICATION_WORKER_COUNT: 2
+      NOTIFICATION_SEND_CONCURRENCY: 4
+      WORKER_BATCH_SIZE: 4
+    stop_grace_period: 60s
+    logging: *logging
+  attacks:
+    image: godofdars:capacity-20261008
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    # Migrations run once in bot, before the bot becomes healthy.
+    entrypoint: ["python", "-m", "app.main"]
+    environment:
+      ENVIRONMENT: production
+      RUNTIME_ROLE: attacks
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DB_POOL_SIZE: 6
+      DB_MAX_OVERFLOW: 2
+      WORKER_COUNT: 2
+      WORKER_BATCH_SIZE: 20
+    depends_on:
+      bot:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *logging

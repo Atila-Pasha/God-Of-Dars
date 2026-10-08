@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,6 +12,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     ENVIRONMENT: str = "development"
     TELEGRAM_PROXY: str | None = None
+    RUNTIME_ROLE: Literal["combined", "bot", "attacks"] = "combined"
+    DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000, ge=0)
+    DB_LOCK_TIMEOUT_MS: int = Field(default=10000, ge=0)
     DB_POOL_SIZE: int = Field(default=20, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=30, ge=0)
     DB_POOL_TIMEOUT: int = Field(default=30, gt=0)

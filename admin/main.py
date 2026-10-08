@@ -6,7 +6,9 @@ from aiogram.client.session.aiohttp import AiohttpSession
 
 from admin.handlers import router
 from app.bot.custom_emojis import install as install_custom_emojis
+from app.bot.isolation import UserEventIsolation
 from app.bot.middlewares.database import DatabaseSessionMiddleware
+from app.bot.shutdown import drain_updates
 from app.core.config import settings
 from app.core.logging import configure_logging
 
@@ -14,7 +16,7 @@ install_custom_emojis()
 
 
 def create_dispatcher() -> Dispatcher:
-    dispatcher = Dispatcher()
+    dispatcher = Dispatcher(events_isolation=UserEventIsolation())
     dispatcher.update.outer_middleware(DatabaseSessionMiddleware())
     dispatcher.include_router(router)
     return dispatcher
@@ -59,6 +61,7 @@ async def run_admin_bot(stop_event: asyncio.Event | None = None) -> None:
                     if stop_task in done and not polling_task.done():
                         await dispatcher.stop_polling()
                     await polling_task
+                await drain_updates(dispatcher)
             finally:
                 if stop_task is not None:
                     stop_task.cancel()

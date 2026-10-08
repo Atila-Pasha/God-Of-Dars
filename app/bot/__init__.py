@@ -13,6 +13,7 @@ from app.bot.handlers.quick import router as quick_router
 from app.bot.handlers.referral import router as referral_router
 from app.bot.handlers.school import router as school_router
 from app.bot.handlers.start import router as start_router
+from app.bot.isolation import UserEventIsolation
 from app.bot.middlewares.database import DatabaseSessionMiddleware
 from app.bot.middlewares.group import GroupAccessMiddleware
 from app.bot.middlewares.navigation import NavigationStateMiddleware
@@ -21,7 +22,7 @@ from app.bot.middlewares.subscription import SubscriptionMiddleware
 
 def create_dispatcher() -> Dispatcher:
     install_custom_emojis()
-    dispatcher = Dispatcher()
+    dispatcher = Dispatcher(events_isolation=UserEventIsolation())
     dispatcher.update.outer_middleware(DatabaseSessionMiddleware())
     subscription_middleware = SubscriptionMiddleware()
     group_middleware = GroupAccessMiddleware()

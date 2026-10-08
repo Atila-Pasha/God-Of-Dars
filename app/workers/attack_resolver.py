@@ -92,7 +92,7 @@ async def _command_result(session, result):
     )
 
 
-async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
+async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
     async with AsyncSessionLocal() as session:
         now = datetime.now(UTC)
         stale_processing = now - timedelta(
@@ -126,7 +126,13 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                     update(Attack)
                     .where(
                         Attack.id.in_(attack_ids),
-                        Attack.status.in_((AttackStatus.PENDING, AttackStatus.FAILED)),
+                        Attack.status.in_(
+                            (
+                                AttackStatus.PENDING,
+                                AttackStatus.FAILED,
+                                AttackStatus.PROCESSING,
+                            )
+                        ),
                     )
                     .values(
                         status=AttackStatus.PROCESSING,
@@ -240,6 +246,8 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> None:
                 logger.error("Attack %s has an invalid game state: %s", attack_id, exc)
                 await _record_failure(session, attack_id, exc)
 
+        return len(attack_ids)
+
 
 def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, IntegrityError):
@@ -247,7 +255,9 @@ def _is_retryable(exc: Exception) -> bool:
     if not isinstance(exc, (OperationalError, DBAPIError)):
         return False
     code = getattr(getattr(exc, "orig", None), "sqlstate", None)
-    return code in {"40001", "40P01"} or isinstance(exc, OperationalError)
+    return code in {"40001", "40P01", "55P03", "57014"} or isinstance(
+        exc, OperationalError
+    )
 
 
 async def _record_failure(session, attack_id: int, exc: Exception) -> None:

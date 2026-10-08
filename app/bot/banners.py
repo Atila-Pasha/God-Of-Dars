@@ -27,19 +27,20 @@ def emoji(emoji_id: str, fallback: str) -> str:
     return f"![{fallback}](tg://emoji?id={emoji_id})"
 
 
+_ICONS = tuple(sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True))
+_ICON_PATTERN = re.compile("|".join(re.escape(icon) for icon in _ICONS))
+
+
 def rich_plain(value: str) -> str:
-    """Escape ordinary text while replacing known emoji with custom entities."""
-    icons = sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True)
+    """Render in linear chunks instead of scanning every emoji at each character."""
     parts: list[str] = []
     position = 0
-    while position < len(value):
-        icon = next((item for item in icons if value.startswith(item, position)), None)
-        if icon is None:
-            parts.append(escape(value[position]))
-            position += 1
-        else:
-            parts.append(emoji(CUSTOM_EMOJI_IDS[icon], icon))
-            position += len(icon)
+    for match in _ICON_PATTERN.finditer(value):
+        parts.append(escape(value[position : match.start()]))
+        icon = match.group()
+        parts.append(emoji(CUSTOM_EMOJI_IDS[icon], icon))
+        position = match.end()
+    parts.append(escape(value[position:]))
     return "".join(parts)
 
 
@@ -50,11 +51,7 @@ def _banner_line(value: str, *, heading: bool = False) -> str:
     indentation = value[: len(value) - len(value.lstrip())]
     content = value.strip()
     icon = next(
-        (
-            item
-            for item in sorted(CUSTOM_EMOJI_IDS, key=len, reverse=True)
-            if content.startswith(item)
-        ),
+        (item for item in _ICONS if content.startswith(item)),
         None,
     )
     prefix = f"{emoji(CUSTOM_EMOJI_IDS[icon], icon)} " if icon else ""

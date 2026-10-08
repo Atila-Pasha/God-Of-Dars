@@ -88,7 +88,10 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
             is None
         )
         first = await session.scalar(
-            select(Recovery).where(Recovery.completed_at.is_(None))
+            select(Recovery).where(
+                Recovery.completed_at.is_(None),
+                Recovery.user_teacher_id.in_(teacher_ids),
+            )
         )
         assert first is not None
         first_minutes = (
@@ -105,7 +108,10 @@ async def test_hospital_upgrade_adds_a_bed_and_shortens_new_recovery() -> None:
         rows = list(
             (
                 await session.scalars(
-                    select(Recovery).where(Recovery.completed_at.is_(None))
+                    select(Recovery).where(
+                        Recovery.completed_at.is_(None),
+                        Recovery.user_teacher_id.in_(teacher_ids),
+                    )
                 )
             ).all()
         )

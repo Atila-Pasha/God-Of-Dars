@@ -18,7 +18,7 @@ from app.services.notification_service import NotificationService
 logger = logging.getLogger(__name__)
 
 
-async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> None:
+async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> int:
     now = datetime.now(UTC)
     async with AsyncSessionLocal() as session, session.begin():
         notifications = await NotificationService().claim_due_batch(
@@ -29,7 +29,7 @@ async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> None:
             batch_size=batch_size,
         )
     if not notifications:
-        return
+        return 0
 
     send_limit = asyncio.Semaphore(settings.NOTIFICATION_SEND_CONCURRENCY)
     await asyncio.gather(
@@ -38,6 +38,8 @@ async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> None:
             for notification in notifications
         )
     )
+
+    return len(notifications)
 
 
 async def _deliver_notification(
@@ -128,10 +130,18 @@ async def _deliver_notification(
 
 async def run_notification_worker(bot: Bot, *, worker_id: int = 0) -> None:
     while True:
+        processed = 0
         try:
-            await process_due_notifications(bot, batch_size=settings.WORKER_BATCH_SIZE)
+            processed = await process_due_notifications(
+                bot, batch_size=settings.WORKER_BATCH_SIZE
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("Notification worker %s failed; retrying", worker_id)
-        await asyncio.sleep(settings.WORKER_POLL_INTERVAL)
+        # A full batch means backlog: continue draining without an idle delay.
+        await asyncio.sleep(
+            0
+            if processed >= settings.WORKER_BATCH_SIZE
+            else settings.WORKER_POLL_INTERVAL
+        )

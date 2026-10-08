@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from collections.abc import Iterable
@@ -24,6 +25,7 @@ class SubscriptionService:
         self.channels = tuple(
             channel.strip() for channel in (channels or ()) if channel.strip()
         )
+        self._membership_locks = [asyncio.Lock() for _ in range(256)]
         self._membership_cache: dict[tuple[str, int], tuple[float, bool]] = {}
         self.membership_cache_ttl = settings.MEMBERSHIP_CACHE_TTL
         self.membership_cache_max_entries = settings.MEMBERSHIP_CACHE_MAX_ENTRIES
@@ -109,6 +111,18 @@ class SubscriptionService:
         self, bot: Bot, telegram_user_id: int, *, force_refresh: bool = False
     ) -> bool:
         cache_key = (str(getattr(bot, "token", "")), telegram_user_id)
+        # Fixed-size lock stripes coalesce bursts without an unbounded lock map.
+        async with self._membership_locks[
+            hash(cache_key) % len(self._membership_locks)
+        ]:
+            return await self._check_member(
+                bot, telegram_user_id, force_refresh=force_refresh
+            )
+
+    async def _check_member(
+        self, bot: Bot, telegram_user_id: int, *, force_refresh: bool
+    ) -> bool:
+        cache_key = (str(getattr(bot, "token", "")), telegram_user_id)
         cached = self._membership_cache.get(cache_key)
         if not force_refresh and cached and cached[0] > monotonic():
             return cached[1]
@@ -154,13 +168,9 @@ class SubscriptionService:
         return member.status in VALID_MEMBER_STATUSES
 
     def _remember(self, key: tuple[str, int], value: bool) -> None:
+        self._membership_cache.pop(key, None)
         if len(self._membership_cache) >= self.membership_cache_max_entries:
-            now = monotonic()
-            self._membership_cache = {
-                item: entry
-                for item, entry in self._membership_cache.items()
-                if entry[0] > now
-            }
-            if len(self._membership_cache) >= self.membership_cache_max_entries:
-                self._membership_cache.clear()
+            # Evict one oldest insertion; clearing the whole cache creates a
+            # Telegram membership-check stampede precisely at peak traffic.
+            self._membership_cache.pop(next(iter(self._membership_cache)))
         self._membership_cache[key] = (monotonic() + self.membership_cache_ttl, value)

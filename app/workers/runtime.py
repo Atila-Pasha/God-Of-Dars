@@ -15,20 +15,31 @@ logger = logging.getLogger(__name__)
 
 async def _attack_worker(bot: Bot, worker_id: int) -> None:
     while True:
+        processed = 0
         try:
-            await resolve_due_attacks(bot, batch_size=settings.WORKER_BATCH_SIZE)
+            processed = await resolve_due_attacks(
+                bot, batch_size=settings.WORKER_BATCH_SIZE
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("Attack worker %s failed; retrying", worker_id)
-        await asyncio.sleep(settings.WORKER_POLL_INTERVAL)
+        await asyncio.sleep(
+            0
+            if processed >= settings.WORKER_BATCH_SIZE
+            else settings.WORKER_POLL_INTERVAL
+        )
 
 
 async def run_workers(bot: Bot) -> None:
     """Run database-backed jobs concurrently without duplicating work."""
     async with asyncio.TaskGroup() as task_group:
-        task_group.create_task(run_game_message_cleanup_worker(bot))
-        for worker_id in range(settings.WORKER_COUNT):
-            task_group.create_task(_attack_worker(bot, worker_id))
-        for worker_id in range(settings.NOTIFICATION_WORKER_COUNT):
-            task_group.create_task(run_notification_worker(bot, worker_id=worker_id))
+        if settings.RUNTIME_ROLE in {"combined", "attacks"}:
+            for worker_id in range(settings.WORKER_COUNT):
+                task_group.create_task(_attack_worker(bot, worker_id))
+        if settings.RUNTIME_ROLE in {"combined", "bot"}:
+            task_group.create_task(run_game_message_cleanup_worker(bot))
+            for worker_id in range(settings.NOTIFICATION_WORKER_COUNT):
+                task_group.create_task(
+                    run_notification_worker(bot, worker_id=worker_id)
+                )
