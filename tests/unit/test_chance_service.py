@@ -51,6 +51,22 @@ def test_math_problem_is_drawn_into_the_png() -> None:
     assert image != _png_captcha("7 + 3 = ؟")
 
 
+def test_letter_box_captcha_has_three_distinct_readable_choices() -> None:
+    for _ in range(30):
+        image, answer, choices = ChanceService.box_captcha()
+        width, height = struct.unpack(">II", image[16:24])
+        assert image.startswith(b"\x89PNG\r\n\x1a\n")
+        assert width >= 300 and height >= 100
+        assert len(answer) == 4
+        assert answer in choices
+        assert len(set(choices)) == 3
+        assert all(len(choice) == 4 for choice in choices)
+        assert all(
+            sum(a != b for a, b in zip(answer, choice, strict=True)) <= 1
+            for choice in choices
+        )
+
+
 def test_chance_banners_use_requested_icons_and_spoilers() -> None:
     assert game_config.chance_box_rules.expiry_minutes == 5
     expires_at = datetime.now(UTC) + timedelta(minutes=5)

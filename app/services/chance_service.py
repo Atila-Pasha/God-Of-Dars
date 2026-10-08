@@ -14,6 +14,7 @@ from app.core.game_logic import game_config
 from app.models.chance_box import ChanceBox
 from app.models.chance_card import ChanceCard
 from app.models.user import User
+from app.services.letter_captcha import make_letter_captcha
 from app.services.reward_service import RewardService, RewardSpec
 
 
@@ -26,6 +27,10 @@ class AlreadyClaimed(ChanceError):
 
 
 class WrongCaptcha(ChanceError):
+    pass
+
+
+class AlreadyAttempted(ChanceError):
     pass
 
 
@@ -114,6 +119,10 @@ class ChanceService:
         problem = f"{left} {operation} {right} = ؟"
         return problem, _png_captcha(problem), str(result)
 
+    @staticmethod
+    def box_captcha() -> tuple[bytes, str, tuple[str, str, str]]:
+        return make_letter_captcha()
+
     @classmethod
     def card_expires_at(cls, card: ChanceCard) -> datetime:
         created_at = card.created_at or datetime.now(UTC)
@@ -128,6 +137,7 @@ class ChanceService:
         message_id: int,
         resource: ResourceType,
         amount: int,
+        captcha_answer: str | None = None,
         *,
         now: datetime | None = None,
     ) -> ChanceBox:
@@ -139,6 +149,7 @@ class ChanceService:
             telegram_message_id=message_id,
             resource_type=resource,
             amount=amount,
+            captcha_answer=captcha_answer,
             expires_at=now
             + timedelta(minutes=game_config.chance_box_rules.expiry_minutes),
         )
@@ -147,7 +158,11 @@ class ChanceService:
         return box
 
     async def claim_box(
-        self, session: AsyncSession, box_id: int, telegram_user_id: int
+        self,
+        session: AsyncSession,
+        box_id: int,
+        telegram_user_id: int,
+        answer: str | None = None,
     ) -> tuple[ChanceBox, bool]:
         result = await session.execute(
             select(ChanceBox).where(ChanceBox.id == box_id).with_for_update()
@@ -172,6 +187,26 @@ class ChanceService:
         user = result.scalar_one_or_none()
         if user is None:
             raise ChanceError("user is not registered")
+        if box.captcha_answer is not None:
+            from app.models.chance_box_attempt import ChanceBoxAttempt
+
+            if answer is None:
+                raise ChanceError("captcha answer is required")
+            attempted = await session.scalar(
+                select(ChanceBoxAttempt.id).where(
+                    ChanceBoxAttempt.box_id == box.id,
+                    ChanceBoxAttempt.user_id == user.id,
+                )
+            )
+            if attempted is not None:
+                raise AlreadyAttempted
+            correct = secrets.compare_digest(box.captcha_answer, answer or "")
+            session.add(
+                ChanceBoxAttempt(box_id=box.id, user_id=user.id, is_correct=correct)
+            )
+            await session.flush()
+            if not correct:
+                raise WrongCaptcha
         box.claimed_by_user_id = user.id
         box.claimed_at = datetime.now(UTC)
         await self.reward_service.grant(

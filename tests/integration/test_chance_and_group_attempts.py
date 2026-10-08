@@ -11,12 +11,21 @@ from app.core.enums import QuestionScope, QuestionStatus, ResourceType
 from app.db.session import AsyncSessionLocal, engine
 from app.models.answer import Answer
 from app.models.chance_box import ChanceBox
+from app.models.chance_box_attempt import ChanceBoxAttempt
 from app.models.chance_card import ChanceCard
 from app.models.group import Group
 from app.models.group_question import GroupQuestion
 from app.models.question import Question
+from app.models.resource import Resource
+from app.models.reward import Reward
+from app.models.transaction import Transaction
 from app.models.user import User
-from app.services.chance_service import AlreadyClaimed, ChanceService, WrongCaptcha
+from app.services.chance_service import (
+    AlreadyAttempted,
+    AlreadyClaimed,
+    ChanceService,
+    WrongCaptcha,
+)
 from app.services.library_errors import DuplicateAnswer
 from app.services.question_service import QuestionService
 from app.workers.game_message_cleanup import process_due_game_messages
@@ -138,6 +147,101 @@ async def test_wrong_math_card_answer_is_consumed_without_reward() -> None:
                 delete(ChanceCard).where(ChanceCard.user_id == user_id)
             )
             await session.execute(delete(User).where(User.id == user_id))
+
+
+@pytest.mark.asyncio
+async def test_group_box_wrong_choice_blocks_only_that_player() -> None:
+    async with AsyncSessionLocal() as session, session.begin():
+        group = Group(telegram_chat_id=-telegram_id(), title="captcha box test")
+        first = User(telegram_user_id=telegram_id(), first_name="first")
+        second = User(telegram_user_id=telegram_id(), first_name="second")
+        session.add_all([group, first, second])
+        await session.flush()
+        session.add_all([Resource(user_id=first.id), Resource(user_id=second.id)])
+    group_id, first_id, second_id = group.id, first.id, second.id
+    first_telegram_id, second_telegram_id = (
+        first.telegram_user_id,
+        second.telegram_user_id,
+    )
+    service = ChanceService()
+
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            box = await service.create_box(
+                session,
+                group_id,
+                801,
+                ResourceType.DIAMOND,
+                100,
+                captcha_answer="NEPR",
+            )
+        box_id = box.id
+
+        async with AsyncSessionLocal() as session:
+            with pytest.raises(WrongCaptcha):
+                await service.claim_box(session, box_id, first_telegram_id, "NETR")
+            await session.commit()
+
+        async with AsyncSessionLocal() as session:
+            with pytest.raises(AlreadyAttempted):
+                await service.claim_box(session, box_id, first_telegram_id, "NEPR")
+
+        async with AsyncSessionLocal() as session, session.begin():
+            claimed, _ = await service.claim_box(
+                session, box_id, second_telegram_id, "NEPR"
+            )
+            assert claimed.claimed_by_user_id == second_id
+
+        async with AsyncSessionLocal() as session:
+            attempts = (
+                (
+                    await session.execute(
+                        select(ChanceBoxAttempt)
+                        .where(ChanceBoxAttempt.box_id == box_id)
+                        .order_by(ChanceBoxAttempt.user_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(attempts) == 2
+            assert sum(attempt.is_correct for attempt in attempts) == 1
+            balances = (
+                (
+                    await session.execute(
+                        select(Resource).where(
+                            Resource.user_id.in_([first_id, second_id])
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert {balance.user_id: balance.diamond for balance in balances} == {
+                first_id: 0,
+                second_id: 100,
+            }
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                delete(ChanceBoxAttempt).where(ChanceBoxAttempt.box_id == box_id)
+            )
+            await session.execute(
+                delete(Transaction).where(
+                    Transaction.user_id.in_([first_id, second_id])
+                )
+            )
+            await session.execute(
+                delete(Reward).where(Reward.user_id.in_([first_id, second_id]))
+            )
+            await session.execute(delete(ChanceBox).where(ChanceBox.id == box_id))
+            await session.execute(
+                delete(Resource).where(Resource.user_id.in_([first_id, second_id]))
+            )
+            await session.execute(
+                delete(User).where(User.id.in_([first_id, second_id]))
+            )
+            await session.execute(delete(Group).where(Group.id == group_id))
 
 
 @pytest.mark.asyncio

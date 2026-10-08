@@ -10,10 +10,15 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.banners import MARKDOWN_V2, emoji, escape
-from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
+from app.bot.callbacks_chance import (
+    ChanceBoxCallback,
+    ChanceBoxCaptchaCallback,
+    ChanceCardCallback,
+)
 from app.bot.states import ChanceCardStates
 from app.models.chance_card import ChanceCard
 from app.services.chance_service import (
+    AlreadyAttempted,
     AlreadyClaimed,
     BoxExpired,
     CardExpired,
@@ -52,15 +57,21 @@ def _resource_label(resource_type) -> str:
 
 
 @router.callback_query(ChanceBoxCallback.filter())
+@router.callback_query(ChanceBoxCaptchaCallback.filter())
 async def claim_box(
-    callback: CallbackQuery, callback_data: ChanceBoxCallback, session: AsyncSession
+    callback: CallbackQuery,
+    callback_data: ChanceBoxCallback | ChanceBoxCaptchaCallback,
+    session: AsyncSession,
 ) -> None:
     if callback.from_user is None:
         await callback.answer()
         return
     try:
         box, _ = await chance_service.claim_box(
-            session, callback_data.box_id, callback.from_user.id
+            session,
+            callback_data.box_id,
+            callback.from_user.id,
+            getattr(callback_data, "answer", None),
         )
         # The reward must remain durable even if editing the Telegram message
         # fails after the winner has been selected.
@@ -73,6 +84,15 @@ async def claim_box(
         return
     except AlreadyClaimed:
         await callback.answer("این جعبه قبلاً باز شده است.", show_alert=True)
+        return
+    except WrongCaptcha:
+        await session.commit()
+        await callback.answer(
+            "پاسخ اشتباه بود؛ برای این جعبه فقط یک فرصت داشتی.", show_alert=True
+        )
+        return
+    except AlreadyAttempted:
+        await callback.answer("قبلاً به کپچای این جعبه پاسخ دادی.", show_alert=True)
         return
     except ChanceError:
         await callback.answer("امکان باز کردن جعبه وجود ندارد.", show_alert=True)

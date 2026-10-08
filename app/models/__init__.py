@@ -3,6 +3,7 @@ from app.models.attack import Attack
 from app.models.bot_settings import BotSettings
 from app.models.castle import Castle
 from app.models.chance_box import ChanceBox
+from app.models.chance_box_attempt import ChanceBoxAttempt
 from app.models.chance_card import ChanceCard
 from app.models.daily_quest import DailyQuest, DailyQuestEvent, DailyQuestProgress
 from app.models.defense import Defense
@@ -31,6 +32,7 @@ __all__ = [
     "BotSettings",
     "Castle",
     "ChanceBox",
+    "ChanceBoxAttempt",
     "ChanceCard",
     "Defense",
     "DailyQuest",

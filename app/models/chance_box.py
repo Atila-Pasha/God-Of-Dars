@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.enums import ResourceType
@@ -31,6 +31,7 @@ class ChanceBox(Base):
         RESOURCE_TYPE_ENUM, nullable=False
     )
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    captcha_answer: Mapped[str | None] = mapped_column(String(8), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

@@ -35,7 +35,7 @@ from admin.states import (
     UserStates,
 )
 from app.bot.banners import MARKDOWN_V2
-from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
+from app.bot.callbacks_chance import ChanceBoxCaptchaCallback, ChanceCardCallback
 from app.bot.chance_banners import chance_box_banner, chance_card_banner
 from app.bot.custom_emojis import (
     reset_persist_group_message,
@@ -388,6 +388,7 @@ async def chance_box_publish(
     failed = 0
     async with await _main_bot() as bot:
         for group in groups:
+            image, answer, choices = chance_service.box_captcha()
             # Persist first so the callback ID can be embedded in the message
             # itself; sending without a keyboard and editing afterwards is
             # racy and can leave a visible box with no button.
@@ -397,6 +398,7 @@ async def chance_box_publish(
                 message_id=0,
                 resource=resource,
                 amount=amount,
+                captcha_answer=answer,
             )
             # Make the callback target visible before Telegram can deliver a
             # button that references it. Failed sends remove the orphan row.
@@ -412,19 +414,21 @@ async def chance_box_publish(
             try:
                 persistence = set_persist_group_message()
                 try:
-                    sent_message = await bot.send_message(
+                    sent_message = await bot.send_photo(
                         group.telegram_chat_id,
-                        chance_box_banner(box.expires_at),
+                        BufferedInputFile(image, filename="letter-captcha.png"),
+                        caption=chance_box_banner(box.expires_at),
                         parse_mode=MARKDOWN_V2,
                         reply_markup=InlineKeyboardMarkup(
                             inline_keyboard=[
                                 [
                                     InlineKeyboardButton(
-                                        text="🎁 باز کردن جعبه",
-                                        callback_data=ChanceBoxCallback(
-                                            box_id=box.id
+                                        text=choice,
+                                        callback_data=ChanceBoxCaptchaCallback(
+                                            box_id=box.id, answer=choice
                                         ).pack(),
                                     )
+                                    for choice in choices
                                 ]
                             ]
                         ),

@@ -3,7 +3,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
+from app.bot.callbacks_chance import (
+    ChanceBoxCallback,
+    ChanceBoxCaptchaCallback,
+    ChanceCardCallback,
+)
 from app.bot.handlers import chance
 from app.core.enums import ResourceType
 from app.services.chance_service import WrongCaptcha
@@ -41,6 +45,27 @@ async def test_claimed_box_posts_winner_banner_and_deletes_the_box(monkeypatch) 
     group_message.delete.assert_awaited_once()
     assert box.telegram_message_id is None
     assert session.commit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_wrong_box_choice_only_alerts_its_player(monkeypatch) -> None:
+    monkeypatch.setattr(
+        chance.chance_service, "claim_box", AsyncMock(side_effect=WrongCaptcha)
+    )
+    message = SimpleNamespace(answer=AsyncMock(), delete=AsyncMock())
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=42), message=message, answer=AsyncMock()
+    )
+    session = SimpleNamespace(commit=AsyncMock())
+
+    await chance.claim_box(
+        callback, ChanceBoxCaptchaCallback(box_id=3, answer="ACEX"), session
+    )
+
+    chance.chance_service.claim_box.assert_awaited_once_with(session, 3, 42, "ACEX")
+    session.commit.assert_awaited_once()
+    assert "فقط یک فرصت" in callback.answer.await_args.args[0]
+    message.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio

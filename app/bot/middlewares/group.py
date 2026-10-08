@@ -280,6 +280,7 @@ class GroupAccessMiddleware(BaseMiddleware):
                 "confirm:",
                 "shield_purchase:",
                 "chance_box:",
+                "chance_box_answer:",
                 "library:",
                 "library_teacher:",
                 "slogan:",
