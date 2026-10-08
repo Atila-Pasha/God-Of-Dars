@@ -71,7 +71,8 @@ async def test_first_login_explains_how_to_activate_mine_and_buy_teacher(
     guide = message.answer.await_args_list[1].args[0]
     assert guide == start.FIRST_LOGIN_GUIDE
     assert "معدن منابع" in guide
-    assert "200 طلا" in guide
+    assert "۱۰۰ سکهٔ دیگه" in guide
+    assert "۲۰۰ سکهٔ مجموع دو هدیه" in guide
     assert "براتی" in guide
     assert "عمارلو" in guide
     assert (

@@ -62,14 +62,7 @@ class MineService:
         resources = resources_result.scalar_one_or_none()
         if resources is None:
             raise ResourceNotFound
-        mine_result = await session.execute(
-            select(Mine).where(Mine.user_id == user_id).with_for_update()
-        )
-        mine = mine_result.scalar_one_or_none()
-        if mine is None:
-            mine = Mine(user_id=user_id, last_collected_at=datetime.now(UTC))
-            session.add(mine)
-            await session.flush()
+        mine = await self._get_or_create_mine(session, user_id, resources)
         collected_minutes = self._accrue(mine)
         await session.flush()
         return MineSnapshot(
@@ -81,6 +74,29 @@ class MineService:
             today_banana=mine.today_banana,
             daily_produced_minutes=mine.daily_produced_minutes or 0,
         )
+
+    async def _get_or_create_mine(
+        self, session: AsyncSession, user_id: int, resources: Resource
+    ) -> Mine:
+        # Callers lock the user first, serializing concurrent first opens.
+        mine = await session.scalar(
+            select(Mine).where(Mine.user_id == user_id).with_for_update()
+        )
+        if mine is not None:
+            return mine
+        mine = Mine(user_id=user_id, last_collected_at=datetime.now(UTC))
+        session.add(mine)
+        await session.flush()
+        await ResourceService.credit_coin(
+            session,
+            resources,
+            user_id=user_id,
+            amount=100,
+            reason="MINE_ACTIVATION_BONUS",
+            reference_type="MINE",
+            reference_id=mine.id,
+        )
+        return mine
 
     def _accrue(self, mine: Mine, *, now: datetime | None = None) -> int:
         now = now or datetime.now(UTC)
@@ -225,14 +241,7 @@ class MineService:
         resources = resources_result.scalar_one_or_none()
         if resources is None:
             raise ResourceNotFound
-        mine_result = await session.execute(
-            select(Mine).where(Mine.user_id == user_id).with_for_update()
-        )
-        mine = mine_result.scalar_one_or_none()
-        if mine is None:
-            mine = Mine(user_id=user_id, last_collected_at=datetime.now(UTC))
-            session.add(mine)
-            await session.flush()
+        mine = await self._get_or_create_mine(session, user_id, resources)
         collected_minutes = self._accrue(mine)
         try:
             next_level = self.config.mine_upgrade(mine.level, user.level)

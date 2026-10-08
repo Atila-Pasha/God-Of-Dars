@@ -119,6 +119,6 @@ async def test_repository_initializes_starter_coins_and_zero_other_resources() -
     )
 
     assert isinstance(user.resources, Resource)
-    assert user.resources.coin == 200
+    assert user.resources.coin == 100
     assert user.resources.diamond == 0
     assert user.resources.banana == 0

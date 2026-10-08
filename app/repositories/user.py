@@ -181,7 +181,7 @@ class UserRepository:
         )
         # Account creation and the starter ledger entry share one transaction.
         # The unique Telegram ID prevents repeated /start from paying again.
-        user.resources = Resource(coin=200, diamond=0, banana=0)
+        user.resources = Resource(coin=100, diamond=0, banana=0)
         # The model requires a castle strength, but the final starting balance
         # is not defined yet. The centralized placeholder is deliberately 0.
         from app.core.game_logic import game_config
@@ -196,9 +196,9 @@ class UserRepository:
             Transaction(
                 user_id=user.id,
                 resource_type=ResourceType.COIN,
-                amount=200,
+                amount=100,
                 balance_before=0,
-                balance_after=200,
+                balance_after=100,
                 reason="STARTER_BONUS",
                 reference_type="USER",
                 reference_id=user.id,

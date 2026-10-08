@@ -8,10 +8,11 @@ from app.db.session import AsyncSessionLocal
 from app.models.resource import Resource
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.services.mine_service import MineService
 from app.services.user_service import UserService
 
 
-async def test_concurrent_registration_grants_exactly_200_once():
+async def test_registration_and_first_mine_open_grant_100_each_once():
     telegram_user = TelegramUser(
         id=uuid4().int % 2_000_000_000, first_name="starter", is_bot=False
     )
@@ -33,13 +34,37 @@ async def test_concurrent_registration_grants_exactly_200_once():
                 await session.scalar(
                     select(Resource.coin).where(Resource.user_id == ids[0])
                 )
-                == 200
+                == 100
             )
             assert (
                 await session.scalar(
                     select(func.count(Transaction.id)).where(
                         Transaction.user_id == ids[0],
                         Transaction.reason == "STARTER_BONUS",
+                    )
+                )
+                == 1
+            )
+
+        async def open_mine():
+            async with AsyncSessionLocal() as session:
+                await MineService().open(session, ids[0])
+                await session.commit()
+
+        await asyncio.gather(*(open_mine() for _ in range(8)))
+        async with AsyncSessionLocal() as session:
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == ids[0])
+                )
+                == 200
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(Transaction.id)).where(
+                        Transaction.user_id == ids[0],
+                        Transaction.reason == "MINE_ACTIVATION_BONUS",
+                        Transaction.amount == 100,
                     )
                 )
                 == 1
