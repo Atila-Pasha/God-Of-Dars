@@ -50,7 +50,11 @@ from app.bot.keyboards.school import (
     teachers_keyboard,
 )
 from app.bot.progress import premium_progress_bar
-from app.bot.utils.telegram import group_user_request, safe_edit_text
+from app.bot.utils.telegram import (
+    group_user_request,
+    report_group_purchase_failure,
+    safe_edit_text,
+)
 from app.core.enums import TeacherStatus
 from app.core.game_logic import GameConfigurationError
 from app.models.user_teacher import UserTeacher
@@ -152,6 +156,24 @@ def _teacher_purchase_error(error: Exception) -> str:
     if isinstance(error, InsufficientCoins):
         return "سکه کافی برای خرید این دبیر ندارید."
     return "خرید دبیر در حال حاضر امکان‌پذیر نیست."
+
+
+async def _answer_teacher_purchase_error(
+    callback: CallbackQuery,
+    error: Exception,
+    purchase_source: Message | None,
+) -> None:
+    reason = _teacher_purchase_error(error)
+    reported = await report_group_purchase_failure(
+        callback,
+        item_type="دبیر",
+        reason=reason,
+        source_message=purchase_source,
+    )
+    await callback.answer(
+        "خرید ناموفق بود." if reported else reason,
+        show_alert=not reported,
+    )
 
 
 async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
@@ -870,8 +892,7 @@ async def confirmation_callback_handler(
     except InsufficientDiamonds as error:
         await session.rollback()
         if callback_data.action == "teacher_buy":
-            await _delete_group_purchase_prompt(callback)
-            await callback.answer(_teacher_purchase_error(error), show_alert=True)
+            await _answer_teacher_purchase_error(callback, error, purchase_source)
         else:
             await callback.answer(
                 "الماس کافی برای تعمیر یا ارتقا ندارید.", show_alert=True
@@ -891,11 +912,17 @@ async def confirmation_callback_handler(
     ) as error:
         await session.rollback()
         if callback_data.action == "teacher_buy":
-            await _delete_group_purchase_prompt(callback)
-        await callback.answer(_teacher_purchase_error(error), show_alert=True)
-    except SchoolError:
+            await _answer_teacher_purchase_error(callback, error, purchase_source)
+        else:
+            await callback.answer(_teacher_purchase_error(error), show_alert=True)
+    except SchoolError as error:
         await session.rollback()
-        await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)
+        if callback_data.action == "teacher_buy":
+            await _answer_teacher_purchase_error(callback, error, purchase_source)
+        else:
+            await callback.answer(
+                "این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True
+            )
 
 
 @router.callback_query(HospitalCallback.filter())

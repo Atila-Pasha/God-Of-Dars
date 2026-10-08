@@ -42,7 +42,11 @@ from app.bot.keyboards.school import (
 )
 from app.bot.states import BuffetStates
 from app.bot.teacher_lookup import matching_teachers
-from app.bot.utils.telegram import group_user_request, safe_edit_text
+from app.bot.utils.telegram import (
+    group_user_request,
+    report_group_purchase_failure,
+    safe_edit_text,
+)
 from app.core.enums import ResourceType
 from app.services.buffet_service import (
     BuffetService,
@@ -52,6 +56,8 @@ from app.services.buffet_service import (
 )
 from app.services.school_errors import (
     InsufficientCoins,
+    InsufficientDiamonds,
+    ResourceNotFound,
     SchoolError,
     SchoolUserNotFound,
     ShieldAlreadyActive,
@@ -100,6 +106,21 @@ async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
 
 def _shield_currency(shield) -> str:
     return "الماس" if shield.purchase_resource is ResourceType.DIAMOND else "طلا"
+
+
+async def _answer_shield_purchase_error(
+    callback: CallbackQuery, source_message: Message | None, reason: str
+) -> None:
+    reported = await report_group_purchase_failure(
+        callback,
+        item_type="سپر",
+        reason=reason,
+        source_message=source_message,
+    )
+    await callback.answer(
+        "خرید ناموفق بود." if reported else reason,
+        show_alert=not reported,
+    )
 
 
 @router.message(
@@ -597,19 +618,33 @@ async def shield_purchase_callback(
             disable_group_reply=source_message is None,
         )
         await callback.answer("خرید با موفقیت انجام شد.")
-    except InsufficientCoins:
+    except InsufficientCoins as error:
         await session.rollback()
-        await callback.answer("موجودی ارز کافی ندارید.", show_alert=True)
+        reason = (
+            "الماس کافی برای خرید این سپر ندارید."
+            if isinstance(error, InsufficientDiamonds)
+            else "طلا کافی برای خرید این سپر ندارید."
+        )
+        await _answer_shield_purchase_error(callback, source_message, reason)
     except ShieldAlreadyActive:
         await session.rollback()
-        await callback.answer(
-            "آقا شما همین حالا یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
-            show_alert=True,
+        await _answer_shield_purchase_error(
+            callback,
+            source_message,
+            "همین حالا یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
         )
-        await _delete_group_purchase_prompt(callback)
-    except (ShieldNotFound, ShieldNotPurchasable, UserInactiveError):
+    except (
+        ShieldLocked,
+        ShieldNotFound,
+        ShieldNotPurchasable,
+        ResourceNotFound,
+        UserInactiveError,
+        SchoolUserNotFound,
+    ):
         await session.rollback()
-        await callback.answer("این سپر دیگر قابل خرید نیست.", show_alert=True)
+        await _answer_shield_purchase_error(
+            callback, source_message, "این سپر دیگر قابل خرید نیست."
+        )
 
 
 @router.message(BuffetStates.convert_amount, F.text)

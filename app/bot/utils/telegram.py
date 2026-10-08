@@ -5,7 +5,7 @@ from contextlib import suppress
 from typing import Any
 
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 _deletion_tasks: set[asyncio.Task[None]] = set()
 _scheduled_deletions: set[tuple[int, int]] = set()
@@ -19,6 +19,35 @@ def group_user_request(message: Message) -> Message | None:
     if source is None or source.from_user is None or source.from_user.is_bot:
         return None
     return source
+
+
+async def report_group_purchase_failure(
+    callback: CallbackQuery,
+    *,
+    item_type: str,
+    reason: str,
+    source_message: Message | None,
+) -> bool:
+    """Post a failed purchase result in the group, linked to its command."""
+    message = callback.message
+    if not isinstance(message, Message) or message.chat.type not in {
+        "group",
+        "supergroup",
+    }:
+        return False
+    with suppress(TelegramAPIError):
+        await message.delete()
+    try:
+        await message.answer(
+            f"❌ خرید {item_type} ناموفق بود.\nدلیل: {reason}",
+            reply_to_message_id=(
+                source_message.message_id if source_message is not None else None
+            ),
+            disable_group_reply=source_message is None,
+        )
+    except TelegramAPIError:
+        return False
+    return True
 
 
 async def _delete_message_after(message: Message, delay_seconds: float) -> None:

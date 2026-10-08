@@ -3,9 +3,15 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.bot.callbacks import ConfirmationCallback
+from app.bot.callbacks import ConfirmationCallback, ShieldPurchaseCallback
 from app.bot.handlers import buffet, school
+from app.bot.utils import telegram
 from app.core.enums import ResourceType
+from app.services.school_errors import (
+    InsufficientCoins,
+    ShieldAlreadyActive,
+    TeacherSlotLocked,
+)
 
 
 def group_message(text: str) -> SimpleNamespace:
@@ -15,6 +21,22 @@ def group_message(text: str) -> SimpleNamespace:
         chat=SimpleNamespace(type="supergroup"),
         message_id=100,
         answer=AsyncMock(),
+    )
+
+
+def purchase_callback() -> SimpleNamespace:
+    source = SimpleNamespace(
+        message_id=100,
+        from_user=SimpleNamespace(id=42, is_bot=False),
+    )
+    message = SimpleNamespace(
+        chat=SimpleNamespace(type="supergroup"),
+        reply_to_message=source,
+        answer=AsyncMock(),
+        delete=AsyncMock(),
+    )
+    return SimpleNamespace(
+        from_user=SimpleNamespace(id=42), message=message, answer=AsyncMock()
     )
 
 
@@ -136,3 +158,74 @@ async def test_confirmed_group_teacher_purchase_sends_no_catalog(monkeypatch) ->
     private_shop.assert_not_awaited()
     assert "خریداری شد" in message.answer.await_args.args[0]
     assert message.answer.await_args.kwargs["reply_to_message_id"] == 100
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    (
+        (InsufficientCoins(), "سکه کافی"),
+        (TeacherSlotLocked(), "ظرفیت دبیرهای شما پر است"),
+    ),
+)
+async def test_failed_group_teacher_purchase_posts_reason(
+    monkeypatch, error, reason
+) -> None:
+    monkeypatch.setattr(school, "Message", SimpleNamespace)
+    monkeypatch.setattr(telegram, "Message", SimpleNamespace)
+    callback = purchase_callback()
+    session = SimpleNamespace(rollback=AsyncMock())
+    monkeypatch.setattr(school, "_user", AsyncMock(return_value=SimpleNamespace(id=5)))
+    monkeypatch.setattr(school.teacher_service, "buy", AsyncMock(side_effect=error))
+
+    await school.confirmation_callback_handler(
+        callback,
+        ConfirmationCallback(
+            action="teacher_buy", target_id=17, decision="confirm", origin="buffet"
+        ),
+        session,
+    )
+
+    session.rollback.assert_awaited_once()
+    result = callback.message.answer.await_args.args[0]
+    assert "خرید دبیر ناموفق بود" in result
+    assert reason in result
+    assert callback.message.answer.await_args.kwargs["reply_to_message_id"] == 100
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    (
+        (InsufficientCoins(), "طلا کافی"),
+        (ShieldAlreadyActive(), "یک سپر فعال دارید"),
+    ),
+)
+async def test_failed_group_shield_purchase_posts_reason(
+    monkeypatch, error, reason
+) -> None:
+    monkeypatch.setattr(buffet, "Message", SimpleNamespace)
+    monkeypatch.setattr(telegram, "Message", SimpleNamespace)
+    callback = purchase_callback()
+    session = SimpleNamespace(rollback=AsyncMock())
+    monkeypatch.setattr(
+        buffet.user_service,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(id=5)),
+    )
+    monkeypatch.setattr(
+        buffet.shield_service,
+        "get_shield",
+        AsyncMock(return_value=SimpleNamespace(id=7)),
+    )
+    monkeypatch.setattr(buffet.shield_service, "buy", AsyncMock(side_effect=error))
+
+    await buffet.shield_purchase_callback(
+        callback, ShieldPurchaseCallback(decision="confirm", shield_id=7), session
+    )
+
+    session.rollback.assert_awaited_once()
+    result = callback.message.answer.await_args.args[0]
+    assert "خرید سپر ناموفق بود" in result
+    assert reason in result
+    assert callback.message.answer.await_args.kwargs["reply_to_message_id"] == 100
