@@ -24,6 +24,7 @@ from app.bot.callbacks import (
     ShieldPurchaseCallback,
 )
 from app.bot.keyboards.buffet import (
+    SHIELD_FALLBACKS,
     SHIELD_ICONS,
     buffet_cancel_keyboard,
     buffet_keyboard,
@@ -71,7 +72,11 @@ from app.services.school_errors import (
     TeacherNotPurchasable,
     TeacherSlotLocked,
 )
-from app.services.shield_service import ShieldService
+from app.services.shield_service import (
+    SHIELD_DAILY_LIMITS,
+    ShieldDailyLimitReached,
+    ShieldService,
+)
 from app.services.teacher_service import TeacherService
 from app.services.user_service import UserInactiveError, UserService
 
@@ -139,6 +144,8 @@ async def group_purchase_message(
         return
     name = parts[1].strip()
     is_shield = name.startswith("سپر ")
+    if is_shield and name.startswith("سپر سپر "):
+        name = name.removeprefix("سپر ").strip()
     if name.startswith("دبیر "):
         name = name.removeprefix("دبیر ").strip()
     try:
@@ -169,7 +176,7 @@ async def group_purchase_message(
             )
             return
 
-        shield_catalog = await shield_service.catalog(session, player_level=user.level)
+        shield_catalog = await shield_service.catalog(session, player_level=None)
         shield = next(
             (
                 item
@@ -179,6 +186,11 @@ async def group_purchase_message(
             None,
         )
         if shield is not None:
+            if user.level < shield.unlock_level:
+                await message.answer(
+                    f"سپر «{shield.name}» از سطح {shield.unlock_level} باز می‌شود."
+                )
+                return
             await message.answer(
                 f"🛒 خرید سپر «{shield.name}»\n\n"
                 f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
@@ -189,7 +201,7 @@ async def group_purchase_message(
                 reply_to_message_id=message.message_id,
             )
             return
-        await message.answer("سپری با این نام برای سطح شما پیدا نشد.")
+        await message.answer("سپری با این نام پیدا نشد.")
     except TeacherSlotLocked:
         await message.answer(
             "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید یا سطح فرمانده را افزایش دهید."
@@ -381,13 +393,12 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
 
 
 def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str:
-    shield_icon = emoji("5915888842568638290", "🛡️")
+    shield_icon = emoji("5915888842568638290", "🤩")
     time_icon = emoji("6039539366177541657", "⏳")
     level_icon = emoji("5825727141039317043", "🎖️")
     lines = [
         f"{shield_icon} {bold('زرادخانه سپرها')} {shield_icon}",
         f"{level_icon} سطح فرمانده: {bold(player_level)}",
-        "● وضعیت دفاعی شما:",
     ]
     if owned:
         for item in owned:
@@ -396,18 +407,18 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
             )
             minutes = (remaining + 59) // 60
             lines.append(
-                f"{shield_icon} سپر فعال: {bold(item.shield.name)}\n"
+                f"● وضعیت دفاعی شما: {bold(item.shield.name)}\n"
                 f"{time_icon} زمان باقی‌مانده: {escape(minutes)} دقیقه"
             )
     else:
-        lines.append("« هنوز سپر فعالی نداری »")
+        lines.append("● وضعیت دفاعی شما :  « هنوز سپر فعالی نداری »")
     lines.append("────────────────────")
     lines.append(
         f"{emoji('5825898080737697438', '📜')} {bold('لیست سپرهای قابل خرید:')}"
     )
     header_count = len(lines)
     if not catalog:
-        lines.append("فعلاً سپری برای سطح شما تعریف نشده است\\.")
+        lines.append("فعلاً سپری تعریف نشده است\\.")
     else:
         for shield in catalog:
             currency_icon = emoji(
@@ -417,19 +428,33 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
                 "💎" if shield.purchase_resource is ResourceType.DIAMOND else "🪙",
             )
             description = " ".join((shield.description or "").split())
+            daily_limit = SHIELD_DAILY_LIMITS.get(shield.name)
+            limit_line = (
+                f"\n\n{emoji('5427240268589968037', '⛔️')} در طول روز فقط "
+                f"{escape(daily_limit)} بار میتونید از این سپر استفاده کنید\\."
+                if daily_limit
+                else ""
+            )
             lines.append(
-                f"{emoji(SHIELD_ICONS.get(shield.name, '5825861861278490879'), '🛡️')} {bold(shield.name)}\n\n"
+                f"{emoji(SHIELD_ICONS.get(shield.name, '5825861861278490879'), SHIELD_FALLBACKS.get(shield.name, '🛡️'))} {bold(shield.name)}\n\n"
                 f"{currency_icon} قیمت: {bold(shield.purchase_price)} "
                 f"{escape(_shield_currency(shield))}\n"
                 f"{time_icon} مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
-                f"{emoji('5825699618888884083', '🎖️')} سطح بازشدن: {escape(shield.unlock_level)}\n"
-                "اثر: جلوگیری کامل از حمله"
+                f"{emoji('5825699618888884083', '👑')} سطح بازشدن: {escape(shield.unlock_level)}\n"
+                f"{bold('اثر:')} جلوگیری کامل از حمله"
                 + (f"\n{escape(description)}" if description else "")
+                + limit_line
             )
     heading = "\n\n".join(lines[:header_count])
     shields = lines[header_count:]
-    return heading + (
+    body = heading + (
         "\n\n" + "\n\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n".join(shields) if shields else ""
+    )
+    return body + (
+        "\n\n────────────────────\n"
+        f"{emoji('5823388325188214894', '🚫')} "
+        "توجه داشته باشید که در صورت داشتن سپر و انجام حملات، از تایم سپرتون کم میشه "
+        f"{emoji('5823388325188214894', '🚫')}"
     )
 
 
@@ -440,7 +465,7 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
         session, target.from_user.id
     )
     owned = await shield_service.list_owned(session, user.id)
-    catalog = await shield_service.catalog(session, player_level=user.level)
+    catalog = await shield_service.catalog(session, player_level=None)
     text = _shield_catalog_banner(user.level, owned, catalog)
     reply_markup = (
         shield_catalog_keyboard(catalog, owned, player_level=user.level)
@@ -632,6 +657,11 @@ async def shield_purchase_callback(
             callback,
             source_message,
             "همین حالا یک سپر فعال دارید؛ پس از انقضای آن سپر دیگری بخرید.",
+        )
+    except ShieldDailyLimitReached:
+        await session.rollback()
+        await _answer_shield_purchase_error(
+            callback, source_message, "سقف استفادهٔ روزانه از این سپر پر شده است."
         )
     except (
         ShieldLocked,

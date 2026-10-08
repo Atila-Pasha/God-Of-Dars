@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +17,7 @@ from app.core.game_logic import (
 )
 from app.models.resource import Resource
 from app.models.shield import Shield
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.models.user_shield import UserShield
 from app.services.resource_service import ResourceService
@@ -34,6 +36,14 @@ from app.services.school_errors import (
 class ShieldPurchase:
     shield: Shield
     active_until: datetime
+
+
+SHIELD_DAILY_LIMITS = {"سپر زنگ تفریح": 2, "سپر آلودگی هوا": 1}
+SHIELD_DAY_TIMEZONE = ZoneInfo("Asia/Tehran")
+
+
+class ShieldDailyLimitReached(Exception):
+    pass
 
 
 class ShieldService:
@@ -157,6 +167,30 @@ class ShieldService:
             for item in owned_items
         ):
             raise ShieldAlreadyActive
+        daily_limit = SHIELD_DAILY_LIMITS.get(shield.name)
+        if daily_limit is not None:
+            local_day = now.astimezone(SHIELD_DAY_TIMEZONE).date()
+            day_start = datetime.combine(
+                local_day, datetime.min.time(), SHIELD_DAY_TIMEZONE
+            ).astimezone(UTC)
+            day_end = (
+                datetime.combine(local_day, datetime.min.time(), SHIELD_DAY_TIMEZONE)
+                + timedelta(days=1)
+            ).astimezone(UTC)
+            purchase_count = await session.scalar(
+                select(func.count(Transaction.id))
+                .join(UserShield, Transaction.reference_id == UserShield.id)
+                .where(
+                    Transaction.user_id == user_id,
+                    Transaction.reason == "SHIELD_PURCHASE",
+                    Transaction.reference_type == "USER_SHIELD",
+                    UserShield.shield_id == shield_id,
+                    Transaction.created_at >= day_start,
+                    Transaction.created_at < day_end,
+                )
+            )
+            if (purchase_count or 0) >= daily_limit:
+                raise ShieldDailyLimitReached
         balance = getattr(resources, shield.purchase_resource.value.lower())
         if balance < shield.purchase_price:
             if shield.purchase_resource is ResourceType.DIAMOND:
@@ -199,6 +233,25 @@ class ShieldService:
         if selected is None or selected.active_until is None:
             raise ShieldNotFound
         raise ShieldNotPurchasable
+
+    async def apply_outgoing_attack_time_penalty(
+        self, session: AsyncSession, user_id: int, duration: timedelta
+    ) -> None:
+        """An outgoing attack makes Mohammadi protection expire twice as fast."""
+        now = datetime.now(UTC)
+        result = await session.execute(
+            select(UserShield)
+            .join(Shield, UserShield.shield_id == Shield.id)
+            .where(
+                UserShield.user_id == user_id,
+                UserShield.active_until > now,
+                Shield.name == "سپر محمدی",
+            )
+            .with_for_update()
+        )
+        active = result.scalar_one_or_none()
+        if active is not None:
+            active.active_until -= duration
 
     async def consume_for_attack(
         self,

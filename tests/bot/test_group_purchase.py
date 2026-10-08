@@ -76,6 +76,7 @@ async def test_group_shield_purchase_uses_shield_confirmation(monkeypatch) -> No
     shield = SimpleNamespace(
         id=1,
         name="سپر زنگ تفریح",
+        unlock_level=1,
         purchase_price=120,
         purchase_resource=ResourceType.COIN,
         duration_minutes=30,
@@ -98,6 +99,38 @@ async def test_group_shield_purchase_uses_shield_confirmation(monkeypatch) -> No
     markup = message.answer.await_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].callback_data == "shield_purchase:confirm:1"
     teacher_catalog.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_group_shield_purchase_accepts_full_name_after_command(
+    monkeypatch,
+) -> None:
+    message = group_message("خرید سپر سپر زنگ تفریح")
+    shield = SimpleNamespace(
+        id=1,
+        name="سپر زنگ تفریح",
+        unlock_level=1,
+        purchase_price=120,
+        purchase_resource=ResourceType.COIN,
+        duration_minutes=30,
+    )
+    monkeypatch.setattr(
+        buffet.user_service,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(level=500)),
+    )
+    monkeypatch.setattr(
+        buffet.shield_service, "catalog", AsyncMock(return_value=[shield])
+    )
+
+    await buffet.group_purchase_message(message, AsyncMock())
+
+    assert (
+        message.answer.await_args.kwargs["reply_markup"]
+        .inline_keyboard[0][0]
+        .callback_data
+        == "shield_purchase:confirm:1"
+    )
 
 
 @pytest.mark.asyncio

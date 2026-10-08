@@ -82,3 +82,39 @@ def test_shield_catalog_banner_uses_rich_text_and_escapes_descriptions() -> None
     assert "حفاظت ویژه \\[قوی\\]" in text
     assert "150" in text
     assert "45 دقیقه" in text
+
+
+def test_shield_banner_shows_daily_limits_and_supplied_emoji_ids() -> None:
+    shields = [
+        SimpleNamespace(
+            name=name,
+            purchase_resource=resource,
+            purchase_price=price,
+            duration_minutes=minutes,
+            unlock_level=level,
+            description="محافظت کامل",
+        )
+        for name, resource, price, minutes, level in (
+            ("سپر زنگ تفریح", ResourceType.COIN, 120, 30, 1),
+            ("سپر آلودگی هوا", ResourceType.DIAMOND, 1000, 180, 5),
+        )
+    ]
+
+    text = _shield_catalog_banner(500, [], shields)
+
+    assert "فقط 2 بار" in text
+    assert "فقط 1 بار" in text
+    for emoji_id in (
+        "5915888842568638290",
+        "5825727141039317043",
+        "5825898080737697438",
+        "5825861861278490879",
+        "5825699971076202989",
+        "6039539366177541657",
+        "5825699618888884083",
+        "5427240268589968037",
+        "5917839500750364054",
+        "5825753314570018832",
+        "5823388325188214894",
+    ):
+        assert f"tg://emoji?id={emoji_id}" in text

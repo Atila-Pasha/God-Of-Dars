@@ -613,6 +613,9 @@ class AttackService:
             session, target.id, tuple(item.teacher.name for item in teachers)
         )
         castle = await self.castle_service.battle_snapshot(session, target.id)
+        await self.castle_service.shield_service.apply_outgoing_attack_time_penalty(
+            session, attacker.id, duration
+        )
         resolve_at = datetime.now(UTC) + duration
         attack_command_id = str(uuid4())
         created_attacks: list[Attack] = []

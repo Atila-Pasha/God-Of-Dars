@@ -133,6 +133,14 @@ SHIELD_ICONS = {
     "سپر خسروپناه": "5915702157520150395",
 }
 
+SHIELD_FALLBACKS = {
+    "سپر زنگ تفریح": "🛡️",
+    "سپر آلودگی هوا": "🌊",
+    "سپر محمدی": "💎",
+    "سپر کاظمی": "💎",
+    "سپر خسروپناه": "💎",
+}
+
 
 def shield_purchase_confirmation(shield: Shield) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
