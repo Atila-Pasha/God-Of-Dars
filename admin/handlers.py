@@ -76,7 +76,11 @@ def button_labels(*values: str) -> set[str]:
     return {
         label
         for value in values
-        for label in (value, strip_custom_emoji_fallbacks(value))
+        for label in (
+            value,
+            strip_custom_emoji_fallbacks(value),
+            value.removeprefix("🏠").strip(),
+        )
     }
 
 

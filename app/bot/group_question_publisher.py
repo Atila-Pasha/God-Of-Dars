@@ -4,11 +4,17 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.banners import MARKDOWN_V2, bold, emoji, escape
+from app.bot.custom_emojis import (
+    reset_persist_group_message,
+    set_persist_group_message,
+)
 from app.core.config import settings
 from app.models.group_question import GroupQuestion
 from app.models.question import Question
@@ -66,9 +72,15 @@ class GroupQuestionPublisher:
             try:
                 for attempt in range(2):
                     try:
-                        sent_message = await bot.send_message(
-                            chat_id=chat_id, text=text
-                        )
+                        persistence = set_persist_group_message()
+                        try:
+                            sent_message = await bot.send_message(
+                                chat_id=chat_id,
+                                text=text,
+                                parse_mode=MARKDOWN_V2,
+                            )
+                        finally:
+                            reset_persist_group_message(persistence)
                         break
                     except TelegramRetryAfter as exc:
                         if attempt == 1:
@@ -96,28 +108,42 @@ class GroupQuestionPublisher:
 
     @staticmethod
     def _message_text(question: Question, expires_at: datetime | None) -> str:
-        expiration = "بدون زمان انقضا"
+        expiration = "بدون محدودیت زمانی"
         if expires_at is not None:
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=UTC)
-            expiration = expires_at.astimezone().strftime("%Y/%m/%d %H:%M")
+            expiration = (
+                "||"
+                + expires_at.astimezone(ZoneInfo("Asia/Tehran")).strftime("%H:%M")
+                + "||"
+            )
+        rewards = GroupQuestionPublisher._reward_lines(question)
         return (
-            "👥 سؤال گروهی جدید\n\n"
-            f"❓ {question.question_text}\n\n"
-            f"🎁 پاداش: {GroupQuestionPublisher._reward_text(question)}\n"
-            f"⏳ مهلت: {expiration}"
+            f"{emoji('5917916556758622836', '🔔')} "
+            f"{bold('سؤال گروهی جدید')} {emoji('5253742260054409879', '✉️')}\n"
+            "─────────────────────\n\n"
+            f"{emoji('5825898080737697438', '❓')} {bold('سؤال')}:\n"
+            f"{emoji('5235864325540815679', '↩️')}\\| « {bold(question.question_text)} »\n\n"
+            f"{emoji('5825832256068918886', '📦')} {bold('پاداش پاسخ صحیح')} "
+            f"{emoji('5825709849500985213', '✔️')}\n\n"
+            f"{rewards}\n\n"
+            "─────────────────────\n\n"
+            f"{emoji('5825746176334373354', '😀')} "
+            f"{bold('مهلت تا')} {expiration}"
         )
 
     @staticmethod
-    def _reward_text(question: Question) -> str:
-        rewards = []
+    def _reward_lines(question: Question) -> str:
+        rewards: list[str] = []
         labels = (
-            ("coin_reward", "سکه"),
-            ("diamond_reward", "الماس"),
-            ("banana_reward", "موز"),
+            ("coin_reward", "سکه طلا", "5825699971076202989", "🥇"),
+            ("diamond_reward", "الماس", "5825753314570018832", "💎"),
+            ("banana_reward", "موز", "5902520589356113908", "🍌"),
         )
-        for field, label in labels:
+        for field, label, icon_id, fallback in labels:
             amount = getattr(question, field, 0) or 0
             if amount:
-                rewards.append(f"{amount} {label}")
-        return "، ".join(rewards) if rewards else "بدون پاداش"
+                rewards.append(
+                    f"> {escape(amount)} {escape(label)} {emoji(icon_id, fallback)}"
+                )
+        return "\n\n".join(rewards) if rewards else "> بدون پاداش"

@@ -48,6 +48,15 @@ def test_each_section_has_a_direct_home_action() -> None:
         assert "🏠 منوی اصلی" in labels(markup)
 
 
+def test_home_action_matches_text_after_premium_icon_is_applied() -> None:
+    markup = keyboards.content_menu()
+    _decorate_markup({"reply_markup": markup})
+
+    home = markup.keyboard[-1][0]
+    assert home.text == "منوی اصلی"
+    assert home.text in button_labels("🏠 منوی اصلی")
+
+
 def test_content_menu_exposes_create_actions_without_commands() -> None:
     content_labels = labels(keyboards.content_menu())
 
