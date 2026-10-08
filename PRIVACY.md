@@ -181,7 +181,7 @@ bot next processes your profile, subject to caching. There is no dedicated
 personal-data export or general data-correction workflow in the current bot.
 
 Privacy questions and requests for access, correction, or deletion require
-operator assistance using the contact route below once it is supplied. The
+operator assistance using the contact details below. The
 repository does not establish a request-handling procedure or response deadline.
 This policy does not limit rights you may have under applicable law.
 
@@ -219,9 +219,6 @@ automated privacy-policy change notifications.
 
 ## Contact
 
-**GodOfDars privacy contact: [TO BE PROVIDED BY THE OPERATOR: a monitored
-support email address or Telegram support username].**
-
-No verified public privacy contact is specified in the repository. This is a
-placeholder, not an operational support channel; the operator must replace it
-with a valid contact before relying on this policy as a user request route.
+For privacy questions or requests, contact the GodOfDars operator by email at
+[atilapashazdeh@gmail.com](mailto:atilapashazdeh@gmail.com) or on Telegram at
+[@TheAtilaPashA](https://t.me/TheAtilaPashA).
