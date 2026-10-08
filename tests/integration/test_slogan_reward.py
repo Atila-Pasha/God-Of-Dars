@@ -1,4 +1,4 @@
-"""The hourly slogan cannot be claimed twice, even from parallel updates."""
+"""The 30-minute slogan cannot be claimed twice, even from parallel updates."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -42,10 +42,10 @@ async def test_slogan_reward_is_atomic_and_persists_across_sessions() -> None:
     assert (
         next(result for result in (first, second) if result.awarded).current_banana == 3
     )
-    assert sorted(result.retry_after_seconds for result in (first, second)) == [0, 3600]
+    assert sorted(result.retry_after_seconds for result in (first, second)) == [0, 1800]
 
-    before_reset = await claim(now + timedelta(seconds=3599))
-    at_reset = await claim(now + timedelta(seconds=3600))
+    before_reset = await claim(now + timedelta(seconds=1799))
+    at_reset = await claim(now + timedelta(seconds=1800))
     assert before_reset.retry_after_seconds == 1
     assert at_reset.awarded
     assert at_reset.current_banana == 6
@@ -65,5 +65,5 @@ async def test_slogan_reward_is_atomic_and_persists_across_sessions() -> None:
         )
     assert balance == 6
     assert ledger_count == 2
-    assert timestamp == now + timedelta(hours=1)
+    assert timestamp == now + timedelta(minutes=30)
     await engine.dispose()

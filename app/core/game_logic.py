@@ -252,7 +252,7 @@ class GameConfig:
     attack_rules: AttackRules = field(default_factory=AttackRules)
     instant_recovery_diamond_cost: int | None = None
     slogan_reward_banana: int = 3
-    slogan_cooldown_seconds: int = 3600
+    slogan_cooldown_seconds: int = 1800
     upgrade_banana_per_diamond: int = 1
     upgrade_banana_minimum: int = 1
     upgrade_banana_maximum: int = 500
@@ -933,7 +933,7 @@ class GameConfig:
                 else int(hospital_data["instant_recovery_diamond_cost"])
             ),
             slogan_reward_banana=int(slogan_data.get("reward_banana", 3)),
-            slogan_cooldown_seconds=int(slogan_data.get("cooldown_seconds", 3600)),
+            slogan_cooldown_seconds=int(slogan_data.get("cooldown_seconds", 1800)),
             upgrade_banana_per_diamond=int(
                 upgrade_rewards.get("banana_per_diamond", 10)
             ),

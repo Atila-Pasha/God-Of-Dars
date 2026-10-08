@@ -1,4 +1,4 @@
-"""Quick commander replies and nine phrases sharing one hourly reward."""
+"""Quick commander replies and nine phrases sharing one 30-minute reward."""
 
 from random import choice
 
@@ -55,7 +55,7 @@ GOD_REPLIES: tuple[tuple[str, str, str], ...] = (
     (
         "5834791394639614640",
         "👑",
-        "شعار «من خدای درسم» رو بگو و پاداش ساعتی‌ات رو بگیر.",
+        "شعار «من خدای درسم» رو بگو و پاداش هر نیم‌ساعتت رو بگیر.",
     ),
     ("6039496463749223185", "✨", "امروز فقط با خودِ دیروزت رقابت کن."),
     ("5388834817058035756", "🔥", "وقتشه اون مبحث سخت رو به زانو دربیاری."),
@@ -169,7 +169,7 @@ async def slogan_handler(message: Message, session: AsyncSession) -> None:
         )
     else:
         text = (
-            f"{emoji('5825961702088254236', '🎯')} {bold('شعارت برای این ساعت ثبت شده.')}\n\n"
+            f"{emoji('5825961702088254236', '🎯')} {bold('شعارت برای این نوبت ثبت شده.')}\n\n"
             f"{emoji('5388834817058035756', '🔥')} {escape('زمان تا پاداش بعدی:')} "
             f"{bold(_remaining_text(claim.retry_after_seconds))}"
         )
