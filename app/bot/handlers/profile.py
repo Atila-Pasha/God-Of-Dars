@@ -19,6 +19,7 @@ from app.bot.keyboards.main_menu import (
 )
 from app.bot.keyboards.profile import level_confirmation_keyboard, profile_keyboard
 from app.bot.utils.telegram import safe_edit_text
+from app.core.game_logic import game_config
 from app.models.shield import Shield
 from app.models.teacher import Teacher
 from app.repositories.profile import ProfileSnapshot
@@ -121,7 +122,8 @@ def _profile_text(snapshot: ProfileSnapshot) -> str:
         f"{_number(snapshot.answers_count)}\n"
         f"دقت: {_accuracy(snapshot)}\n\n"
         "\n"
-        f"🤝 دوستان دعوت‌شده: {_number(snapshot.referrals_count)}\n\n"
+        f"🤝 دوستان دعوت‌شده: {_number(snapshot.referrals_count)}\n"
+        f"💎 پاداش هر دعوت موفق: {game_config.referral_reward_amount} الماس\n\n"
         "✨ هر نبرد، هر پاسخ و هر دعوت، یک قدم به سمت فرمانروایی بزرگ‌تر است!"
     )
 
@@ -202,7 +204,8 @@ def _profile_knowledge_text(snapshot: ProfileSnapshot) -> str:
         f"{emoji('5825709849500985213', '✅')} پاسخ‌های درست: {escape(_number(snapshot.correct_answers))} از "
         f"{escape(_number(snapshot.answers_count))}\n"
         f"● دقت: {escape(_accuracy(snapshot))}\n\n"
-        f"{emoji('5879719754737913980', '🤝')} دوستان دعوت‌شده: {escape(_number(snapshot.referrals_count))}"
+        f"{emoji('5879719754737913980', '🤝')} دوستان دعوت‌شده: {escape(_number(snapshot.referrals_count))}\n"
+        f"{emoji('5825753314570018832', '💎')} پاداش هر دعوت موفق: {escape(game_config.referral_reward_amount)} الماس"
     )
 
 

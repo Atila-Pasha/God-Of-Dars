@@ -42,9 +42,16 @@ async def referral_handler(message: Message, session: AsyncSession) -> None:
         count = await referral_service.count(session, user.id)
         invite_link = await _invite_link(message, user.id)
         link_text = invite_link or "لینک دعوت فعلاً قابل تولید نیست."
+        reward = referral_service.inviter_reward
+        reward_text = (
+            f"💎 هر دعوت موفق: {reward.amount} الماس برای شما\n\n"
+            if reward is not None
+            else ""
+        )
         await message.answer(
             "👥 اتحاد فرمانده‌ها\n\n"
             "دوستت رو به قلمرو دعوت کن و کنار هم قدرتمندتر بشید.\n\n"
+            f"{reward_text}"
             f"🔗 لینک اختصاصی شما:\n{link_text}\n\n"
             f"👤 تعداد دعوت‌های ثبت‌شده: {count}",
             reply_markup=referral_keyboard(invite_link),

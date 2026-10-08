@@ -31,8 +31,14 @@ async def test_referral_menu_shows_personal_link_and_count(monkeypatch):
     text = message.answer.await_args.args[0]
     assert "https://t.me/godofdars_bot?start=ref_7" in text
     assert "تعداد دعوت‌های ثبت‌شده: 3" in text
+    assert "هر دعوت موفق: 10 الماس برای شما" in text
     keyboard = message.answer.await_args.kwargs["reply_markup"]
     assert keyboard.inline_keyboard[0][0].url.startswith("https://t.me/share/url")
+
+
+def test_referral_help_mentions_ten_diamonds_for_inviter() -> None:
+    assert "10 الماس به معرف" in start.HELP_TEXTS["referral"]
+    assert "10 الماس به معرف" in start.HELP_TEXTS["overview"]
 
 
 @pytest.mark.asyncio

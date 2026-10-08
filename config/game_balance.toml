@@ -324,4 +324,4 @@ defense_delta = 30
 # Change inviter_amount and restart the bot to change the reward for new referrals.
 
 inviter_resource = "DIAMOND"
-inviter_amount = 5
+inviter_amount = 10
