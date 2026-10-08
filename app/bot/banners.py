@@ -219,8 +219,8 @@ def attack_preview_banner(preview: AttackPreview) -> str:
         f"{INJURY} آسیب احتمالی دبیر:\n"
         f"> {escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
         f"{LOOT} {bold('غنیمت')} احتمالی از منابع حریف:\n"
-        f"{COIN}    {bold('طلا')}: {escape(preview.loot_coin)}\n"
-        f"{BANANA}    {bold('موز')}: {escape(preview.loot_banana)}\n\n"
+        f"{COIN} {bold('طلا')}: {escape(preview.loot_coin)}\n"
+        f"{BANANA} {bold('موز')}: {escape(preview.loot_banana)}\n\n"
         f"{QUESTION} {bold('فرمان حمله رو صادر می‌کنی؟')}"
     )
 
@@ -290,9 +290,9 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{HEAL} آسیب واردشده به دبیر:\n"
         f"> {escape(result.teacher_injury)} HP {HEAL}\n\n"
         f"{LOOT} {loot_label}:\n"
-        f"{COIN}    طلا: {escape(result.loot_coin)}\n"
-        f"{DIAMOND}    الماس: {escape(result.loot_diamond)}\n"
-        f"{BANANA}    موز: {escape(result.loot_banana)}\n\n"
+        f"{COIN} طلا: {escape(result.loot_coin)}\n"
+        f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
+        f"{BANANA} موز: {escape(result.loot_banana)}\n\n"
         f"{closing}"
     )
 

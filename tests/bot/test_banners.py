@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from app.bot.banners import attack_preview_banner, attack_result_banner, purchase_banner
+from app.bot.handlers.library import _teacher_detail_content
 from app.services.attack_service import AttackPreview, AttackResult
 
 
@@ -53,6 +54,8 @@ def test_attack_preview_lists_teachers_without_icon_gap_or_summary() -> None:
     assert "قضاتی + فراهانی" not in text
     assert "الماس" not in text
     assert "> 50 DMG" in text
+    assert "tg://emoji?id=5825699971076202989) *طلا*: 10" in text
+    assert "tg://emoji?id=5902520589356113908) *موز*: 1" in text
 
 
 def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
@@ -89,3 +92,37 @@ def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
     assert "منابع ازدست‌رفته" in defender
     assert "> 80 DMG" in attacker
     assert "> 20 DMG" in defender
+    for banner in (attacker, defender):
+        assert "tg://emoji?id=5825699971076202989) طلا: 10" in banner
+        assert "tg://emoji?id=5825753314570018832) الماس: 2" in banner
+        assert "tg://emoji?id=5902520589356113908) موز: 1" in banner
+
+
+def test_teacher_introduction_uses_custom_icons_and_quoted_description() -> None:
+    teacher = SimpleNamespace(
+        name="پارسا فراهانی",
+        emoji="123456789",
+        damage=362,
+        max_hp=675,
+        purchase_price=440000,
+        purchase_resource=SimpleNamespace(value="COIN"),
+        upgrade_price=1420,
+        unlock_level=17,
+        ability_text="حملهٔ تف‌تفی مرگبار",
+        description="پرتاب حباب‌های سمی.\nنگهبان را تضعیف می‌کند.",
+    )
+
+    text = _teacher_detail_content(teacher)
+
+    assert r"*پروندهٔ دبیر \| پارسا فراهانی*" in text
+    for icon_id in (
+        "5825822115651133329",
+        "5213455977919039650",
+        "5825699971076202989",
+        "5825753314570018832",
+        "5825727141039317043",
+        "5825647731388981287",
+        "5825627287344651886",
+    ):
+        assert f"tg://emoji?id={icon_id}" in text
+    assert "> پرتاب حباب‌های سمی\\.\n> نگهبان را تضعیف می‌کند\\." in text

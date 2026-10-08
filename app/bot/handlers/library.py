@@ -11,7 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.banners import MARKDOWN_V2, bold, emoji, escape, rich_plain, teacher_icon
+from app.bot.banners import MARKDOWN_V2, bold, emoji, escape, teacher_icon
 from app.bot.callbacks import (
     LibraryCallback,
     LibraryShieldCallback,
@@ -225,19 +225,26 @@ def _teacher_list_text(page: int, page_count: int) -> str:
 
 
 def _teacher_detail_content(teacher) -> str:
-    details = (
-        f"⚔️ آسیب پایه: {teacher.damage}\n"
-        f"❤️ حداکثر جان: {teacher.max_hp}\n"
-        f"🪙 قیمت خرید: {teacher.purchase_price} "
-        f"{'الماس' if teacher.purchase_resource.value == 'DIAMOND' else 'طلا'}\n"
-        f"💎 هزینه پایه (سطح 1 به 2): {teacher.upgrade_price} الماس\n"
-        f"🎖 سطح بازشدن: {teacher.unlock_level}\n\n"
-        f"✨ توانایی: {teacher.ability_text or 'تنظیم نشده'}\n"
-        f"📝 توضیحات: {teacher.description or 'توضیحی ثبت نشده است.'}"
+    currency = "الماس" if teacher.purchase_resource.value == "DIAMOND" else "طلا"
+    description = teacher.description or "توضیحی ثبت نشده است."
+    quoted_description = "\n".join(
+        f"> {escape(line)}" for line in description.splitlines()
     )
     return (
-        f"{teacher_icon(teacher.emoji)}    {bold(f'پروندهٔ دبیر | {teacher.name}')}\n\n"
-        f"{rich_plain(details)}"
+        f"{teacher_icon(teacher.emoji)} {bold(f'پروندهٔ دبیر | {teacher.name}')}\n"
+        "─────────────────────\n\n"
+        f"{emoji('5825822115651133329', '🦿')} آسیب پایه: {escape(teacher.damage)}\n"
+        f"{emoji('5213455977919039650', '⛑️')} حداکثر جان: {escape(teacher.max_hp)}\n\n"
+        f"{emoji('5825699971076202989', '🥇')} قیمت خرید: "
+        f"{escape(teacher.purchase_price)} {escape(currency)}\n"
+        f"{emoji('5825753314570018832', '💎')} هزینه ارتقا "
+        f"\\(سطح 1 به 2\\): {escape(teacher.upgrade_price)} الماس\n\n"
+        f"{emoji('5825727141039317043', '👑')} سطح بازشدن: "
+        f"{escape(teacher.unlock_level)}\n\n"
+        f"{emoji('5825647731388981287', '🌟')} توانایی: "
+        f"{escape(teacher.ability_text or 'تنظیم نشده')}\n\n"
+        f"{emoji('5825627287344651886', '📜')} توضیحات:\n\n"
+        f"{quoted_description}"
     )
 
 

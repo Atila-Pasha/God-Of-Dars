@@ -464,7 +464,9 @@ async def _report_error(message: Message, error: Exception) -> None:
         await message.answer("این دبیر در حال درمان است و فعلاً نمی‌تواند حمله کند.")
     elif isinstance(error, AttackInProgress):
         await message.answer(
-            "⚔️ حمله فعال دارید؛ پس از پایان آن می‌توانید دوباره حمله کنید."
+            f"{emoji('5823388325188214894', '✅')} {bold('حمله فعال دارید')}\\!\n"
+            "پس از پایان آن می‌توانید دوباره حمله کنید\\.",
+            parse_mode=MARKDOWN_V2,
         )
     elif isinstance(error, (ShieldAlreadyActive, TargetProtectedByShield)):
         await message.answer(

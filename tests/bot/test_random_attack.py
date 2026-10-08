@@ -8,7 +8,7 @@ import pytest
 from app.bot.callbacks import RandomAttackCallback
 from app.bot.handlers import battle
 from app.services.attack_service import AttackPreview, RandomAttackPreview
-from app.services.school_errors import RandomAttackSelectionExpired
+from app.services.school_errors import AttackInProgress, RandomAttackSelectionExpired
 
 
 def random_preview(*, version: int = 1) -> RandomAttackPreview:
@@ -63,6 +63,18 @@ def message() -> SimpleNamespace:
         message_id=123,
         answer=AsyncMock(),
     )
+
+
+@pytest.mark.asyncio
+async def test_active_attack_error_uses_requested_banner() -> None:
+    target = message()
+
+    await battle._report_error(target, AttackInProgress())
+
+    text = target.answer.await_args.args[0]
+    assert "tg://emoji?id=5823388325188214894" in text
+    assert "*حمله فعال دارید*\\!\nپس از پایان آن می‌توانید دوباره حمله کنید\\." in text
+    assert target.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
 
 
 def callback(
