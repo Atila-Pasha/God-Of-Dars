@@ -27,6 +27,7 @@ class ChanceBox(Base):
         BigInteger, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
     )
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sticker_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     resource_type: Mapped[ResourceType] = mapped_column(
         RESOURCE_TYPE_ENUM, nullable=False
     )

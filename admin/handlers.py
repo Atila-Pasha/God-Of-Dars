@@ -403,40 +403,56 @@ async def chance_box_publish(
             # Make the callback target visible before Telegram can deliver a
             # button that references it. Failed sends remove the orphan row.
             await session.commit()
-            if sticker is not None:
-                try:
-                    await bot.send_sticker(group.telegram_chat_id, sticker)
-                except TelegramAPIError:
-                    logger.warning(
-                        "Could not send chance box sticker to group %s",
-                        group.telegram_chat_id,
-                    )
+            persistence = set_persist_group_message()
             try:
-                persistence = set_persist_group_message()
-                try:
-                    sent_message = await bot.send_photo(
-                        group.telegram_chat_id,
-                        BufferedInputFile(image, filename="letter-captcha.png"),
-                        caption=chance_box_banner(box.expires_at),
-                        parse_mode=MARKDOWN_V2,
-                        reply_markup=InlineKeyboardMarkup(
-                            inline_keyboard=[
-                                [
-                                    InlineKeyboardButton(
-                                        text=choice,
-                                        callback_data=ChanceBoxCaptchaCallback(
-                                            box_id=box.id, answer=choice
-                                        ).pack(),
-                                    )
-                                    for choice in choices
-                                ]
+                if sticker is not None:
+                    try:
+                        sent_sticker = await bot.send_sticker(
+                            group.telegram_chat_id, sticker
+                        )
+                    except TelegramAPIError:
+                        logger.warning(
+                            "Could not send chance box sticker to group %s",
+                            group.telegram_chat_id,
+                        )
+                    else:
+                        box.sticker_message_id = sent_sticker.message_id
+                        await session.commit()
+                sent_message = await bot.send_photo(
+                    group.telegram_chat_id,
+                    BufferedInputFile(image, filename="letter-captcha.png"),
+                    caption=chance_box_banner(box.expires_at),
+                    parse_mode=MARKDOWN_V2,
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text=choice,
+                                    callback_data=ChanceBoxCaptchaCallback(
+                                        box_id=box.id, answer=choice
+                                    ).pack(),
+                                )
+                                for choice in choices
                             ]
-                        ),
-                    )
-                finally:
-                    reset_persist_group_message(persistence)
+                        ]
+                    ),
+                )
             except TelegramAPIError as exc:
-                await session.delete(box)
+                box.telegram_message_id = None
+                if box.sticker_message_id is not None:
+                    try:
+                        await bot.delete_message(
+                            group.telegram_chat_id, box.sticker_message_id
+                        )
+                    except TelegramAPIError:
+                        logger.warning(
+                            "Could not remove orphan chance box sticker %s",
+                            box.sticker_message_id,
+                        )
+                    else:
+                        box.sticker_message_id = None
+                if box.sticker_message_id is None:
+                    await session.delete(box)
                 await session.commit()
                 failed += 1
                 logger.warning(
@@ -445,6 +461,8 @@ async def chance_box_publish(
                     exc,
                 )
                 continue
+            finally:
+                reset_persist_group_message(persistence)
             box.telegram_message_id = sent_message.message_id
             await session.commit()
             sent += 1

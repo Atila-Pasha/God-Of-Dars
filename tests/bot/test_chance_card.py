@@ -8,6 +8,7 @@ from app.bot.callbacks_chance import (
     ChanceBoxCaptchaCallback,
     ChanceCardCallback,
 )
+from app.bot.chance_banners import chance_box_winner_banner
 from app.bot.handlers import chance
 from app.core.enums import ResourceType
 from app.services.chance_service import WrongCaptcha
@@ -20,18 +21,21 @@ async def test_claimed_box_posts_winner_banner_and_deletes_the_box(monkeypatch) 
         amount=100,
         resource_type=ResourceType.DIAMOND,
         telegram_message_id=700,
+        sticker_message_id=699,
     )
     monkeypatch.setattr(
         chance.chance_service, "claim_box", AsyncMock(return_value=(box, True))
     )
     group_message = SimpleNamespace(
         message_id=700,
+        chat=SimpleNamespace(id=-123),
         answer=AsyncMock(),
-        delete=AsyncMock(),
     )
+    bot = SimpleNamespace(delete_message=AsyncMock())
     callback = SimpleNamespace(
         from_user=SimpleNamespace(id=42, first_name="AtilA", last_name=None),
         message=group_message,
+        bot=bot,
         answer=AsyncMock(),
     )
     session = SimpleNamespace(commit=AsyncMock())
@@ -39,12 +43,36 @@ async def test_claimed_box_posts_winner_banner_and_deletes_the_box(monkeypatch) 
     await chance.claim_box(callback, ChanceBoxCallback(box_id=3), session)
 
     text = group_message.answer.await_args.args[0]
-    assert "tg://emoji?id=6039496463749223185" in text
-    assert "فرمانده «AtilA»" in text
-    assert "100 الماس دریافت کرد" in text
-    group_message.delete.assert_awaited_once()
+    assert "tg://emoji?id=5915892656499597169" in text
+    assert "tg://emoji?id=5825709849500985213" in text
+    assert "tg://emoji?id=5235470399730361615" in text
+    assert "پاسخ صحیح داده شد" in text
+    assert "فرمانده « AtilA » زودتر از همه پاسخ داد" in text
+    assert "100 الماس" in text
+    assert "tg://emoji?id=5825753314570018832" in text
+    assert bot.delete_message.await_count == 2
+    bot.delete_message.assert_any_await(chat_id=-123, message_id=700)
+    bot.delete_message.assert_any_await(chat_id=-123, message_id=699)
     assert box.telegram_message_id is None
+    assert box.sticker_message_id is None
     assert session.commit.await_count == 2
+
+
+@pytest.mark.parametrize(
+    ("resource", "label", "icon"),
+    [
+        (ResourceType.COIN, "100 سکه طلا", "5825699971076202989"),
+        (ResourceType.DIAMOND, "100 الماس", "5825753314570018832"),
+        (ResourceType.BANANA, "100 موز", "5902520589356113908"),
+    ],
+)
+def test_box_winner_banner_formats_each_reward(resource, label, icon) -> None:
+    text = chance_box_winner_banner("AtilA", 100, resource)
+
+    assert "📝" in text and "✔️" in text and "⬅️" in text
+    assert f"« {label} " in text
+    assert f"tg://emoji?id={icon}" in text
+    assert "پاسخ داد\n و «" in text
 
 
 @pytest.mark.asyncio

@@ -6,19 +6,30 @@ import pytest
 
 from admin import handlers
 from app.bot.callbacks_chance import ChanceBoxCaptchaCallback
+from app.bot.custom_emojis import _persist_group_message
 from app.core.enums import ResourceType
 
 
 @pytest.mark.asyncio
-async def test_group_box_is_a_photo_with_three_letter_choices(monkeypatch) -> None:
+@pytest.mark.parametrize("sticker", [None, "file-id"])
+async def test_group_box_is_a_photo_with_three_letter_choices(
+    monkeypatch, sticker
+) -> None:
     group = SimpleNamespace(id=5, telegram_chat_id=-4)
     box = SimpleNamespace(
         id=7,
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
         telegram_message_id=0,
+        sticker_message_id=None,
     )
+
+    async def send_sticker(*_args):
+        assert _persist_group_message.get() is True
+        return SimpleNamespace(message_id=54)
+
     bot = SimpleNamespace(
-        send_photo=AsyncMock(return_value=SimpleNamespace(message_id=55))
+        send_photo=AsyncMock(return_value=SimpleNamespace(message_id=55)),
+        send_sticker=AsyncMock(side_effect=send_sticker),
     )
 
     class BotContext:
@@ -29,7 +40,7 @@ async def test_group_box_is_a_photo_with_three_letter_choices(monkeypatch) -> No
             return None
 
     monkeypatch.setattr(handlers, "allowed", lambda _message: True)
-    monkeypatch.setattr(handlers, "_sticker_value", lambda _message: None)
+    monkeypatch.setattr(handlers, "_sticker_value", lambda _message: sticker)
     monkeypatch.setattr(
         handlers.group_repository,
         "list_active",
@@ -70,3 +81,5 @@ async def test_group_box_is_a_photo_with_three_letter_choices(monkeypatch) -> No
     ] == ["NETR", "NEPR", "NPPR"]
     assert "جعبه شانس" in bot.send_photo.await_args.kwargs["caption"]
     assert box.telegram_message_id == 55
+    assert box.sticker_message_id == (54 if sticker else None)
+    assert bot.send_sticker.await_count == (1 if sticker else 0)

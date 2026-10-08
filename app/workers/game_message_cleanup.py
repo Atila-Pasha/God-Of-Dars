@@ -21,7 +21,7 @@ from app.models.question import Question
 logger = logging.getLogger(__name__)
 
 
-async def _delete_message(bot: Bot, chat_id: int, message_id: int) -> bool:
+async def delete_game_message(bot: Bot, chat_id: int, message_id: int) -> bool:
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except TelegramBadRequest as exc:
@@ -47,7 +47,10 @@ async def process_due_game_messages(bot: Bot, *, batch_size: int = 100) -> None:
                 select(ChanceBox, Group.telegram_chat_id)
                 .join(Group, ChanceBox.group_id == Group.id)
                 .where(
-                    ChanceBox.telegram_message_id.is_not(None),
+                    or_(
+                        ChanceBox.telegram_message_id.is_not(None),
+                        ChanceBox.sticker_message_id.is_not(None),
+                    ),
                     or_(
                         ChanceBox.claimed_by_user_id.is_not(None),
                         ChanceBox.expires_at <= now,
@@ -59,8 +62,12 @@ async def process_due_game_messages(bot: Bot, *, batch_size: int = 100) -> None:
             )
         ).all()
         for box, chat_id in boxes:
-            if await _delete_message(bot, chat_id, box.telegram_message_id):
-                box.telegram_message_id = None
+            for field in ("telegram_message_id", "sticker_message_id"):
+                message_id = getattr(box, field)
+                if message_id is not None and await delete_game_message(
+                    bot, chat_id, message_id
+                ):
+                    setattr(box, field, None)
 
     async with AsyncSessionLocal() as session, session.begin():
         expiration = func.coalesce(GroupQuestion.expires_at, Question.expires_at)
@@ -89,7 +96,7 @@ async def process_due_game_messages(bot: Bot, *, batch_size: int = 100) -> None:
                 and expires_at <= now
             ):
                 publication.status = QuestionStatus.EXPIRED
-            if await _delete_message(bot, chat_id, publication.telegram_message_id):
+            if await delete_game_message(bot, chat_id, publication.telegram_message_id):
                 publication.telegram_message_id = None
 
 

@@ -266,6 +266,7 @@ async def test_expired_group_messages_are_deleted_from_persisted_jobs() -> None:
         box = ChanceBox(
             group_id=group.id,
             telegram_message_id=801,
+            sticker_message_id=802,
             resource_type=ResourceType.COIN,
             amount=100,
             expires_at=now - timedelta(minutes=1),
@@ -282,9 +283,13 @@ async def test_expired_group_messages_are_deleted_from_persisted_jobs() -> None:
             saved_box = await session.get(ChanceBox, box_id)
             saved_publication = await session.get(GroupQuestion, publication.id)
             assert saved_box.telegram_message_id is None
+            assert saved_box.sticker_message_id is None
             assert saved_publication.telegram_message_id is None
             assert saved_publication.status is QuestionStatus.EXPIRED
-        assert bot.delete_message.await_count == 2
+        assert bot.delete_message.await_count == 3
+        bot.delete_message.assert_any_await(
+            chat_id=group.telegram_chat_id, message_id=802
+        )
     finally:
         async with AsyncSessionLocal() as session, session.begin():
             await session.execute(delete(ChanceBox).where(ChanceBox.id == box_id))

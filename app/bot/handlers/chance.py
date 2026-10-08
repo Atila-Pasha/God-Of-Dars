@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-from contextlib import suppress
 from datetime import UTC, datetime
 
 from aiogram import Router
-from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.banners import MARKDOWN_V2, emoji, escape
+from app.bot.banners import MARKDOWN_V2
 from app.bot.callbacks_chance import (
     ChanceBoxCallback,
     ChanceBoxCaptchaCallback,
     ChanceCardCallback,
 )
+from app.bot.chance_banners import chance_box_winner_banner
 from app.bot.states import ChanceCardStates
+from app.models.chance_box import ChanceBox
 from app.models.chance_card import ChanceCard
 from app.services.chance_service import (
     AlreadyAttempted,
@@ -28,6 +28,7 @@ from app.services.chance_service import (
 )
 from app.services.school_errors import SchoolUserNotFound
 from app.services.user_service import UserInactiveError, UserService
+from app.workers.game_message_cleanup import delete_game_message
 
 router = Router(name="chance")
 chance_service = ChanceService()
@@ -56,6 +57,23 @@ def _resource_label(resource_type) -> str:
     }.get(resource_type.value, resource_type.value)
 
 
+async def _remove_box_messages(
+    callback: CallbackQuery, box: ChanceBox, session: AsyncSession
+) -> None:
+    if not isinstance(callback.message, Message):
+        return
+    changed = False
+    for field in ("telegram_message_id", "sticker_message_id"):
+        message_id = getattr(box, field, None)
+        if message_id is not None and await delete_game_message(
+            callback.bot, callback.message.chat.id, message_id
+        ):
+            setattr(box, field, None)
+            changed = True
+    if changed:
+        await session.commit()
+
+
 @router.callback_query(ChanceBoxCallback.filter())
 @router.callback_query(ChanceBoxCaptchaCallback.filter())
 async def claim_box(
@@ -78,9 +96,9 @@ async def claim_box(
         await session.commit()
     except BoxExpired:
         await callback.answer("⏰ زمان این جعبه گذشته است.", show_alert=True)
-        if isinstance(callback.message, Message):
-            with suppress(TelegramAPIError):
-                await callback.message.delete()
+        box = await session.get(ChanceBox, callback_data.box_id)
+        if box is not None:
+            await _remove_box_messages(callback, box, session)
         return
     except AlreadyClaimed:
         await callback.answer("این جعبه قبلاً باز شده است.", show_alert=True)
@@ -101,22 +119,16 @@ async def claim_box(
     if isinstance(callback.message, Message):
         try:
             await callback.message.answer(
-                f"{emoji('6039496463749223185', '🎉')} فرمانده "
-                f"«{escape(_user_display_name(callback.from_user))}» "
-                f"جعبه شانس را باز کرد و "
-                f"{escape(box.amount)} {escape(_resource_label(box.resource_type))} "
-                "دریافت کرد\\!",
+                chance_box_winner_banner(
+                    _user_display_name(callback.from_user),
+                    box.amount,
+                    box.resource_type,
+                ),
                 reply_to_message_id=callback.message.message_id,
                 parse_mode=MARKDOWN_V2,
             )
         finally:
-            try:
-                await callback.message.delete()
-            except TelegramAPIError:
-                pass  # The persistent cleanup worker retries this deletion.
-            else:
-                box.telegram_message_id = None
-                await session.commit()
+            await _remove_box_messages(callback, box, session)
 
 
 @router.callback_query(ChanceCardCallback.filter())
