@@ -1,13 +1,14 @@
 import hashlib
 import struct
 import zlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.bot.chance_banners import chance_box_banner, chance_card_banner
+from app.bot.relative_time import remaining_time
 from app.core.enums import ResourceType
 from app.core.game_logic import game_config
 from app.services.chance_service import (
@@ -52,16 +53,25 @@ def test_math_problem_is_drawn_into_the_png() -> None:
 
 def test_chance_banners_use_requested_icons_and_spoilers() -> None:
     assert game_config.chance_box_rules.expiry_minutes == 5
-    box = chance_box_banner(5)
-    card = chance_card_banner(datetime(2026, 10, 8, 12, 37, tzinfo=UTC))
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    box = chance_box_banner(expires_at)
+    card = chance_card_banner(expires_at)
 
     assert "tg://emoji?id=5825832256068918886" in box
     assert "tg://emoji?id=5086915529730426905" in box
-    assert "||5 دقیقه||" in box
+    assert f"tg://time?unix={int(expires_at.timestamp())}&format=r" in box
     assert "tg://emoji?id=5267300544094948794" in card
     assert "tg://emoji?id=5825746176334373354" in card
-    assert "||16:07||" in card
+    assert "format=r)||" in card
     assert "7 × 3" not in card
+
+
+def test_relative_time_uses_a_live_telegram_entity_inside_spoiler() -> None:
+    now = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+
+    text = remaining_time(now + timedelta(minutes=5), now=now)
+
+    assert text == "||![5 دقیقه](tg://time?unix=1791461100&format=r)||"
 
 
 @pytest.mark.asyncio

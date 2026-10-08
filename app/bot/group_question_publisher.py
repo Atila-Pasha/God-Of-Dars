@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
@@ -15,6 +14,7 @@ from app.bot.custom_emojis import (
     reset_persist_group_message,
     set_persist_group_message,
 )
+from app.bot.relative_time import remaining_time
 from app.core.config import settings
 from app.models.group_question import GroupQuestion
 from app.models.question import Question
@@ -110,13 +110,7 @@ class GroupQuestionPublisher:
     def _message_text(question: Question, expires_at: datetime | None) -> str:
         expiration = "بدون محدودیت زمانی"
         if expires_at is not None:
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-            expiration = (
-                "||"
-                + expires_at.astimezone(ZoneInfo("Asia/Tehran")).strftime("%H:%M")
-                + "||"
-            )
+            expiration = remaining_time(expires_at)
         rewards = GroupQuestionPublisher._reward_lines(question)
         return (
             f"{emoji('5917916556758622836', '🔔')} "
@@ -129,7 +123,7 @@ class GroupQuestionPublisher:
             f"{rewards}\n\n"
             "─────────────────────\n\n"
             f"{emoji('5825746176334373354', '😀')} "
-            f"{bold('مهلت تا')} {expiration}"
+            f"{bold('زمان باقی‌مانده')} {expiration}"
         )
 
     @staticmethod

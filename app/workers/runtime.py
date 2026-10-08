@@ -7,6 +7,7 @@ from aiogram import Bot
 
 from app.core.config import settings
 from app.workers.attack_resolver import resolve_due_attacks
+from app.workers.game_message_cleanup import run_game_message_cleanup_worker
 from app.workers.notification_worker import run_notification_worker
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ async def _attack_worker(bot: Bot, worker_id: int) -> None:
 async def run_workers(bot: Bot) -> None:
     """Run database-backed jobs concurrently without duplicating work."""
     async with asyncio.TaskGroup() as task_group:
+        task_group.create_task(run_game_message_cleanup_worker(bot))
         for worker_id in range(settings.WORKER_COUNT):
             task_group.create_task(_attack_worker(bot, worker_id))
         for worker_id in range(settings.NOTIFICATION_WORKER_COUNT):

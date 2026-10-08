@@ -26,7 +26,7 @@ class ChanceBox(Base):
     group_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
     )
-    telegram_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     resource_type: Mapped[ResourceType] = mapped_column(
         RESOURCE_TYPE_ENUM, nullable=False
     )

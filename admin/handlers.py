@@ -47,9 +47,6 @@ from app.bot.middlewares.subscription import invalidate_channels_cache
 from app.bot.utils.telegram import safe_edit_reply_markup, safe_edit_text
 from app.core.config import settings
 from app.core.enums import ResourceType
-from app.core.game_logic import game_config
-from app.db.session import AsyncSessionLocal
-from app.models.chance_box import ChanceBox
 from app.models.daily_quest import QUEST_TYPES
 from app.models.study_pack import StudyPack
 from app.models.user import User
@@ -322,26 +319,6 @@ async def _main_bot() -> Bot:
     )
 
 
-async def _expire_box_later(
-    chat_id: int, message_id: int, box_id: int, expires_at: datetime
-) -> None:
-    delay = max(0, (expires_at - datetime.now(UTC)).total_seconds())
-    await asyncio.sleep(delay)
-    async with AsyncSessionLocal() as cleanup_session:
-        box = await cleanup_session.get(ChanceBox, box_id)
-        if box is None or box.claimed_by_user_id is not None:
-            return
-        async with await _main_bot() as bot:
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=message_id)
-            except TelegramAPIError:
-                logger.info(
-                    "Could not delete expired chance box message %s", message_id
-                )
-        await cleanup_session.delete(box)
-        await cleanup_session.commit()
-
-
 @router.message(
     F.text.in_(button_labels("ارسال جعبه شانس", "🎁 ارسال جعبه شانس", "🎁 جعبه شانس"))
 )
@@ -437,7 +414,7 @@ async def chance_box_publish(
                 try:
                     sent_message = await bot.send_message(
                         group.telegram_chat_id,
-                        chance_box_banner(game_config.chance_box_rules.expiry_minutes),
+                        chance_box_banner(box.expires_at),
                         parse_mode=MARKDOWN_V2,
                         reply_markup=InlineKeyboardMarkup(
                             inline_keyboard=[
@@ -466,14 +443,6 @@ async def chance_box_publish(
                 continue
             box.telegram_message_id = sent_message.message_id
             await session.commit()
-            asyncio.create_task(
-                _expire_box_later(
-                    group.telegram_chat_id,
-                    sent_message.message_id,
-                    box.id,
-                    box.expires_at,
-                )
-            )
             sent += 1
     await state.clear()
     await message.answer(

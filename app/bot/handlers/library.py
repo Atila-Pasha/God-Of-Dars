@@ -632,8 +632,13 @@ async def group_reply_answer_handler(
                 _group_correct_banner(message.from_user, result),
                 parse_mode=MARKDOWN_V2,
             )
-            with suppress(TelegramAPIError):
+            try:
                 await message.reply_to_message.delete()
+            except TelegramAPIError:
+                pass  # The cleanup worker retries deletion after this update.
+            else:
+                publication.telegram_message_id = None
+                await session.commit()
         else:
             await _answer_group_reply(message, "اشتباه جواب دادی.")
         with suppress(TelegramAPIError):

@@ -162,8 +162,6 @@ class ChanceService:
             else box.expires_at.replace(tzinfo=UTC)
         )
         if expires_at <= now:
-            await session.delete(box)
-            await session.flush()
             raise BoxExpired
         result = await session.execute(
             select(User).where(

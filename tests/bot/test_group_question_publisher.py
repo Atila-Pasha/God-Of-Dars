@@ -90,7 +90,8 @@ def test_group_question_banner_uses_custom_icons_and_spoiler_time() -> None:
     assert "> 100 سکه طلا" in text
     assert "> 100 الماس" in text
     assert "> 10 موز" in text
-    assert "||16:07||" in text
+    assert "tg://time?unix=1791463020&format=r" in text
+    assert "format=r)||" in text
 
 
 @pytest.mark.asyncio

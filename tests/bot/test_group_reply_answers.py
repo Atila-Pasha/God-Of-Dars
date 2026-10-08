@@ -69,7 +69,8 @@ async def test_group_reply_to_question_message_is_answered(monkeypatch) -> None:
     assert message.answer.await_args.kwargs["reply_to_message_id"] == 701
     message.delete.assert_awaited_once()
     message.reply_to_message.delete.assert_awaited_once()
-    session.commit.assert_awaited_once()
+    assert session.commit.await_count == 2
+    assert publication.telegram_message_id is None
 
 
 @pytest.mark.asyncio

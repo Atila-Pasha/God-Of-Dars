@@ -3,9 +3,44 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.bot.callbacks_chance import ChanceCardCallback
+from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
 from app.bot.handlers import chance
+from app.core.enums import ResourceType
 from app.services.chance_service import WrongCaptcha
+
+
+@pytest.mark.asyncio
+async def test_claimed_box_posts_winner_banner_and_deletes_the_box(monkeypatch) -> None:
+    monkeypatch.setattr(chance, "Message", SimpleNamespace)
+    box = SimpleNamespace(
+        amount=100,
+        resource_type=ResourceType.DIAMOND,
+        telegram_message_id=700,
+    )
+    monkeypatch.setattr(
+        chance.chance_service, "claim_box", AsyncMock(return_value=(box, True))
+    )
+    group_message = SimpleNamespace(
+        message_id=700,
+        answer=AsyncMock(),
+        delete=AsyncMock(),
+    )
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=42, first_name="AtilA", last_name=None),
+        message=group_message,
+        answer=AsyncMock(),
+    )
+    session = SimpleNamespace(commit=AsyncMock())
+
+    await chance.claim_box(callback, ChanceBoxCallback(box_id=3), session)
+
+    text = group_message.answer.await_args.args[0]
+    assert "tg://emoji?id=6039496463749223185" in text
+    assert "فرمانده «AtilA»" in text
+    assert "100 الماس دریافت کرد" in text
+    group_message.delete.assert_awaited_once()
+    assert box.telegram_message_id is None
+    assert session.commit.await_count == 2
 
 
 @pytest.mark.asyncio
