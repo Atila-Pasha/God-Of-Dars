@@ -180,7 +180,8 @@ async def group_purchase_message(
             (
                 item
                 for item in shield_catalog
-                if item.name.casefold() == name.casefold()
+                if item.name.removeprefix("سپر ").casefold()
+                == name.removeprefix("سپر ").casefold()
             ),
             None,
         )

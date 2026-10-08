@@ -102,13 +102,14 @@ async def test_group_shield_purchase_uses_shield_confirmation(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stored_name", ["سپر زنگ تفریح", "زنگ تفریح"])
 async def test_group_shield_purchase_accepts_full_name_after_command(
-    monkeypatch,
+    monkeypatch, stored_name
 ) -> None:
     message = group_message("خرید سپر سپر زنگ تفریح")
     shield = SimpleNamespace(
         id=1,
-        name="سپر زنگ تفریح",
+        name=stored_name,
         unlock_level=1,
         purchase_price=120,
         purchase_resource=ResourceType.COIN,
