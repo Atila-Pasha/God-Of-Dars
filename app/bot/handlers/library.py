@@ -29,6 +29,7 @@ from app.bot.keyboards.library import (
     teacher_library_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, section_back_keyboard
+from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import safe_edit_text
 from app.services.library_errors import (
     DuplicateAnswer,
@@ -300,14 +301,17 @@ async def group_teacher_introduction(message: Message, session: AsyncSession) ->
         await message.answer("فرمت صحیح: معرفی نام دبیر")
         return
     teachers = await teacher_service.public_teachers(session)
-    teacher = next(
-        (item for item in teachers if item.name.casefold() == name.casefold()),
-        None,
-    )
-    if teacher is None:
+    matches = matching_teachers(teachers, name)
+    if not matches:
         await message.answer("دبیری با این نام پیدا نشد.")
         return
-    await message.answer(_teacher_detail_content(teacher), parse_mode=MARKDOWN_V2)
+    if len(matches) > 1:
+        await message.answer(
+            "چند دبیر با این نام پیدا شد؛ اسم کامل دبیر را بنویسید: "
+            + "، ".join(teacher.name for teacher in matches)
+        )
+        return
+    await message.answer(_teacher_detail_content(matches[0]), parse_mode=MARKDOWN_V2)
 
 
 @router.message(F.text == LIBRARY_LABEL)

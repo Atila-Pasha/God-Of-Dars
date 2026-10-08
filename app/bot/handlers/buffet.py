@@ -41,6 +41,7 @@ from app.bot.keyboards.school import (
     teacher_catalog_page_keyboard,
 )
 from app.bot.states import BuffetStates
+from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import group_user_request, safe_edit_text
 from app.core.enums import ResourceType
 from app.services.buffet_service import (
@@ -102,6 +103,7 @@ def _shield_currency(shield) -> str:
 
 
 @router.message(
+    F.chat.type.in_({"group", "supergroup"}),
     F.text.regexp(r"^\s*خرید\s+(?!(?:سپر|دبیر)\s*$)\S.*$"),
 )
 async def group_purchase_message(
@@ -110,26 +112,32 @@ async def group_purchase_message(
 ) -> None:
     if message.from_user is None or not message.text:
         return
-    parts = message.text.strip().split(maxsplit=2)
-    if len(parts) < 2 or (parts[1] == "سپر" and len(parts) < 3):
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) < 2:
         await message.answer("فرمت خرید:\nخرید {اسم دبیر}\nخرید سپر {اسم سپر}")
         return
-    is_shield = parts[1] == "سپر"
-    name = parts[2].strip() if is_shield else message.text.strip().split(maxsplit=1)[1]
+    name = parts[1].strip()
+    is_shield = name.startswith("سپر ")
+    if name.startswith("دبیر "):
+        name = name.removeprefix("دبیر ").strip()
     try:
         user = await user_service.get_active_by_telegram_user_id(
             session, message.from_user.id
         )
-        teacher_catalog = await teacher_service.public_teachers(session)
-        teacher = next(
-            (
-                item
-                for item in teacher_catalog
-                if item.name.casefold() == name.casefold()
-            ),
-            None,
-        )
-        if teacher is not None:
+        if not is_shield:
+            teachers = matching_teachers(
+                await teacher_service.public_teachers(session), name
+            )
+            if len(teachers) > 1:
+                await message.answer(
+                    "چند دبیر با این نام پیدا شد؛ اسم کامل دبیر را بنویسید: "
+                    + "، ".join(teacher.name for teacher in teachers)
+                )
+                return
+            if not teachers:
+                await message.answer("دبیری با این نام پیدا نشد.")
+                return
+            teacher = teachers[0]
             await message.answer(
                 purchase_banner(teacher),
                 reply_markup=confirmation_keyboard(
@@ -140,12 +148,7 @@ async def group_purchase_message(
             )
             return
 
-        if is_shield:
-            shield_catalog = await shield_service.catalog(
-                session, player_level=user.level
-            )
-        else:
-            shield_catalog = []
+        shield_catalog = await shield_service.catalog(session, player_level=user.level)
         shield = next(
             (
                 item
@@ -165,7 +168,7 @@ async def group_purchase_message(
                 reply_to_message_id=message.message_id,
             )
             return
-        await message.answer("دبیر یا سپری با این نام برای سطح شما پیدا نشد.")
+        await message.answer("سپری با این نام برای سطح شما پیدا نشد.")
     except TeacherSlotLocked:
         await message.answer(
             "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید یا سطح فرمانده را افزایش دهید."
@@ -275,6 +278,9 @@ async def buffet_shields_message(
 ) -> None:
     if message.from_user is None:
         return
+    if message.chat.type in {"group", "supergroup"}:
+        await message.answer("فرمت خرید سپر: خرید سپر {اسم سپر}")
+        return
     try:
         await state.clear()
         await _shields_view(message, session)
@@ -294,6 +300,9 @@ async def buffet_teachers_message(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
     if message.from_user is None:
+        return
+    if message.chat.type in {"group", "supergroup"}:
+        await message.answer("فرمت خرید دبیر: خرید {اسم دبیر}")
         return
     try:
         await state.clear()

@@ -57,6 +57,7 @@ async def test_buffet_shield_buttons_open_catalog(
     message = SimpleNamespace(
         from_user=SimpleNamespace(id=1),
         text=button_text,
+        chat=SimpleNamespace(type="private"),
         answer=AsyncMock(),
     )
     session = SimpleNamespace()

@@ -819,13 +819,11 @@ async def confirmation_callback_handler(
             purchased_teacher = await teacher_service.buy(
                 session, user.id, callback_data.target_id
             )
-            if callback_data.origin == "buffet":
-                from app.bot.handlers.buffet import _teacher_shop_view
-
-                await _teacher_shop_view(callback, session)
-            else:
-                await _teachers_view(callback, session)
-            if callback.message is not None:
+            group_purchase = isinstance(
+                callback.message, Message
+            ) and callback.message.chat.type in {"group", "supergroup"}
+            if group_purchase:
+                await session.commit()
                 await _delete_group_purchase_prompt(callback)
                 await callback.message.answer(
                     f"✅ دبیر «{purchased_teacher.teacher.name}» با موفقیت خریداری شد.",
@@ -836,6 +834,17 @@ async def confirmation_callback_handler(
                     ),
                     disable_group_reply=purchase_source is None,
                 )
+            else:
+                if callback_data.origin == "buffet":
+                    from app.bot.handlers.buffet import _teacher_shop_view
+
+                    await _teacher_shop_view(callback, session)
+                else:
+                    await _teachers_view(callback, session)
+                if callback.message is not None:
+                    await callback.message.answer(
+                        f"✅ دبیر «{purchased_teacher.teacher.name}» با موفقیت خریداری شد."
+                    )
             notice = "دبیر با موفقیت خریداری شد."
         elif callback_data.action == "teacher_upgrade":
             await teacher_service.upgrade(session, user.id, callback_data.target_id)
@@ -858,9 +867,15 @@ async def confirmation_callback_handler(
             "این دبیر در حال نبرد است؛ پس از پایان نبرد می‌توانید او را بفروشید.",
             show_alert=True,
         )
-    except InsufficientDiamonds:
+    except InsufficientDiamonds as error:
         await session.rollback()
-        await callback.answer("الماس کافی برای تعمیر یا ارتقا ندارید.", show_alert=True)
+        if callback_data.action == "teacher_buy":
+            await _delete_group_purchase_prompt(callback)
+            await callback.answer(_teacher_purchase_error(error), show_alert=True)
+        else:
+            await callback.answer(
+                "الماس کافی برای تعمیر یا ارتقا ندارید.", show_alert=True
+            )
     except CastleNeedsRepair:
         await session.rollback()
         await _castle_view(callback, session)
