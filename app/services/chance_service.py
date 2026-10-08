@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import struct
+import zlib
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -35,6 +37,63 @@ class CardExpired(ChanceError):
     pass
 
 
+_CAPTCHA_GLYPHS = {
+    "0": ("11111", "10001", "10001", "10001", "10001", "10001", "11111"),
+    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+    "2": ("11111", "00001", "00001", "11111", "10000", "10000", "11111"),
+    "3": ("11111", "00001", "00001", "11111", "00001", "00001", "11111"),
+    "4": ("10001", "10001", "10001", "11111", "00001", "00001", "00001"),
+    "5": ("11111", "10000", "10000", "11111", "00001", "00001", "11111"),
+    "6": ("11111", "10000", "10000", "11111", "10001", "10001", "11111"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "8": ("11111", "10001", "10001", "11111", "10001", "10001", "11111"),
+    "9": ("11111", "10001", "10001", "11111", "00001", "00001", "11111"),
+    "+": ("00000", "00100", "00100", "11111", "00100", "00100", "00000"),
+    "−": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
+    "×": ("10001", "01010", "00100", "00100", "00100", "01010", "10001"),
+    "=": ("00000", "11111", "00000", "00000", "11111", "00000", "00000"),
+    "؟": ("01110", "10001", "00001", "00010", "00100", "00000", "00100"),
+    " ": ("00000",) * 7,
+}
+
+
+def _png_captcha(problem: str) -> bytes:
+    """Render the whole arithmetic problem as a compact, high-contrast PNG."""
+    scale = 6
+    width = len(problem) * 6 * scale + 24
+    height = 7 * scale + 24
+    background = b"\x13\x22\x34"
+    foreground = b"\xf3\xf8\xff"
+    rows = [bytearray(b"\x00" + background * width) for _ in range(height)]
+    for index, char in enumerate(problem):
+        glyph = _CAPTCHA_GLYPHS[char]
+        for gy, line in enumerate(glyph):
+            for gx, bit in enumerate(line):
+                if bit != "1":
+                    continue
+                start_x = 12 + (index * 6 + gx) * scale
+                start_y = 12 + gy * scale
+                for y in range(start_y, start_y + scale):
+                    offset = 1 + start_x * 3
+                    rows[y][offset : offset + scale * 3] = foreground * scale
+
+    def chunk(kind: bytes, value: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(value))
+            + kind
+            + value
+            + struct.pack(">I", zlib.crc32(kind + value) & 0xFFFFFFFF)
+        )
+
+    raw = b"".join(rows)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
 class ChanceService:
     CARD_VALIDITY = timedelta(hours=1)
 
@@ -42,7 +101,7 @@ class ChanceService:
         self.reward_service = reward_service or RewardService()
 
     @staticmethod
-    def captcha() -> tuple[str, str]:
+    def captcha() -> tuple[str, bytes, str]:
         operation = secrets.choice(("+", "−", "×"))
         if operation == "×":
             left, right = secrets.randbelow(8) + 2, secrets.randbelow(8) + 2
@@ -52,7 +111,8 @@ class ChanceService:
             if operation == "−" and left < right:
                 left, right = right, left
             result = left + right if operation == "+" else left - right
-        return f"{left} {operation} {right} = ؟", str(result)
+        problem = f"{left} {operation} {right} = ؟"
+        return problem, _png_captcha(problem), str(result)
 
     @classmethod
     def card_expires_at(cls, card: ChanceCard) -> datetime:

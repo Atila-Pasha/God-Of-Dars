@@ -18,14 +18,13 @@ def chance_box_banner(minutes: int) -> str:
     )
 
 
-def chance_card_banner(question: str, expires_at: datetime) -> str:
+def chance_card_banner(expires_at: datetime) -> str:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     deadline = expires_at.astimezone(ZoneInfo("Asia/Tehran")).strftime("%H:%M")
     return (
         f"{emoji('5267300544094948794', '💳')} {bold('کارت شانس')}\n"
         "کپچا را حل کن تا جایزه‌ات را دریافت کنی\\.\n\n"
-        f"مسئله: {bold(question)}\n\n"
         f"{emoji('5825746176334373354', '😀')} "
         f"مهلت تا ||{deadline}||"
     )

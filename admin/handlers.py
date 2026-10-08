@@ -532,7 +532,7 @@ async def chance_card_send(
                 if not users:
                     break
                 for user_id, telegram_user_id in users:
-                    challenge, answer = chance_service.captcha()
+                    _challenge, image, answer = chance_service.captcha()
                     card = await chance_service.create_card(
                         session, user_id, resource, amount, answer
                     )
@@ -540,11 +540,13 @@ async def chance_card_send(
                     try:
                         for attempt in range(2):
                             try:
-                                await bot.send_message(
+                                await bot.send_photo(
                                     telegram_user_id,
-                                    chance_card_banner(
-                                        challenge,
-                                        chance_service.card_expires_at(card),
+                                    BufferedInputFile(
+                                        image, filename="math-captcha.png"
+                                    ),
+                                    caption=chance_card_banner(
+                                        chance_service.card_expires_at(card)
                                     ),
                                     parse_mode=MARKDOWN_V2,
                                     reply_markup=InlineKeyboardMarkup(

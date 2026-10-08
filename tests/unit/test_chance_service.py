@@ -1,4 +1,6 @@
 import hashlib
+import struct
+import zlib
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -13,12 +15,13 @@ from app.services.chance_service import (
     CardExpired,
     ChanceService,
     WrongCaptcha,
+    _png_captcha,
 )
 
 
 def test_math_captcha_has_the_expected_answer() -> None:
     for _ in range(100):
-        problem, answer = ChanceService.captcha()
+        problem, image, answer = ChanceService.captcha()
         left, operator, right, _equals, _question = problem.split()
         numbers = int(left), int(right)
         if operator == "+":
@@ -29,12 +32,28 @@ def test_math_captcha_has_the_expected_answer() -> None:
             expected = numbers[0] * numbers[1]
         assert answer == str(expected)
         assert expected >= 0
+        assert image.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_math_problem_is_drawn_into_the_png() -> None:
+    image = _png_captcha("7 × 3 = ؟")
+    width, height = struct.unpack(">II", image[16:24])
+    idat_offset = image.index(b"IDAT") + 4
+    idat_size = struct.unpack(">I", image[idat_offset - 8 : idat_offset - 4])[0]
+    raw = zlib.decompress(image[idat_offset : idat_offset + idat_size])
+
+    assert width > 250
+    assert height > 50
+    assert len(raw) == height * (1 + width * 3)
+    assert b"\xf3\xf8\xff" in raw  # visible white glyph pixels
+    assert b"\x13\x22\x34" in raw  # contrasting dark background
+    assert image != _png_captcha("7 + 3 = ؟")
 
 
 def test_chance_banners_use_requested_icons_and_spoilers() -> None:
     assert game_config.chance_box_rules.expiry_minutes == 5
     box = chance_box_banner(5)
-    card = chance_card_banner("7 × 3 = ؟", datetime(2026, 10, 8, 12, 37, tzinfo=UTC))
+    card = chance_card_banner(datetime(2026, 10, 8, 12, 37, tzinfo=UTC))
 
     assert "tg://emoji?id=5825832256068918886" in box
     assert "tg://emoji?id=5086915529730426905" in box
@@ -42,7 +61,7 @@ def test_chance_banners_use_requested_icons_and_spoilers() -> None:
     assert "tg://emoji?id=5267300544094948794" in card
     assert "tg://emoji?id=5825746176334373354" in card
     assert "||16:07||" in card
-    assert "7 × 3" in card
+    assert "7 × 3" not in card
 
 
 @pytest.mark.asyncio
