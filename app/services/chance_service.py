@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-import struct
-import zlib
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -33,68 +31,35 @@ class BoxExpired(ChanceError):
     pass
 
 
-def _png_captcha(answer: str) -> bytes:
-    # Tiny dependency-free PNG renderer: 5x7 bitmap digits, scaled 8x.
-    glyphs = {
-        "0": ("11111", "10001", "10001", "10001", "10001", "10001", "11111"),
-        "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
-        "2": ("11111", "00001", "00001", "11111", "10000", "10000", "11111"),
-        "3": ("11111", "00001", "00001", "11111", "00001", "00001", "11111"),
-        "4": ("10001", "10001", "10001", "11111", "00001", "00001", "00001"),
-        "5": ("11111", "10000", "10000", "11111", "00001", "00001", "11111"),
-        "6": ("11111", "10000", "10000", "11111", "10001", "10001", "11111"),
-        "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
-        "8": ("11111", "10001", "10001", "11111", "10001", "10001", "11111"),
-        "9": ("11111", "10001", "10001", "11111", "00001", "00001", "11111"),
-    }
-    scale, width, height = 8, len(answer) * 48 + 24, 80
-    rows = []
-    for _y in range(height):
-        # PNG scanline filter byte: 0 means "no filter". Values such as 255
-        # make Telegram reject the generated image as an invalid PNG.
-        row = bytearray([0])
-        for _x in range(width):
-            row.extend((255, 255, 255))
-        rows.append(row)
-    for index, char in enumerate(answer):
-        glyph = glyphs[char]
-        for gy, line in enumerate(glyph):
-            for gx, bit in enumerate(line):
-                if bit == "1":
-                    for sy in range(scale):
-                        for sx in range(scale):
-                            x = 12 + index * 48 + gx * scale + sx
-                            y = 12 + gy * scale + sy
-                            if y < height and x < width:
-                                pos = 1 + x * 3
-                                rows[y][pos : pos + 3] = b"\x20\x20\x20"
-    raw = b"".join(rows)
-
-    def chunk(kind: bytes, value: bytes) -> bytes:
-        return (
-            struct.pack(">I", len(value))
-            + kind
-            + value
-            + struct.pack(">I", zlib.crc32(kind + value) & 0xFFFFFFFF)
-        )
-
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-        + chunk(b"IDAT", zlib.compress(raw))
-        + chunk(b"IEND", b"")
-    )
+class CardExpired(ChanceError):
+    pass
 
 
 class ChanceService:
+    CARD_VALIDITY = timedelta(hours=1)
+
     def __init__(self, reward_service: RewardService | None = None) -> None:
         self.reward_service = reward_service or RewardService()
 
     @staticmethod
-    def captcha() -> tuple[str, bytes, str]:
-        answer = "".join(secrets.choice("0123456789") for _ in range(4))
-        digest = hashlib.sha256(answer.encode()).hexdigest()
-        return answer, _png_captcha(answer), digest
+    def captcha() -> tuple[str, str]:
+        operation = secrets.choice(("+", "−", "×"))
+        if operation == "×":
+            left, right = secrets.randbelow(8) + 2, secrets.randbelow(8) + 2
+            result = left * right
+        else:
+            left, right = secrets.randbelow(19) + 2, secrets.randbelow(19) + 2
+            if operation == "−" and left < right:
+                left, right = right, left
+            result = left + right if operation == "+" else left - right
+        return f"{left} {operation} {right} = ؟", str(result)
+
+    @classmethod
+    def card_expires_at(cls, card: ChanceCard) -> datetime:
+        created_at = card.created_at or datetime.now(UTC)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        return created_at + cls.CARD_VALIDITY
 
     async def create_box(
         self,
@@ -198,9 +163,18 @@ class ChanceService:
         card = result.scalar_one_or_none()
         if card is None or card.is_claimed:
             raise AlreadyClaimed
+        if self.card_expires_at(card) <= datetime.now(UTC):
+            raise CardExpired
+        normalized_answer = answer.strip().translate(
+            str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+        )
         if not secrets.compare_digest(
-            card.captcha_hash, hashlib.sha256(answer.strip().encode()).hexdigest()
+            card.captcha_hash,
+            hashlib.sha256(normalized_answer.encode()).hexdigest(),
         ):
+            # A wrong answer consumes this card without granting its reward.
+            card.is_claimed = True
+            await session.flush()
             raise WrongCaptcha
         card.is_claimed = True
         card.claimed_at = datetime.now(UTC)

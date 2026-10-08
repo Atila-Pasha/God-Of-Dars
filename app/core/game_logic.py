@@ -191,7 +191,7 @@ class StudyPack:
 
 @dataclass(frozen=True)
 class ChanceBoxRules:
-    expiry_minutes: int = 2
+    expiry_minutes: int = 5
 
     def __post_init__(self) -> None:
         if self.expiry_minutes <= 0:
@@ -901,7 +901,7 @@ class GameConfig:
             },
             study_packs=study_packs,
             chance_box_rules=ChanceBoxRules(
-                expiry_minutes=int(chance_box_data.get("expiry_minutes", 2))
+                expiry_minutes=int(chance_box_data.get("expiry_minutes", 5))
             ),
             attack_rules=AttackRules(
                 defense_absorption_ratio=float(

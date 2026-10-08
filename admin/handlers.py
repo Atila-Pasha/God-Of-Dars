@@ -34,13 +34,20 @@ from admin.states import (
     TeacherStates,
     UserStates,
 )
+from app.bot.banners import MARKDOWN_V2
 from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
-from app.bot.custom_emojis import strip_custom_emoji_fallbacks
+from app.bot.chance_banners import chance_box_banner, chance_card_banner
+from app.bot.custom_emojis import (
+    reset_persist_group_message,
+    set_persist_group_message,
+    strip_custom_emoji_fallbacks,
+)
 from app.bot.group_question_publisher import GroupQuestionPublisher
 from app.bot.middlewares.subscription import invalidate_channels_cache
 from app.bot.utils.telegram import safe_edit_reply_markup, safe_edit_text
 from app.core.config import settings
 from app.core.enums import ResourceType
+from app.core.game_logic import game_config
 from app.db.session import AsyncSessionLocal
 from app.models.chance_box import ChanceBox
 from app.models.daily_quest import QUEST_TYPES
@@ -426,22 +433,27 @@ async def chance_box_publish(
                         group.telegram_chat_id,
                     )
             try:
-                sent_message = await bot.send_message(
-                    group.telegram_chat_id,
-                    "🎁 جعبه شانس\n\nاولین نفری که جعبه را باز کند، برنده جایزه می‌شود!",
-                    reply_markup=InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [
-                                InlineKeyboardButton(
-                                    text="🎁 باز کردن جعبه",
-                                    callback_data=ChanceBoxCallback(
-                                        box_id=box.id
-                                    ).pack(),
-                                )
+                persistence = set_persist_group_message()
+                try:
+                    sent_message = await bot.send_message(
+                        group.telegram_chat_id,
+                        chance_box_banner(game_config.chance_box_rules.expiry_minutes),
+                        parse_mode=MARKDOWN_V2,
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [
+                                    InlineKeyboardButton(
+                                        text="🎁 باز کردن جعبه",
+                                        callback_data=ChanceBoxCallback(
+                                            box_id=box.id
+                                        ).pack(),
+                                    )
+                                ]
                             ]
-                        ]
-                    ),
-                )
+                        ),
+                    )
+                finally:
+                    reset_persist_group_message(persistence)
             except TelegramAPIError as exc:
                 await session.delete(box)
                 await session.commit()
@@ -520,7 +532,7 @@ async def chance_card_send(
                 if not users:
                     break
                 for user_id, telegram_user_id in users:
-                    answer, image, _ = chance_service.captcha()
+                    challenge, answer = chance_service.captcha()
                     card = await chance_service.create_card(
                         session, user_id, resource, amount, answer
                     )
@@ -528,12 +540,13 @@ async def chance_card_send(
                     try:
                         for attempt in range(2):
                             try:
-                                await bot.send_photo(
+                                await bot.send_message(
                                     telegram_user_id,
-                                    BufferedInputFile(
-                                        image, filename="chance-captcha.png"
+                                    chance_card_banner(
+                                        challenge,
+                                        chance_service.card_expires_at(card),
                                     ),
-                                    caption="🃏 کارت شانس\n\nکپچا را حل کن تا جایزه‌ات را دریافت کنی.",
+                                    parse_mode=MARKDOWN_V2,
                                     reply_markup=InlineKeyboardMarkup(
                                         inline_keyboard=[
                                             [

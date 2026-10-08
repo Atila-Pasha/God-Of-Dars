@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -7,14 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks_chance import ChanceBoxCallback, ChanceCardCallback
 from app.bot.states import ChanceCardStates
+from app.models.chance_card import ChanceCard
 from app.services.chance_service import (
     AlreadyClaimed,
     BoxExpired,
+    CardExpired,
     ChanceError,
     ChanceService,
     WrongCaptcha,
 )
-from app.services.user_service import UserService
+from app.services.school_errors import SchoolUserNotFound
+from app.services.user_service import UserInactiveError, UserService
 
 router = Router(name="chance")
 chance_service = ChanceService()
@@ -80,13 +85,33 @@ async def claim_box(
 
 @router.callback_query(ChanceCardCallback.filter())
 async def start_card(
-    callback: CallbackQuery, callback_data: ChanceCardCallback, state: FSMContext
+    callback: CallbackQuery,
+    callback_data: ChanceCardCallback,
+    state: FSMContext,
+    session: AsyncSession,
 ) -> None:
+    if callback.from_user is None:
+        await callback.answer()
+        return
+    try:
+        user = await user_service.get_active_by_telegram_user_id(
+            session, callback.from_user.id
+        )
+    except (SchoolUserNotFound, UserInactiveError):
+        await callback.answer("حساب کاربری شما فعال نیست.", show_alert=True)
+        return
+    card = await session.get(ChanceCard, callback_data.card_id)
+    if card is None or card.user_id != user.id or card.is_claimed:
+        await callback.answer("این کارت دیگر قابل استفاده نیست.", show_alert=True)
+        return
+    if chance_service.card_expires_at(card) <= datetime.now(UTC):
+        await callback.answer("مهلت این کارت شانس تمام شده است.", show_alert=True)
+        return
     await state.set_state(ChanceCardStates.waiting_captcha)
     await state.update_data(card_id=callback_data.card_id)
     await callback.answer()
     if callback.message is not None:
-        await callback.message.answer("کد داخل تصویر را وارد کنید:")
+        await callback.message.answer("پاسخ مسئله را فقط با عدد بفرستید:")
 
 
 @router.message(ChanceCardStates.waiting_captcha)
@@ -109,7 +134,13 @@ async def verify_card(
         )
         await session.commit()
     except WrongCaptcha:
-        await message.answer("❌ کپچا اشتباه است. دوباره تلاش کن.")
+        await session.commit()
+        await state.clear()
+        await message.answer("❌ پاسخ اشتباه بود؛ این کارت فقط یک فرصت داشت.")
+        return
+    except CardExpired:
+        await state.clear()
+        await message.answer("مهلت این کارت شانس تمام شده است.")
         return
     except (AlreadyClaimed, ChanceError):
         await state.clear()
@@ -117,5 +148,5 @@ async def verify_card(
         return
     await state.clear()
     await message.answer(
-        f"✅ پاسخ صحیح بود؛ {card.amount} {('طلا' if card.resource_type.value == 'COIN' else 'الماس')} دریافت کردی."
+        f"✅ پاسخ صحیح بود؛ {card.amount} {_resource_label(card.resource_type)} دریافت کردی."
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -148,10 +149,27 @@ def _group_reward_text(result: AnswerResult) -> str:
     )
     if not rewards:
         return "بدون پاداش"
+    icons = {
+        "COIN": emoji("5825699971076202989", "🥇"),
+        "DIAMOND": emoji("5825753314570018832", "💎"),
+        "BANANA": emoji("5902520589356113908", "🍌"),
+    }
     return "، ".join(
-        f"{RESOURCE_LABELS.get(_resource_name(reward), _resource_name(reward))}: "
-        f"{reward.amount}"
+        f"{escape(reward.amount)} "
+        f"{escape('سکه طلا' if _resource_name(reward) == 'COIN' else RESOURCE_LABELS.get(_resource_name(reward), _resource_name(reward)))} "
+        f"{icons.get(_resource_name(reward), '')}"
         for reward in rewards
+    )
+
+
+def _group_correct_banner(user: Any, result: AnswerResult) -> str:
+    name = escape(_user_display_name(user))
+    reward = _group_reward_text(result)
+    return (
+        f"{emoji('5915892656499597169', '📝')} {bold('پاسخ صحیح داده شد')} "
+        f"{emoji('5825709849500985213', '✔️')}\n\n"
+        f"{emoji('5235470399730361615', '⬅️')} فرمانده « {name} » "
+        f"زودتر از همه پاسخ داد و « {reward} » دریافت کرد\\."
     )
 
 
@@ -607,22 +625,34 @@ async def group_reply_answer_handler(
             message.text,
             now=_now(),
         )
+        await session.commit()
         if result.correct:
-            response = (
-                f"✅ درست جواب دادی! {_user_display_name(message.from_user)} "
-                f"زودتر از همه پاسخ داد و {_group_reward_text(result)} دریافت کرد."
+            await _answer_group_reply(
+                message,
+                _group_correct_banner(message.from_user, result),
+                parse_mode=MARKDOWN_V2,
             )
-            await _answer_group_reply(message, response)
-    # The service still persists wrong attempts and rejects invalid ones, but
-    # the group receives a message only for the winning correct answer.
-    except (WrongGroup, DuplicateAnswer, QuestionExpired, QuestionAlreadyAnswered):
+            with suppress(TelegramAPIError):
+                await message.reply_to_message.delete()
+        else:
+            await _answer_group_reply(message, "اشتباه جواب دادی.")
+        with suppress(TelegramAPIError):
+            await message.delete()
+    except DuplicateAnswer:
+        await _answer_group_reply(message, "قبلاً به این سؤال پاسخ دادی.")
+        with suppress(TelegramAPIError):
+            await message.delete()
+    except (WrongGroup, QuestionExpired, QuestionAlreadyAnswered):
         return
     except (QuestionNotFound, UserInactiveError, LibraryError):
         logger.exception("Could not process group-question reply")
 
 
-async def _answer_group_reply(message: Message, text: str) -> None:
+async def _answer_group_reply(
+    message: Message, text: str, *, parse_mode: str | None = None
+) -> None:
     await message.answer(
         text,
         reply_to_message_id=message.message_id,
+        parse_mode=parse_mode,
     )
