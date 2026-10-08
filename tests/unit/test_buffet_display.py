@@ -79,7 +79,7 @@ def test_shield_catalog_banner_uses_rich_text_and_escapes_descriptions() -> None
 
     assert "tg://emoji?id=5825861861278490879" in text
     assert "*سپر \\[طلایی\\]*" in text
-    assert "حفاظت ویژه \\[قوی\\]" in text
+    assert "> *اثر:* جلوگیری کامل از حمله\n> حفاظت ویژه \\[قوی\\]" in text
     assert "150" in text
     assert "45 دقیقه" in text
 

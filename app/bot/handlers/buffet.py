@@ -428,6 +428,9 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
                 "💎" if shield.purchase_resource is ResourceType.DIAMOND else "🪙",
             )
             description = " ".join((shield.description or "").split())
+            effect_quote = f"> {bold('اثر:')} جلوگیری کامل از حمله"
+            if description:
+                effect_quote += f"\n> {escape(description)}"
             daily_limit = getattr(shield, "daily_limit", None)
             limit_line = (
                 f"\n\n{emoji('5427240268589968037', '⛔️')} در طول روز فقط "
@@ -441,8 +444,7 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
                 f"{escape(_shield_currency(shield))}\n"
                 f"{time_icon} مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
                 f"{emoji('5825699618888884083', '👑')} سطح بازشدن: {escape(shield.unlock_level)}\n"
-                f"{bold('اثر:')} جلوگیری کامل از حمله"
-                + (f"\n{escape(description)}" if description else "")
+                + effect_quote
                 + limit_line
             )
     heading = "\n\n".join(lines[:header_count])
