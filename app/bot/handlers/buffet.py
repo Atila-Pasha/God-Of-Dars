@@ -73,7 +73,6 @@ from app.services.school_errors import (
     TeacherSlotLocked,
 )
 from app.services.shield_service import (
-    SHIELD_DAILY_LIMITS,
     ShieldDailyLimitReached,
     ShieldService,
 )
@@ -428,7 +427,7 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
                 "💎" if shield.purchase_resource is ResourceType.DIAMOND else "🪙",
             )
             description = " ".join((shield.description or "").split())
-            daily_limit = SHIELD_DAILY_LIMITS.get(shield.name)
+            daily_limit = getattr(shield, "daily_limit", None)
             limit_line = (
                 f"\n\n{emoji('5427240268589968037', '⛔️')} در طول روز فقط "
                 f"{escape(daily_limit)} بار میتونید از این سپر استفاده کنید\\."

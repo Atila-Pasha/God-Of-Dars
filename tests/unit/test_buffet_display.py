@@ -92,6 +92,7 @@ def test_shield_banner_shows_daily_limits_and_supplied_emoji_ids() -> None:
             purchase_price=price,
             duration_minutes=minutes,
             unlock_level=level,
+            daily_limit=2 if level == 1 else 1,
             description="محافظت کامل",
         )
         for name, resource, price, minutes, level in (

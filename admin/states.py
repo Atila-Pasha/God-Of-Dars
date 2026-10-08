@@ -49,6 +49,7 @@ class ShieldStates(StatesGroup):
     purchase_resource = State()
     unlock_level = State()
     duration_minutes = State()
+    daily_limit = State()
     description = State()
     edit_value = State()
 

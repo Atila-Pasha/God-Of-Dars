@@ -186,6 +186,7 @@ SHIELD_EDIT_PROMPTS = {
     "purchase_resource": "نوع ارز جدید را بفرستید: طلا یا الماس",
     "unlock_level": "سطح بازشدن جدید را بفرستید:",
     "duration_minutes": "مدت فعال بودن سپر را به دقیقه بفرستید (مثلاً 60):",
+    "daily_limit": "محدودیت استفاده در روز را بفرستید؛ برای نامحدود، - بفرستید:",
     "description": "توضیح جدید را بفرستید؛ برای حذف، - بفرستید:",
 }
 
@@ -2112,6 +2113,7 @@ async def shields(message: Message, state: FSMContext, session: AsyncSession) ->
             f"بازشدن در سطح: {shield.unlock_level}\n"
             f"ارز خرید: {'الماس' if shield.purchase_resource is ResourceType.DIAMOND else 'طلا'}\n"
             f"مدت فعال بودن: {shield.duration_minutes} دقیقه\n"
+            f"محدودیت روزانه: {shield.daily_limit if shield.daily_limit is not None else 'نامحدود'}\n"
             f"وضعیت: {'فعال' if shield.is_active else 'غیرفعال'}\n"
             f"توضیح: {shield.description or '—'}",
             reply_markup=keyboards.shield_actions(shield.id),
@@ -2239,10 +2241,27 @@ async def s_duration(message, state):
         message,
         state,
         "duration_minutes",
-        ShieldStates.description,
-        "توضیح سپر (برای خالی بودن - بفرستید):",
+        ShieldStates.daily_limit,
+        "محدودیت استفاده در روز را بفرستید؛ برای نامحدود، - بفرستید:",
         minimum=1,
     )
+
+
+@router.message(ShieldStates.daily_limit)
+async def s_daily_limit(message: Message, state: FSMContext) -> None:
+    if not allowed(message) or not message.text:
+        return
+    raw_value = message.text.strip()
+    try:
+        daily_limit = (
+            None if raw_value == "-" else number(raw_value, "daily_limit", minimum=1)
+        )
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.update_data(daily_limit=daily_limit)
+    await state.set_state(ShieldStates.description)
+    await message.answer("توضیح سپر (برای خالی بودن - بفرستید):")
 
 
 @router.message(ShieldStates.description)
@@ -2367,6 +2386,10 @@ async def shield_edit_value(
             edit_value = raw_value
         elif field == "description":
             edit_value = None if raw_value == "-" else raw_value
+        elif field == "daily_limit":
+            edit_value = (
+                None if raw_value == "-" else number(raw_value, field, minimum=1)
+            )
         elif field == "purchase_resource":
             edit_value = {
                 "طلا": ResourceType.COIN,

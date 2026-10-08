@@ -42,6 +42,10 @@ class Shield(Base):
         CheckConstraint(
             "duration_minutes >= 1", name="ck_shields_duration_minutes_positive"
         ),
+        CheckConstraint(
+            "daily_limit IS NULL OR daily_limit >= 1",
+            name="ck_shields_daily_limit_positive",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -63,6 +67,7 @@ class Shield(Base):
     duration_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=60, server_default="60"
     )
+    daily_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"

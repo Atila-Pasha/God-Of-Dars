@@ -376,6 +376,7 @@ def shield_edit_fields(shield_id: int) -> InlineKeyboardMarkup:
         ("ارز خرید", "purchase_resource"),
         ("سطح بازشدن", "unlock_level"),
         ("مدت (دقیقه)", "duration_minutes"),
+        ("محدودیت روزانه", "daily_limit"),
         ("توضیح", "description"),
     )
     rows = [

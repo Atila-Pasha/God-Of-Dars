@@ -38,7 +38,6 @@ class ShieldPurchase:
     active_until: datetime
 
 
-SHIELD_DAILY_LIMITS = {"سپر زنگ تفریح": 2, "سپر آلودگی هوا": 1}
 SHIELD_DAY_TIMEZONE = ZoneInfo("Asia/Tehran")
 
 
@@ -167,7 +166,7 @@ class ShieldService:
             for item in owned_items
         ):
             raise ShieldAlreadyActive
-        daily_limit = SHIELD_DAILY_LIMITS.get(shield.name)
+        daily_limit = shield.daily_limit
         if daily_limit is not None:
             local_day = now.astimezone(SHIELD_DAY_TIMEZONE).date()
             day_start = datetime.combine(
@@ -334,6 +333,9 @@ class ShieldAdminService:
             raise ValueError("unlock_level must be positive")
         if int(str(values.get("duration_minutes", 0))) < 1:
             raise ValueError("duration_minutes must be positive")
+        daily_limit = values.get("daily_limit")
+        if daily_limit is not None and int(str(daily_limit)) < 1:
+            raise ValueError("daily_limit must be positive or unlimited")
         if values.get("purchase_resource") not in (
             ResourceType.COIN,
             ResourceType.DIAMOND,
@@ -344,6 +346,7 @@ class ShieldAdminService:
         values.setdefault("reduction_percent", 0)
         values.setdefault("flat_absorption", 0)
         values.setdefault("purchase_resource", ResourceType.COIN)
+        values.setdefault("daily_limit", None)
         self._validate(values)
         values["name"] = str(values["name"]).strip()
         shield = Shield(**values)
@@ -366,6 +369,7 @@ class ShieldAdminService:
             "purchase_price": values.get("purchase_price", shield.purchase_price),
             "unlock_level": values.get("unlock_level", shield.unlock_level),
             "duration_minutes": values.get("duration_minutes", shield.duration_minutes),
+            "daily_limit": values.get("daily_limit", shield.daily_limit),
             "purchase_resource": values.get(
                 "purchase_resource", shield.purchase_resource
             ),

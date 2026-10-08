@@ -20,6 +20,7 @@ async def test_daily_limit_blocks_third_break_shield_purchase() -> None:
         purchase_price=120,
         purchase_resource=ResourceType.COIN,
         duration_minutes=30,
+        daily_limit=2,
         reduction_percent=0,
         flat_absorption=0,
     )
