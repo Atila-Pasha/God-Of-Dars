@@ -21,6 +21,7 @@ class HelpCallback(CallbackData, prefix="help"):
         "profile",
         "mine",
         "referral",
+        "slogans",
     ]
 
 

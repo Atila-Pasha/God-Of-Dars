@@ -5,7 +5,15 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from app.bot.callbacks import HelpCallback
 
 HelpSection = Literal[
-    "overview", "attack", "school", "buffet", "library", "profile", "mine", "referral"
+    "overview",
+    "attack",
+    "school",
+    "buffet",
+    "library",
+    "profile",
+    "mine",
+    "referral",
+    "slogans",
 ]
 
 HELP_SECTIONS: tuple[tuple[str, HelpSection], ...] = (
@@ -17,6 +25,7 @@ HELP_SECTIONS: tuple[tuple[str, HelpSection], ...] = (
     ("🧙 راهنمای پروفایل", "profile"),
     ("⛏ راهنمای معدن", "mine"),
     ("👥 راهنمای دعوت", "referral"),
+    ("شعارهای قابل استفاده", "slogans"),
 )
 
 
@@ -26,6 +35,9 @@ def help_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=label,
+                    icon_custom_emoji_id=(
+                        "5825961702088254236" if section == "slogans" else None
+                    ),
                     callback_data=HelpCallback(section=section).pack(),
                 )
                 for label, section in HELP_SECTIONS[index : index + 2]

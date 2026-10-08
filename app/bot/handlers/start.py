@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.callbacks import ChannelCallback, FirstLoginCallback, HelpCallback
+from app.bot.handlers.quick import SLOGANS
 from app.bot.keyboards.help import help_keyboard
 from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
@@ -19,6 +20,7 @@ from app.bot.keyboards.main_menu import (
 from app.bot.keyboards.start import first_login_guide_keyboard, join_channel_keyboard
 from app.bot.middlewares.subscription import refresh_channels, subscription_service
 from app.bot.utils.telegram import safe_edit_text
+from app.core.game_logic import game_config
 from app.services.daily_quest_service import DailyQuestService
 from app.services.referral_service import (
     ReferralCycle,
@@ -107,10 +109,7 @@ HELP_TEXTS = {
         "با /referral لینک اختصاصی بگیر. از /leaderboard هم رتبهٔ فرمانده‌ها، "
         "دانش‌آموزها و مبارزها رو در بازه‌های روزانه، هفتگی و ماهانه ببین.\n\n"
         "💡 هرجا گیر کردی، از همین منو راهنمای همان بخش رو باز کن.\n"
-        "هر ساعت یکی از این شعارها رو بگو و 3 موز بگیر: «من خدای درسم»، "
-        "«امروز درس رو فتح میکنم»، «هر روز از دیروز بهترم»، "
-        "«با دانش قلعه میسازم»، «تا آخر مسیر میجنگم»، "
-        "«کیری قویم»، «من خدام»، «میجنگم»، «یا خدا»."
+        "برای دیدن شعارهای پاداش‌دار، دکمهٔ «شعارهای قابل استفاده» رو بزن."
     ),
     "attack": (
         "⚔️ راهنمای میدان نبرد\n\n"
@@ -161,6 +160,12 @@ HELP_TEXTS = {
         "👥 راهنمای دعوت دوستان\n\n"
         "با /referral لینک اختصاصی خودت رو بگیر و برای دوست‌هات بفرست. هر دعوت "
         "موفق در بخش دانش پروفایل ثبت می‌شه."
+    ),
+    "slogans": (
+        "🎯 شعارهای قابل استفاده\n\n"
+        + "\n".join(f"{index}. «{slogan}»" for index, slogan in enumerate(SLOGANS, 1))
+        + f"\n\nهر {game_config.slogan_cooldown_seconds // 60} دقیقه یکی از این شعارها رو بگو "
+        f"و {game_config.slogan_reward_banana} موز بگیر."
     ),
 }
 

@@ -115,15 +115,18 @@ async def claim_box(
     except ChanceError:
         await callback.answer("امکان باز کردن جعبه وجود ندارد.", show_alert=True)
         return
-    await callback.answer("جعبه را شما زودتر باز کردید! 🎉")
+    reward_label = (
+        "سکه طلا"
+        if box.resource_type.value == "COIN"
+        else _resource_label(box.resource_type)
+    )
+    await callback.answer(
+        f"آفرین! {box.amount} {reward_label} دریافت کردی.", show_alert=True
+    )
     if isinstance(callback.message, Message):
         try:
             await callback.message.answer(
-                chance_box_winner_banner(
-                    _user_display_name(callback.from_user),
-                    box.amount,
-                    box.resource_type,
-                ),
+                chance_box_winner_banner(_user_display_name(callback.from_user)),
                 reply_to_message_id=callback.message.message_id,
                 parse_mode=MARKDOWN_V2,
             )

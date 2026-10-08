@@ -4,7 +4,10 @@ from unittest.mock import AsyncMock
 import pytest
 from aiogram.types import User as TelegramUser
 
+from app.bot.callbacks import HelpCallback
 from app.bot.handlers import start
+from app.bot.handlers.quick import SLOGANS
+from app.bot.keyboards.help import help_keyboard
 from app.services.subscription_service import MembershipCheckError
 
 
@@ -111,6 +114,29 @@ def test_help_has_complete_overview() -> None:
         "رتبه‌بندی",
     ):
         assert section in overview
+
+
+def test_help_slogans_button_lists_all_active_slogans() -> None:
+    buttons = [button for row in help_keyboard().inline_keyboard for button in row]
+    slogan_button = next(button for button in buttons if "شعار" in button.text)
+
+    assert HelpCallback.unpack(slogan_button.callback_data).section == "slogans"
+    assert slogan_button.icon_custom_emoji_id == "5825961702088254236"
+    assert all(slogan in start.HELP_TEXTS["slogans"] for slogan in SLOGANS)
+
+
+@pytest.mark.asyncio
+async def test_slogans_help_button_opens_slogan_list() -> None:
+    callback = SimpleNamespace(
+        message=SimpleNamespace(edit_text=AsyncMock()), answer=AsyncMock()
+    )
+
+    await start.help_callback_handler(callback, HelpCallback(section="slogans"))
+
+    callback.message.edit_text.assert_awaited_once()
+    assert all(
+        slogan in callback.message.edit_text.await_args.args[0] for slogan in SLOGANS
+    )
 
 
 @pytest.mark.asyncio

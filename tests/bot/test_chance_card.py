@@ -47,9 +47,12 @@ async def test_claimed_box_posts_winner_banner_and_deletes_the_box(monkeypatch) 
     assert "tg://emoji?id=5825709849500985213" in text
     assert "tg://emoji?id=5235470399730361615" in text
     assert "پاسخ صحیح داده شد" in text
-    assert "فرمانده « AtilA » زودتر از همه پاسخ داد" in text
-    assert "100 الماس" in text
-    assert "tg://emoji?id=5825753314570018832" in text
+    assert "فرمانده « AtilA » زودتر از همه پاسخ داد و جعبه شانس را باز کرد" in text
+    assert "100" not in text
+    assert "الماس" not in text
+    callback.answer.assert_awaited_once_with(
+        "آفرین! 100 الماس دریافت کردی.", show_alert=True
+    )
     assert bot.delete_message.await_count == 2
     bot.delete_message.assert_any_await(chat_id=-123, message_id=700)
     bot.delete_message.assert_any_await(chat_id=-123, message_id=699)
@@ -58,21 +61,58 @@ async def test_claimed_box_posts_winner_banner_and_deletes_the_box(monkeypatch) 
     assert session.commit.await_count == 2
 
 
-@pytest.mark.parametrize(
-    ("resource", "label", "icon"),
-    [
-        (ResourceType.COIN, "100 سکه طلا", "5825699971076202989"),
-        (ResourceType.DIAMOND, "100 الماس", "5825753314570018832"),
-        (ResourceType.BANANA, "100 موز", "5902520589356113908"),
-    ],
-)
-def test_box_winner_banner_formats_each_reward(resource, label, icon) -> None:
-    text = chance_box_winner_banner("AtilA", 100, resource)
+def test_box_winner_banner_names_player_without_revealing_reward() -> None:
+    text = chance_box_winner_banner("AtilA")
 
     assert "📝" in text and "✔️" in text and "⬅️" in text
-    assert f"« {label} " in text
-    assert f"tg://emoji?id={icon}" in text
-    assert "پاسخ داد\n و «" in text
+    assert "« AtilA »" in text
+    assert "جعبه شانس را باز کرد" in text
+    assert "دریافت کرد" not in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("resource", "label"),
+    [
+        (ResourceType.COIN, "سکه طلا"),
+        (ResourceType.DIAMOND, "الماس"),
+        (ResourceType.BANANA, "موز"),
+    ],
+)
+async def test_box_reward_is_shown_only_in_winner_alert(
+    monkeypatch, resource, label
+) -> None:
+    monkeypatch.setattr(chance, "Message", SimpleNamespace)
+    box = SimpleNamespace(
+        amount=100,
+        resource_type=resource,
+        telegram_message_id=700,
+        sticker_message_id=None,
+    )
+    monkeypatch.setattr(
+        chance.chance_service, "claim_box", AsyncMock(return_value=(box, True))
+    )
+    message = SimpleNamespace(
+        message_id=700,
+        chat=SimpleNamespace(id=-123),
+        answer=AsyncMock(),
+    )
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=42, first_name="AtilA", last_name=None),
+        message=message,
+        bot=SimpleNamespace(delete_message=AsyncMock()),
+        answer=AsyncMock(),
+    )
+
+    await chance.claim_box(
+        callback, ChanceBoxCallback(box_id=3), SimpleNamespace(commit=AsyncMock())
+    )
+
+    callback.answer.assert_awaited_once_with(
+        f"آفرین! 100 {label} دریافت کردی.", show_alert=True
+    )
+    assert "100" not in message.answer.await_args.args[0]
+    assert label not in message.answer.await_args.args[0]
 
 
 @pytest.mark.asyncio
