@@ -34,25 +34,24 @@ async def refresh_channels(session, *, force: bool = False) -> tuple[str, ...]:
             return _channels_cache[1]
         channels = await settings_repository.list_channels(session)
         stored = await settings_repository.get(session)
-        values = [
-            SubscriptionService.normalize_channel_identifier(
-                str(item.telegram_id or item.username)
-            )
-            for item in channels
-            if SubscriptionService.is_valid_channel_identifier(
-                str(item.telegram_id or item.username)
-            )
+        values = []
+        identifiers = [
+            str(item.telegram_id or item.username or "") for item in channels
         ]
         if stored.is_active and (
             stored.required_channel_telegram_id or stored.required_channel_username
         ):
-            required = str(
-                stored.required_channel_telegram_id or stored.required_channel_username
-            )
-            if SubscriptionService.is_valid_channel_identifier(required):
-                values.insert(
-                    0, SubscriptionService.normalize_channel_identifier(required)
+            identifiers.append(
+                str(
+                    stored.required_channel_telegram_id
+                    or stored.required_channel_username
                 )
+            )
+        for identifier in identifiers:
+            if not SubscriptionService.is_valid_channel_identifier(identifier):
+                # A malformed active lock must never silently unlock the bot.
+                raise ValueError("Invalid required channel configuration")
+            values.append(SubscriptionService.normalize_channel_identifier(identifier))
         normalized = tuple(dict.fromkeys(values))
         subscription_service.set_channels(normalized)
         _channels_cache = (monotonic() + settings.CHANNELS_CACHE_TTL, normalized)
@@ -83,13 +82,15 @@ class SubscriptionMiddleware(BaseMiddleware):
         telegram_user = getattr(event, "from_user", None)
         bot = getattr(event, "bot", None)
         if telegram_user is None or bot is None:
-            return await handler(event, data)
+            return await self._show_error(event)
 
         try:
             session = data.get("session")
             if session is not None:
                 await refresh_channels(session)
-            is_member = await subscription_service.is_member(bot, telegram_user.id)
+            is_member = await subscription_service.is_member(
+                bot, telegram_user.id, force_refresh=True
+            )
         except Exception:  # noqa: BLE001 - membership failures are user-safe
             return await self._show_error(event)
 
@@ -100,12 +101,10 @@ class SubscriptionMiddleware(BaseMiddleware):
     @staticmethod
     def _is_bypassed(event: TelegramObject) -> bool:
         if isinstance(event, Message):
-            if not event.text:
-                return False
-            command = event.text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
-            return command == "/start"
+            return False
         if isinstance(event, CallbackQuery):
-            return bool(event.data and event.data.startswith("channel:"))
+            # This exact handler verifies membership before initialization.
+            return event.data == "channel:check"
         return True
 
     @staticmethod

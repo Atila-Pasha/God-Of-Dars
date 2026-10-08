@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bot_settings import BotSettings
 from app.models.required_channel import RequiredChannel
+from app.services.subscription_service import SubscriptionService
 
 
 class BotSettingsRepository:
@@ -41,7 +42,11 @@ class BotSettingsRepository:
         return list(result.scalars().all())
 
     async def add_channel(self, session: AsyncSession, value: str) -> RequiredChannel:
-        value = value.strip()
+        if not SubscriptionService.is_valid_channel_identifier(value):
+            raise ValueError(
+                "شناسه کانال نامعتبر است؛ @username یا لینک عمومی t.me را وارد کنید."
+            )
+        value = SubscriptionService.normalize_channel_identifier(value)
         telegram_id = int(value) if value.lstrip("-").isdigit() else None
         username = None if telegram_id is not None else value.lstrip("@").strip()
         if not username and telegram_id is None:

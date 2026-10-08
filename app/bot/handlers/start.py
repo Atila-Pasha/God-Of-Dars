@@ -55,6 +55,7 @@ USER_ERROR_MESSAGE = "در آماده‌سازی حساب شما مشکلی پی
 BANNED_USER_MESSAGE = "حساب شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید."
 MAIN_MENU_MESSAGE = (
     "🔥 به قلمرو «God of Dars» خوش اومدی، فرمانده!\n\n"
+    "🎁 ۲۰۰ سکهٔ هدیهٔ شروع به حسابت اضافه شد.\n\n"
     "مدرسه‌ات رو بساز، دبیرها رو قدرتمند کن و برای فتح رتبه‌بندی آماده شو.\n"
     "از منوی پایین، اولین حرکتت رو انتخاب کن 👇"
 )
@@ -64,7 +65,7 @@ RETURNING_USER_MESSAGE = (
 FIRST_LOGIN_GUIDE = (
     "🚀 مأموریت شروع | ساخت اولین تیم\n\n"
     "1️⃣ وارد «⛏ معدن منابع» شو تا معدن فعال و تولید طلا آغاز بشه.\n\n"
-    "2️⃣ وقتی 200 طلا جمع کردی، وارد «🍽 بوفه» شو و یکی از دبیرهای "
+    "2️⃣ با 200 طلای هدیهٔ شروع، وارد «🍽 بوفه» شو و یکی از دبیرهای "
     "شروع، «براتی» یا «عمارلو»، رو بخر.\n\n"
     "3️⃣ دبیرت رو در «🏫 مدرسه من» فعال کن و بعد برای اولین نبرد برو!\n\n"
     "آماده‌ای فرمانده؟ دکمهٔ زیر رو بزن ⚡"
@@ -182,16 +183,15 @@ async def _membership_status(
         logger.error("Telegram bot context is missing for user %s", user_id)
         return None
     try:
-        # /start bypasses the subscription middleware by design, so refresh the
-        # channel list only for real database sessions. This keeps the hot path
-        # cached while preserving lightweight unit-test doubles.
+        # Recheck at initialization and the explicit membership button too.
+        # Only real database sessions can refresh the persisted channel list.
         if isinstance(session, AsyncSession):
             await refresh_channels(session, force=force_refresh)
         member = await subscription_service.is_member(
             bot, user_id, force_refresh=force_refresh
         )
         return member
-    except (MembershipCheckError, SQLAlchemyError):
+    except (MembershipCheckError, SQLAlchemyError, ValueError):
         logger.exception("Could not refresh membership state for user %s", user_id)
         return None
 

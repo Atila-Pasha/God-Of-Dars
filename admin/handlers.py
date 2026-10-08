@@ -729,7 +729,11 @@ async def channel_value(
             invalidate_channels_cache()
         result = "کانال حذف شد." if removed else "کانال پیدا نشد."
     else:
-        await bot_settings_repository.add_channel(session, value)
+        try:
+            await bot_settings_repository.add_channel(session, value)
+        except ValueError as exc:
+            await message.answer(str(exc))
+            return
         await session.commit()
         invalidate_channels_cache()
         result = f"کانال {value} به قفل‌ها اضافه شد."

@@ -33,7 +33,7 @@ services:
         max-size: "20m"
         max-file: "5"
   bot:
-    image: godofdars:capacity-20261008
+    image: godofdars:start-lock-20261008
     environment:
       RUNTIME_ROLE: bot
       DB_POOL_SIZE: 32
@@ -47,7 +47,7 @@ services:
     stop_grace_period: 60s
     logging: *logging
   attacks:
-    image: godofdars:capacity-20261008
+    image: godofdars:start-lock-20261008
     build: .
     restart: unless-stopped
     init: true

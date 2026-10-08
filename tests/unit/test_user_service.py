@@ -106,7 +106,7 @@ async def test_duplicate_creation_race_reuses_existing_user() -> None:
 
 
 @pytest.mark.asyncio
-async def test_repository_initializes_only_model_default_resources() -> None:
+async def test_repository_initializes_starter_coins_and_zero_other_resources() -> None:
     session = MagicMock()
     session.flush = AsyncMock()
 
@@ -119,6 +119,6 @@ async def test_repository_initializes_only_model_default_resources() -> None:
     )
 
     assert isinstance(user.resources, Resource)
-    assert user.resources.coin == 0
+    assert user.resources.coin == 200
     assert user.resources.diamond == 0
     assert user.resources.banana == 0

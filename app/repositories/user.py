@@ -5,9 +5,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.enums import ResourceType
 from app.models.castle import Castle
 from app.models.defense import Defense
 from app.models.resource import Resource
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.models.user_shield import UserShield
 
@@ -177,9 +179,9 @@ class UserRepository:
             first_name=first_name,
             last_name=last_name,
         )
-        # Resource defaults are defined by the model (zero balances). No game
-        # balance is invented here.
-        user.resources = Resource(coin=0, diamond=0, banana=0)
+        # Account creation and the starter ledger entry share one transaction.
+        # The unique Telegram ID prevents repeated /start from paying again.
+        user.resources = Resource(coin=200, diamond=0, banana=0)
         # The model requires a castle strength, but the final starting balance
         # is not defined yet. The centralized placeholder is deliberately 0.
         from app.core.game_logic import game_config
@@ -189,6 +191,19 @@ class UserRepository:
             defense=Defense(defense_power=game_config.initial_defense_power),
         )
         session.add(user)
+        await session.flush()
+        session.add(
+            Transaction(
+                user_id=user.id,
+                resource_type=ResourceType.COIN,
+                amount=200,
+                balance_before=0,
+                balance_after=200,
+                reason="STARTER_BONUS",
+                reference_type="USER",
+                reference_id=user.id,
+            )
+        )
         await session.flush()
         return user
 
