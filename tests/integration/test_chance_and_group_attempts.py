@@ -286,7 +286,12 @@ async def test_expired_group_messages_are_deleted_from_persisted_jobs() -> None:
             assert saved_box.sticker_message_id is None
             assert saved_publication.telegram_message_id is None
             assert saved_publication.status is QuestionStatus.EXPIRED
-        assert bot.delete_message.await_count == 3
+        bot.delete_message.assert_any_await(
+            chat_id=group.telegram_chat_id, message_id=800
+        )
+        bot.delete_message.assert_any_await(
+            chat_id=group.telegram_chat_id, message_id=801
+        )
         bot.delete_message.assert_any_await(
             chat_id=group.telegram_chat_id, message_id=802
         )
