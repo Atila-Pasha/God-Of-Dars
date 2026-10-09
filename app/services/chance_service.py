@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-import struct
-import zlib
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
+from pathlib import Path
 
+from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +15,8 @@ from app.core.game_logic import game_config
 from app.models.chance_box import ChanceBox
 from app.models.chance_card import ChanceCard
 from app.models.user import User
-from app.services.letter_captcha import make_letter_captcha
 from app.services.reward_service import RewardService, RewardSpec
+from app.services.symbol_captcha import make_symbol_captcha
 
 
 class ChanceError(RuntimeError):
@@ -42,61 +43,28 @@ class CardExpired(ChanceError):
     pass
 
 
-_CAPTCHA_GLYPHS = {
-    "0": ("11111", "10001", "10001", "10001", "10001", "10001", "11111"),
-    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
-    "2": ("11111", "00001", "00001", "11111", "10000", "10000", "11111"),
-    "3": ("11111", "00001", "00001", "11111", "00001", "00001", "11111"),
-    "4": ("10001", "10001", "10001", "11111", "00001", "00001", "00001"),
-    "5": ("11111", "10000", "10000", "11111", "00001", "00001", "11111"),
-    "6": ("11111", "10000", "10000", "11111", "10001", "10001", "11111"),
-    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
-    "8": ("11111", "10001", "10001", "11111", "10001", "10001", "11111"),
-    "9": ("11111", "10001", "10001", "11111", "00001", "00001", "11111"),
-    "+": ("00000", "00100", "00100", "11111", "00100", "00100", "00000"),
-    "−": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
-    "×": ("10001", "01010", "00100", "00100", "00100", "01010", "10001"),
-    "=": ("00000", "11111", "00000", "00000", "11111", "00000", "00000"),
-    "؟": ("01110", "10001", "00001", "00010", "00100", "00000", "00100"),
-    " ": ("00000",) * 7,
-}
-
-
 def _png_captcha(problem: str) -> bytes:
-    """Render the whole arithmetic problem as a compact, high-contrast PNG."""
-    scale = 6
-    width = len(problem) * 6 * scale + 24
-    height = 7 * scale + 24
-    background = b"\x13\x22\x34"
-    foreground = b"\xf3\xf8\xff"
-    rows = [bytearray(b"\x00" + background * width) for _ in range(height)]
-    for index, char in enumerate(problem):
-        glyph = _CAPTCHA_GLYPHS[char]
-        for gy, line in enumerate(glyph):
-            for gx, bit in enumerate(line):
-                if bit != "1":
-                    continue
-                start_x = 12 + (index * 6 + gx) * scale
-                start_y = 12 + gy * scale
-                for y in range(start_y, start_y + scale):
-                    offset = 1 + start_x * 3
-                    rows[y][offset : offset + scale * 3] = foreground * scale
-
-    def chunk(kind: bytes, value: bytes) -> bytes:
-        return (
-            struct.pack(">I", len(value))
-            + kind
-            + value
-            + struct.pack(">I", zlib.crc32(kind + value) & 0xFFFFFFFF)
-        )
-
-    raw = b"".join(rows)
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-        + chunk(b"IDAT", zlib.compress(raw))
-        + chunk(b"IEND", b"")
+    """Render a large, evenly centered equation on a clean card."""
+    image = Image.new("RGB", (760, 260), "#101d32")
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle(
+        (29, 29, 730, 230), radius=28, fill="#f7f9fc", outline="#d5e0ec", width=3
     )
+    font = ImageFont.truetype(
+        str(Path(__file__).parent / "assets" / "DejaVuSansMono.ttf"), 82
+    )
+    bounds = draw.textbbox((0, 0), problem, font=font)
+    text_width = bounds[2] - bounds[0]
+    text_height = bounds[3] - bounds[1]
+    draw.text(
+        ((760 - text_width) / 2 - bounds[0], (260 - text_height) / 2 - bounds[1]),
+        problem,
+        font=font,
+        fill="#172b44",
+    )
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
 
 
 class ChanceService:
@@ -116,12 +84,12 @@ class ChanceService:
             if operation == "−" and left < right:
                 left, right = right, left
             result = left + right if operation == "+" else left - right
-        problem = f"{left} {operation} {right} = ؟"
+        problem = f"{left} {operation} {right} = ?"
         return problem, _png_captcha(problem), str(result)
 
     @staticmethod
-    def box_captcha() -> tuple[bytes, str, tuple[str, str, str]]:
-        return make_letter_captcha()
+    def box_captcha() -> tuple[bytes, str, tuple[str, ...]]:
+        return make_symbol_captcha()
 
     @classmethod
     def card_expires_at(cls, card: ChanceCard) -> datetime:

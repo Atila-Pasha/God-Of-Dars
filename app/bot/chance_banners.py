@@ -12,7 +12,7 @@ def chance_box_banner(expires_at: datetime) -> str:
     return (
         f"{emoji('5825832256068918886', '📦')} {bold('جعبه شانس')} "
         f"{emoji('5086915529730426905', '⁉️')}\n"
-        "حروف داخل تصویر را بخوان و پاسخ درست را انتخاب کن\\.\n"
+        "جای نماد متفاوت ⚔️ را در تصویر پیدا کن و شمارهٔ آن را بزن\\.\n"
         "اولین نفری که درست پاسخ دهد، برنده جایزه می‌شود\\!\n\n"
         f"{emoji('5825746176334373354', '😀')} "
         f"زمان باقی‌مانده: {remaining_time(expires_at)}"
@@ -22,7 +22,7 @@ def chance_box_banner(expires_at: datetime) -> str:
 def chance_card_banner(expires_at: datetime) -> str:
     return (
         f"{emoji('5267300544094948794', '💳')} {bold('کارت شانس')}\n"
-        "کپچا را حل کن تا جایزه‌ات را دریافت کنی\\.\n\n"
+        "معادله رو حل کن تا جایزه‌ات را دریافت کنی\\.\n\n"
         f"{emoji('5825746176334373354', '😀')} "
         f"زمان باقی‌مانده: {remaining_time(expires_at)}"
     )

@@ -12,7 +12,7 @@ from app.core.enums import ResourceType
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sticker", [None, "file-id"])
-async def test_group_box_is_a_photo_with_three_letter_choices(
+async def test_group_box_is_a_photo_with_nine_position_buttons(
     monkeypatch, sticker
 ) -> None:
     group = SimpleNamespace(id=5, telegram_chat_id=-4)
@@ -49,7 +49,7 @@ async def test_group_box_is_a_photo_with_three_letter_choices(
     monkeypatch.setattr(
         handlers.chance_service,
         "box_captcha",
-        lambda: (b"\x89PNG\r\n\x1a\n", "NEPR", ("NETR", "NEPR", "NPPR")),
+        lambda: (b"\x89PNG\r\n\x1a\n", "5", tuple("123456789")),
     )
     create_box = AsyncMock(return_value=box)
     monkeypatch.setattr(handlers.chance_service, "create_box", create_box)
@@ -70,16 +70,18 @@ async def test_group_box_is_a_photo_with_three_letter_choices(
     await handlers.chance_box_publish(message, state, session)
 
     create_box.assert_awaited_once()
-    assert create_box.await_args.kwargs["captcha_answer"] == "NEPR"
+    assert create_box.await_args.kwargs["captcha_answer"] == "5"
     bot.send_photo.assert_awaited_once()
-    buttons = bot.send_photo.await_args.kwargs["reply_markup"].inline_keyboard[0]
-    assert len(buttons) == 3
-    assert [button.text for button in buttons] == ["NETR", "NEPR", "NPPR"]
+    rows = bot.send_photo.await_args.kwargs["reply_markup"].inline_keyboard
+    assert [len(row) for row in rows] == [3, 3, 3]
+    buttons = [button for row in rows for button in row]
+    assert [button.text for button in buttons] == list("123456789")
     assert [
         ChanceBoxCaptchaCallback.unpack(button.callback_data).answer
         for button in buttons
-    ] == ["NETR", "NEPR", "NPPR"]
+    ] == list("123456789")
     assert "جعبه شانس" in bot.send_photo.await_args.kwargs["caption"]
+    assert "نماد متفاوت" in bot.send_photo.await_args.kwargs["caption"]
     assert box.telegram_message_id == 55
     assert box.sticker_message_id == (54 if sticker else None)
     assert bot.send_sticker.await_count == (1 if sticker else 0)

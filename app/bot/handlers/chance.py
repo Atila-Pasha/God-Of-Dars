@@ -110,7 +110,7 @@ async def claim_box(
         )
         return
     except AlreadyAttempted:
-        await callback.answer("قبلاً به کپچای این جعبه پاسخ دادی.", show_alert=True)
+        await callback.answer("قبلاً به نماد این جعبه پاسخ دادی.", show_alert=True)
         return
     except ChanceError:
         await callback.answer("امکان باز کردن جعبه وجود ندارد.", show_alert=True)

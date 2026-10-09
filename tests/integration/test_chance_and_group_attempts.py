@@ -173,22 +173,22 @@ async def test_group_box_wrong_choice_blocks_only_that_player() -> None:
                 801,
                 ResourceType.DIAMOND,
                 100,
-                captcha_answer="NEPR",
+                captcha_answer="5",
             )
         box_id = box.id
 
         async with AsyncSessionLocal() as session:
             with pytest.raises(WrongCaptcha):
-                await service.claim_box(session, box_id, first_telegram_id, "NETR")
+                await service.claim_box(session, box_id, first_telegram_id, "2")
             await session.commit()
 
         async with AsyncSessionLocal() as session:
             with pytest.raises(AlreadyAttempted):
-                await service.claim_box(session, box_id, first_telegram_id, "NEPR")
+                await service.claim_box(session, box_id, first_telegram_id, "5")
 
         async with AsyncSessionLocal() as session, session.begin():
             claimed, _ = await service.claim_box(
-                session, box_id, second_telegram_id, "NEPR"
+                session, box_id, second_telegram_id, "5"
             )
             assert claimed.claimed_by_user_id == second_id
 

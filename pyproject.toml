@@ -12,6 +12,7 @@ dependencies = [
     "aiohttp-socks>=0.12,<1",
     "alembic>=1.19,<2",
     "asyncpg>=0.31,<1",
+    "Pillow>=11,<13",
     "pydantic-settings>=2.15,<3",
     "sqlalchemy[asyncio]>=2.0.52,<3",
 ]
@@ -30,6 +31,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["app*", "admin*"]
+
+[tool.setuptools.package-data]
+"app.services" = ["assets/*.ttf", "assets/*.txt"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

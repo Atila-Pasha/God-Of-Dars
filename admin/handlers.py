@@ -421,7 +421,7 @@ async def chance_box_publish(
                         await session.commit()
                 sent_message = await bot.send_photo(
                     group.telegram_chat_id,
-                    BufferedInputFile(image, filename="letter-captcha.png"),
+                    BufferedInputFile(image, filename="symbol-captcha.png"),
                     caption=chance_box_banner(box.expires_at),
                     parse_mode=MARKDOWN_V2,
                     reply_markup=InlineKeyboardMarkup(
@@ -433,8 +433,9 @@ async def chance_box_publish(
                                         box_id=box.id, answer=choice
                                     ).pack(),
                                 )
-                                for choice in choices
+                                for choice in choices[row : row + 3]
                             ]
+                            for row in range(0, len(choices), 3)
                         ]
                     ),
                 )
@@ -545,7 +546,7 @@ async def chance_card_send(
                                         inline_keyboard=[
                                             [
                                                 InlineKeyboardButton(
-                                                    text="✅ وارد کردن کپچا",
+                                                    text="✅ حل معادله",
                                                     callback_data=ChanceCardCallback(
                                                         card_id=card.id
                                                     ).pack(),

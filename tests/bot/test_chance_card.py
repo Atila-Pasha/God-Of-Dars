@@ -127,10 +127,10 @@ async def test_wrong_box_choice_only_alerts_its_player(monkeypatch) -> None:
     session = SimpleNamespace(commit=AsyncMock())
 
     await chance.claim_box(
-        callback, ChanceBoxCaptchaCallback(box_id=3, answer="ACEX"), session
+        callback, ChanceBoxCaptchaCallback(box_id=3, answer="4"), session
     )
 
-    chance.chance_service.claim_box.assert_awaited_once_with(session, 3, 42, "ACEX")
+    chance.chance_service.claim_box.assert_awaited_once_with(session, 3, 42, "4")
     session.commit.assert_awaited_once()
     assert "فقط یک فرصت" in callback.answer.await_args.args[0]
     message.delete.assert_not_awaited()
