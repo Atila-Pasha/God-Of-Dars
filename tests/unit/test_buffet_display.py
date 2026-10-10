@@ -5,6 +5,8 @@ import pytest
 
 from app.bot.handlers import buffet
 from app.bot.handlers.buffet import (
+    _conversion_prompt_banner,
+    _conversion_success_banner,
     _resource_display,
     _resource_text,
     _shield_catalog_banner,
@@ -36,6 +38,97 @@ def test_buffet_resource_messages_show_only_resource_emojis() -> None:
     text = _resource_text(SimpleNamespace(coin=12, diamond=3))
     assert "طلا: 12" in text and "الماس: 3" in text
     assert "tg://emoji?id=5823329527085931340" in text
+
+
+@pytest.mark.parametrize(
+    ("source", "target", "source_amount", "target_amount", "title"),
+    [
+        (ResourceType.COIN, ResourceType.DIAMOND, 100, 1, "طلا به الماس"),
+        (ResourceType.DIAMOND, ResourceType.COIN, 1, 100, "الماس به طلا"),
+    ],
+)
+def test_conversion_prompt_has_rich_rate_and_clear_input(
+    source, target, source_amount, target_amount, title
+) -> None:
+    option = BuffetConversion(
+        source=source,
+        target=target,
+        source_amount=source_amount,
+        target_amount=target_amount,
+    )
+
+    text = _conversion_prompt_banner(source, target, option)
+
+    assert f"*تبدیل {title}*" in text
+    assert f"*نمونه:* {source_amount}" in text
+    assert f"مضربی از {source_amount}" in text
+    assert text.count("tg://emoji?id=") == 4
+
+
+def test_conversion_success_renders_balances_as_markdown_custom_emoji() -> None:
+    text = _conversion_success_banner(
+        ResourceType.COIN,
+        ResourceType.DIAMOND,
+        100,
+        1,
+        SimpleNamespace(coin=1_000_000_351, diamond=20),
+    )
+
+    assert "*تبدیل با موفقیت انجام شد*" in text
+    assert "*مصرف‌شده:* 100 ![🪙](tg://emoji?id=5823329527085931340)" in text
+    assert "*دریافت‌شده:* 1 ![💎](tg://emoji?id=5825753314570018832)" in text
+    assert "طلا: 1,000,000,351" in text
+    assert "الماس: 20" in text
+
+
+@pytest.mark.asyncio
+async def test_conversion_messages_use_markdown_v2(monkeypatch) -> None:
+    monkeypatch.setattr(buffet, "Message", SimpleNamespace)
+    monkeypatch.setattr(
+        buffet.user_service,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(id=12)),
+    )
+    monkeypatch.setattr(
+        buffet.buffet_service,
+        "resources",
+        AsyncMock(return_value=SimpleNamespace(coin=900, diamond=1)),
+    )
+    exchange = AsyncMock(
+        return_value=SimpleNamespace(
+            packages=1,
+            conversion=SimpleNamespace(target_amount=1),
+        )
+    )
+    monkeypatch.setattr(buffet.buffet_service, "exchange", exchange)
+    state = SimpleNamespace(
+        set_state=AsyncMock(),
+        update_data=AsyncMock(),
+        get_data=AsyncMock(return_value={"source": "COIN", "target": "DIAMOND"}),
+        clear=AsyncMock(),
+    )
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=42),
+        text="100",
+        answer=AsyncMock(),
+    )
+    callback = SimpleNamespace(
+        from_user=message.from_user,
+        message=message,
+        answer=AsyncMock(),
+    )
+
+    await buffet.buffet_callback(
+        callback,
+        SimpleNamespace(source="COIN", target="DIAMOND"),
+        AsyncMock(),
+        state,
+    )
+    assert message.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
+
+    await buffet.buffet_exchange_message(message, state, AsyncMock())
+    assert message.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
+    assert "tg://emoji?id=5825753314570018832" in message.answer.await_args.args[0]
 
 
 @pytest.mark.asyncio

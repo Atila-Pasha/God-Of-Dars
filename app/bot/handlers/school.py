@@ -1,5 +1,6 @@
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
+from math import ceil
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -201,8 +202,9 @@ def _status_icon(teacher: UserTeacher) -> str:
     return STATUS_ICONS.get(teacher.status, "⚪")
 
 
-def _recovery_text(teacher: UserTeacher) -> str:
-    if HospitalService.ready_for_discharge(teacher):
+def _recovery_text(teacher: UserTeacher, *, now: datetime | None = None) -> str:
+    current = now or datetime.now(UTC)
+    if HospitalService.ready_for_discharge(teacher, now=current):
         return "درمان دبیر کامل شده ولی ترخیص نشده؛ به بیمارستان برو و ترخیصش کن."
     recovery = next(
         (item for item in teacher.recoveries if item.completed_at is None), None
@@ -211,8 +213,18 @@ def _recovery_text(teacher: UserTeacher) -> str:
         return "زمان درمان: تنظیم نشده"
     end_at = recovery.recovery_end_at
     if end_at.tzinfo is None:
-        end_at = end_at.replace(tzinfo=datetime.now().astimezone().tzinfo)
-    return f"پایان درمان: {end_at.astimezone().strftime('%Y-%m-%d %H:%M')}"
+        end_at = end_at.replace(tzinfo=UTC)
+    remaining_seconds = max(0, ceil((end_at - current).total_seconds()))
+    hours, remainder = divmod(remaining_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    duration = []
+    if hours:
+        duration.append(f"{_number(hours)} ساعت")
+    if minutes:
+        duration.append(f"{_number(minutes)} دقیقه")
+    if seconds or not duration:
+        duration.append(f"{_number(seconds)} ثانیه")
+    return f"زمان باقی‌مانده تا بهبود: {' و '.join(duration)}"
 
 
 async def _send_or_edit(

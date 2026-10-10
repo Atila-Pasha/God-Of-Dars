@@ -97,6 +97,15 @@ def _resource_display(resource: ResourceType) -> str:
     return RESOURCE_EMOJIS[resource]
 
 
+def _resource_icon(resource: ResourceType) -> str:
+    emoji_id = (
+        "5823329527085931340"
+        if resource is ResourceType.COIN
+        else "5825753314570018832"
+    )
+    return emoji(emoji_id, _resource_display(resource))
+
+
 async def _delete_group_purchase_prompt(callback: CallbackQuery) -> None:
     message = callback.message
     if not isinstance(message, Message) or message.chat.type not in {
@@ -235,6 +244,40 @@ def _conversion_banner(resources) -> str:
     return (
         f"{emoji('5451882707875276247', '🔄')} {bold('صرافی منابع')}\n\n"
         "موجودی فعلی:\n\n" + _resource_text(resources) + "\n\nیک تبدیل را انتخاب کنید:"
+    )
+
+
+def _conversion_prompt_banner(
+    source: ResourceType, target: ResourceType, option
+) -> str:
+    source_name = "طلا" if source is ResourceType.COIN else "الماس"
+    target_name = "طلا" if target is ResourceType.COIN else "الماس"
+    return (
+        f"{emoji('5451882707875276247', '🔄')} "
+        f"{bold(f'تبدیل {source_name} به {target_name}')}\n\n"
+        f"{bold('نرخ تبدیل')}\n"
+        f"{escape(f'{option.source_amount:,}')} {_resource_icon(source)} "
+        f"{escape(source_name)} {escape('=')} "
+        f"{escape(f'{option.target_amount:,}')} {_resource_icon(target)} "
+        f"{escape(target_name)}\n\n"
+        f"{emoji('5825629907274703191', '✍️')} "
+        f"مقدار {escape(source_name)} را به صورت عدد بفرستید\\.\n"
+        f"{bold('شرط:')} مقدار باید مضربی از "
+        f"{escape(f'{option.source_amount:,}')} باشد\\.\n"
+        f"{bold('نمونه:')} {escape(option.source_amount)}"
+    )
+
+
+def _conversion_success_banner(
+    source: ResourceType, target: ResourceType, amount: int, received: int, resources
+) -> str:
+    return (
+        f"{emoji('5825709849500985213', '✅')} "
+        f"{bold('تبدیل با موفقیت انجام شد')}\n\n"
+        f"{bold('مصرف‌شده:')} {escape(f'{amount:,}')} {_resource_icon(source)}\n"
+        f"{bold('دریافت‌شده:')} {escape(f'{received:,}')} {_resource_icon(target)}\n\n"
+        f"{bold('موجودی جدید')}\n"
+        f"{_resource_text(resources)}"
     )
 
 
@@ -503,12 +546,9 @@ async def buffet_callback(
         await state.update_data(source=source.value, target=target.value)
         await callback.answer()
         await callback.message.answer(
-            f"چه مقدار {_resource_display(source)} می‌خواهید تبدیل کنید؟\n"
-            f"هر {option.source_amount} {_resource_display(source)} = "
-            f"{option.target_amount} {_resource_display(target)}\n"
-            f"مقدار باید مضربی از {option.source_amount} باشد.\n"
-            f"مثال: {option.source_amount}",
+            _conversion_prompt_banner(source, target, option),
             reply_markup=buffet_cancel_keyboard(),
+            parse_mode=MARKDOWN_V2,
         )
     except (UserInactiveError, SchoolUserNotFound, InvalidBuffetConversion):
         await callback.answer("این تبدیل در دسترس نیست.", show_alert=True)
@@ -729,9 +769,13 @@ async def buffet_exchange_message(
     resources = await buffet_service.resources(session, user.id)
     await state.clear()
     await message.answer(
-        f"✅ تبدیل انجام شد.\n"
-        f"مصرف‌شده: {amount} {_resource_display(source)}\n"
-        f"دریافت‌شده: {result.packages * result.conversion.target_amount} {_resource_display(target)}\n\n"
-        "موجودی جدید:\n" + _resource_text(resources),
+        _conversion_success_banner(
+            source,
+            target,
+            amount,
+            result.packages * result.conversion.target_amount,
+            resources,
+        ),
         reply_markup=main_menu_keyboard(),
+        parse_mode=MARKDOWN_V2,
     )

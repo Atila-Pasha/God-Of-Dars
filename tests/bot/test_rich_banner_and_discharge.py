@@ -6,6 +6,7 @@ from aiogram.methods import SendMessage
 from app.bot.banners import rich_banner
 from app.bot.callbacks import HospitalCallback
 from app.bot.custom_emojis import _decorate_method
+from app.bot.handlers.school import _recovery_text
 from app.bot.keyboards.school import hospital_keyboard
 from app.core.enums import TeacherStatus
 from app.services.recovery_service import HospitalService
@@ -54,3 +55,27 @@ def test_ready_teacher_has_discharge_button_and_waiting_teacher_does_not() -> No
 
     recovery.recovery_end_at = datetime.now(UTC) + timedelta(minutes=1)
     assert not HospitalService.ready_for_discharge(teacher)
+
+
+def test_recovery_text_shows_exact_remaining_duration_and_assumes_utc() -> None:
+    now = datetime(2026, 10, 10, 12, 0, tzinfo=UTC)
+    recovery = SimpleNamespace(
+        recovery_end_at=(now + timedelta(hours=1, minutes=2, seconds=3)).replace(
+            tzinfo=None
+        ),
+        completed_at=None,
+    )
+    teacher = SimpleNamespace(
+        status=TeacherStatus.RECOVERING,
+        recoveries=[recovery],
+    )
+
+    assert _recovery_text(teacher, now=now) == (
+        "زمان باقی‌مانده تا بهبود: 1 ساعت و 2 دقیقه و 3 ثانیه"
+    )
+
+    recovery.recovery_end_at = now + timedelta(seconds=45)
+    assert _recovery_text(teacher, now=now) == "زمان باقی‌مانده تا بهبود: 45 ثانیه"
+
+    recovery.recovery_end_at = now - timedelta(seconds=1)
+    assert "درمان دبیر کامل شده" in _recovery_text(teacher, now=now)
