@@ -60,7 +60,7 @@ def _resource_label(resource_type) -> str:
 async def _remove_box_messages(
     callback: CallbackQuery, box: ChanceBox, session: AsyncSession
 ) -> None:
-    if not isinstance(callback.message, Message):
+    if not isinstance(callback.message, Message) or callback.bot is None:
         return
     changed = False
     for field in ("telegram_message_id", "sticker_message_id"):
@@ -96,9 +96,9 @@ async def claim_box(
         await session.commit()
     except BoxExpired:
         await callback.answer("⏰ زمان این جعبه گذشته است.", show_alert=True)
-        box = await session.get(ChanceBox, callback_data.box_id)
-        if box is not None:
-            await _remove_box_messages(callback, box, session)
+        expired_box = await session.get(ChanceBox, callback_data.box_id)
+        if expired_box is not None:
+            await _remove_box_messages(callback, expired_box, session)
         return
     except AlreadyClaimed:
         await callback.answer("این جعبه قبلاً باز شده است.", show_alert=True)

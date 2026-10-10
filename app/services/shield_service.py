@@ -249,8 +249,8 @@ class ShieldService:
             .with_for_update()
         )
         active = result.scalar_one_or_none()
-        if active is not None:
-            active.active_until -= duration
+        if active is not None and active.active_until is not None:
+            active.active_until = active.active_until - duration
 
     async def consume_for_attack(
         self,

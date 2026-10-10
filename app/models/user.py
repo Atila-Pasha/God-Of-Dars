@@ -42,9 +42,7 @@ class User(Base):
         Index("ix_users_referrer_id", "referrer_id"),
         Index("ix_users_level_id", "level", "id"),
         CheckConstraint("level >= 1", name="ck_users_level_positive"),
-        CheckConstraint(
-            "hospital_level >= 1", name="ck_users_hospital_level_positive"
-        ),
+        CheckConstraint("hospital_level >= 1", name="ck_users_hospital_level_positive"),
         CheckConstraint(
             "referrer_id IS NULL OR referrer_id <> id",
             name="ck_users_cannot_refer_self",

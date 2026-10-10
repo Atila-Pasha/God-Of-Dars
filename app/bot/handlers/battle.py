@@ -97,23 +97,23 @@ async def _send_launch_message(
 ) -> None:
     token = set_persist_group_message()
     try:
-        kwargs = {
-            "reply_parameters": reply_parameters,
-            "reply_markup": _attack_countdown_keyboard(launch.attack_command_id),
-            "parse_mode": MARKDOWN_V2,
-        }
+        banner = attack_launch_banner(launch.target_name, launch.teacher_details)
+        keyboard = _attack_countdown_keyboard(launch.attack_command_id)
         try:
             sent = await message.answer(
-                attack_launch_banner(launch.target_name, launch.teacher_details),
-                **kwargs,
+                banner,
+                reply_parameters=reply_parameters,
+                reply_markup=keyboard,
+                parse_mode=MARKDOWN_V2,
             )
         except TelegramBadRequest as exc:
             if "message to be replied not found" not in str(exc).lower():
                 raise
-            kwargs["reply_parameters"] = None
             sent = await message.answer(
-                attack_launch_banner(launch.target_name, launch.teacher_details),
-                **kwargs,
+                banner,
+                reply_parameters=None,
+                reply_markup=keyboard,
+                parse_mode=MARKDOWN_V2,
             )
     finally:
         reset_persist_group_message(token)

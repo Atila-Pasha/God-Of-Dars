@@ -96,7 +96,10 @@ async def process_due_game_messages(bot: Bot, *, batch_size: int = 100) -> None:
                 and expires_at <= now
             ):
                 publication.status = QuestionStatus.EXPIRED
-            if await delete_game_message(bot, chat_id, publication.telegram_message_id):
+            message_id = publication.telegram_message_id
+            if message_id is not None and await delete_game_message(
+                bot, chat_id, message_id
+            ):
                 publication.telegram_message_id = None
 
 

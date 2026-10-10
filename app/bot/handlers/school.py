@@ -234,25 +234,31 @@ async def _send_or_edit(
     reply_markup,
     parse_mode: str | None = None,
 ) -> None:
-    formatting = {"parse_mode": parse_mode} if parse_mode else {}
     if isinstance(target, CallbackQuery):
         if target.message is None:
             return
         try:
-            await safe_edit_text(
-                target.message,
-                text,
-                reply_markup=reply_markup,
-                **formatting,
-            )
+            if parse_mode is None:
+                await safe_edit_text(target.message, text, reply_markup=reply_markup)
+            else:
+                await safe_edit_text(
+                    target.message,
+                    text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode,
+                )
         except TelegramAPIError:
-            await target.message.answer(
-                text,
-                reply_markup=reply_markup,
-                **formatting,
-            )
+            if parse_mode is None:
+                await target.message.answer(text, reply_markup=reply_markup)
+            else:
+                await target.message.answer(
+                    text, reply_markup=reply_markup, parse_mode=parse_mode
+                )
         return
-    await target.answer(text, reply_markup=reply_markup, **formatting)
+    if parse_mode is None:
+        await target.answer(text, reply_markup=reply_markup)
+    else:
+        await target.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
 
 
 async def _school_view(
@@ -853,13 +859,14 @@ async def confirmation_callback_handler(
             purchased_teacher = await teacher_service.buy(
                 session, user.id, callback_data.target_id
             )
-            group_purchase = isinstance(
-                callback.message, Message
-            ) and callback.message.chat.type in {"group", "supergroup"}
-            if group_purchase:
+            purchase_message = callback.message
+            if isinstance(purchase_message, Message) and purchase_message.chat.type in {
+                "group",
+                "supergroup",
+            }:
                 await session.commit()
                 await _delete_group_purchase_prompt(callback)
-                await callback.message.answer(
+                await purchase_message.answer(
                     f"✅ دبیر «{purchased_teacher.teacher.name}» با موفقیت خریداری شد.",
                     reply_to_message_id=(
                         purchase_source.message_id
@@ -980,12 +987,19 @@ async def hospital_callback_handler(
             return
         elif callback_data.action == "upgrade":
             hospital = await hospital_service.snapshot(session, user.id)
-            if hospital.upgrade_cost is None:
+            upgrade_cost = hospital.upgrade_cost
+            required_level = hospital.required_player_level
+            next_capacity = hospital.next_capacity
+            next_heal_hp_per_hour = hospital.next_heal_hp_per_hour
+            if (
+                upgrade_cost is None
+                or required_level is None
+                or next_capacity is None
+                or next_heal_hp_per_hour is None
+            ):
                 raise HospitalUpgradeUnavailable
-            reward = hospital_service.config.upgrade_banana_reward(
-                hospital.upgrade_cost
-            )
-            can_confirm = hospital.player_level >= (hospital.required_player_level or 1)
+            reward = hospital_service.config.upgrade_banana_reward(upgrade_cost)
+            can_confirm = hospital.player_level >= required_level
             reply_markup = (
                 confirmation_keyboard(action="hospital_upgrade", target_id=0)
                 if can_confirm
@@ -1010,16 +1024,16 @@ async def hospital_callback_handler(
                 callback,
                 f"{emoji('5866060208253441223', '⬆️')} {bold('ارتقای بیمارستان')}\n\n"
                 f"{escape('سطح:')} {escape(_number(hospital.level))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.level + 1))}\n"
-                f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(hospital.next_capacity))}\n"
+                f"{emoji('5275983061001977055', '🛏')} {escape('تخت‌ها:')} {escape(_number(hospital.capacity))} {emoji('5235470399730361615', '➡️')} {escape(_number(next_capacity))}\n"
                 f"{emoji('6039539366177541657', '⏳')} {bold('سرعت درمان بیمارستان')}\n"
-                f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')} {emoji('5235470399730361615', '➡️')} {bold(f'{hospital.next_heal_hp_per_hour} HP در ساعت')}\n\n"
+                f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')} {emoji('5235470399730361615', '➡️')} {bold(f'{next_heal_hp_per_hour} HP در ساعت')}\n\n"
                 f"{emoji('5825570280243732195', '🩸')} {escape('نمونه برای 80 HP آسیب:')} "
                 f"{escape(_duration_text(hospital_service.config.hospital_recovery_minutes(hospital.level, 80)))} "
                 f"{emoji('5235470399730361615', '➡️')} "
                 f"{escape(_duration_text(hospital_service.config.hospital_recovery_minutes(hospital.level + 1, 80)))}\n\n"
-                f"{emoji('5825753314570018832', '💎')} {escape('هزینه:')} {escape(_number(hospital.upgrade_cost))} {escape('الماس')}\n"
+                f"{emoji('5825753314570018832', '💎')} {escape('هزینه:')} {escape(_number(upgrade_cost))} {escape('الماس')}\n"
                 f"{emoji('5902520589356113908', '🍌')} {escape('پاداش:')} {escape(_number(reward))} {escape('موز')}\n\n"
-                f"{escape('سطح فرمانده لازم:')} {escape(_number(hospital.required_player_level))}\n\n"
+                f"{escape('سطح فرمانده لازم:')} {escape(_number(required_level))}\n\n"
                 f"{bold('ارتقا را تأیید می‌کنی؟' if can_confirm else 'این ارتقا هنوز برای سطح شما باز نشده است.')}",
                 reply_markup=reply_markup,
                 parse_mode=MARKDOWN_V2,

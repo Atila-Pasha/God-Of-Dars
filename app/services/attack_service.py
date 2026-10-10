@@ -725,7 +725,7 @@ class AttackService:
         teacher_icon = attack.teacher_emoji_snapshot or (
             teacher.teacher.emoji if teacher is not None else None
         )
-        command_names = (teacher_name,)
+        command_names: tuple[str, ...] = (teacher_name,)
         if attack.attack_command_id is not None:
             names = await session.scalars(
                 select(Attack.teacher_name_snapshot).where(
