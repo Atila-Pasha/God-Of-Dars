@@ -16,16 +16,16 @@ HelpSection = Literal[
     "slogans",
 ]
 
-HELP_SECTIONS: tuple[tuple[str, HelpSection], ...] = (
-    ("🧭 راهنمای کامل بازی", "overview"),
-    ("⚔️ راهنمای حمله", "attack"),
-    ("🏫 راهنمای مدرسه", "school"),
-    ("🍽 راهنمای بوفه", "buffet"),
-    ("📚 راهنمای کتابخانه", "library"),
-    ("🧙 راهنمای پروفایل", "profile"),
-    ("⛏ راهنمای معدن", "mine"),
-    ("👥 راهنمای دعوت", "referral"),
-    ("شعارهای قابل استفاده", "slogans"),
+HELP_SECTIONS: tuple[tuple[str, HelpSection, str], ...] = (
+    ("راهنمای کامل بازی", "overview", "6039539366177541657"),
+    ("راهنمای حمله", "attack", "5823192436024813346"),
+    ("راهنمای مدرسه", "school", "5825697157872623308"),
+    ("راهنمای بوفه", "buffet", "5823511728188563725"),
+    ("راهنمای کتابخانه", "library", "5825629907274703191"),
+    ("راهنمای پروفایل", "profile", "5825647731388981287"),
+    ("راهنمای معدن", "mine", "5823474022670671455"),
+    ("راهنمای دعوت", "referral", "5823282613158158030"),
+    ("شعارهای قابل استفاده", "slogans", "5825961702088254236"),
 )
 
 
@@ -35,12 +35,10 @@ def help_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=label,
-                    icon_custom_emoji_id=(
-                        "5825961702088254236" if section == "slogans" else None
-                    ),
+                    icon_custom_emoji_id=emoji_id,
                     callback_data=HelpCallback(section=section).pack(),
                 )
-                for label, section in HELP_SECTIONS[index : index + 2]
+                for label, section, emoji_id in HELP_SECTIONS[index : index + 2]
             ]
             for index in range(0, len(HELP_SECTIONS), 2)
         ]

@@ -37,6 +37,13 @@ class ConversionAmountError(BuffetError):
     pass
 
 
+_RESOURCE_NAMES = {
+    ResourceType.COIN: "طلا",
+    ResourceType.DIAMOND: "الماس",
+    ResourceType.BANANA: "موز",
+}
+
+
 @dataclass(frozen=True)
 class ExchangeResult:
     conversion: BuffetConversion
@@ -98,7 +105,7 @@ class BuffetService:
         source_balance = getattr(resources, source_field)
         if source_balance < source_amount:
             raise InsufficientResource(
-                f"موجودی {source.value} برای این تبدیل کافی نیست."
+                f"موجودی {_RESOURCE_NAMES[source]} برای این تبدیل کافی نیست."
             )
         old_target_balance = getattr(resources, target_field)
         target_balance = (

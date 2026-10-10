@@ -24,6 +24,7 @@ from app.bot.banners import (
     attack_result_banner,
     bold,
     emoji,
+    rich_banner,
     section_entry_banner,
 )
 from app.bot.callbacks import (
@@ -198,22 +199,23 @@ def _preview_text(preview: AttackPreview) -> str:
 
 def _attack_help_text(*, group: bool = False) -> str:
     if group:
-        return (
+        return rich_banner(
             "⚔️ راهنمای حمله در گروه\n\n"
-            "روی پیام هدف Reply بزن و یکی از این قالب‌ها را بفرست:\n"
-            "• حمله (برای انتخاب چند دبیر)\n"
-            "• حمله {اسم دبیر}\n"
-            "• حمله رندوم {اسم دبیر}\n\n"
-            "اگر روی پیام هدف Reply نزنی:\n"
-            "• حمله {نام‌کاربری هدف} {اسم دبیر}"
+            "🎯 حریف مشخص\n"
+            "روی پیام حریف Reply بزن و «حمله» بنویس تا دبیرها رو انتخاب کنی؛ یا «حمله فراهانی» رو برای یک دبیر بفرست.\n\n"
+            "👥 بدون Reply\n"
+            "نام کاربری و دبیر رو با هم بنویس: حمله @player فراهانی\n\n"
+            "🎲 حریف تصادفی\n"
+            "برای حریف نزدیک به سطح خودت بنویس: حمله رندوم فراهانی"
         )
-    return (
+    return rich_banner(
         "⚔️ راهنمای حمله در گفت‌وگوی خصوصی\n\n"
-        "حمله {نام‌کاربری هدف} {اسم دبیر}\n"
-        "مثال: حمله @player افلاطون\n\n"
-        "در گروه، روی پیام هدف Reply بزن و بنویس:\n"
-        "حمله {اسم دبیر}\n"
-        "حمله رندوم {اسم دبیر}"
+        "🎯 حمله به حریف\n"
+        "از دکمهٔ حمله، حریف و دبیر آماده رو انتخاب کن؛ یا بنویس: حمله @player فراهانی\n\n"
+        "🎲 حملهٔ تصادفی\n"
+        "برای پیدا کردن حریف نزدیک به سطح خودت بنویس: حمله رندوم فراهانی\n\n"
+        "⏳ پیش از شروع\n"
+        "پیش‌نمایش نبرد رو بخون. بعد از تأیید، نتیجه با پایان زمان حمله اعلام می‌شه."
     )
 
 
@@ -496,7 +498,8 @@ async def _report_error(message: Message, error: Exception) -> None:
 @router.message(Command("attack"))
 async def attack_help_handler(message: Message) -> None:
     await message.answer(
-        _attack_help_text(group=message.chat.type in {"group", "supergroup"})
+        _attack_help_text(group=message.chat.type in {"group", "supergroup"}),
+        parse_mode=MARKDOWN_V2,
     )
 
 
@@ -728,7 +731,8 @@ async def attack_message(
         and message.reply_to_message is not None
     ):
         await message.answer(
-            _attack_help_text(group=message.chat.type in {"group", "supergroup"})
+            _attack_help_text(group=message.chat.type in {"group", "supergroup"}),
+            parse_mode=MARKDOWN_V2,
         )
         return
     if not arguments:
@@ -791,8 +795,10 @@ async def attack_message(
                 parts = arguments.split(maxsplit=1)
                 if len(parts) != 2:
                     await message.answer(
-                        "فرمت حمله در گروه درست نیست.\n\n"
-                        + _attack_help_text(group=True)
+                        rich_banner("⚠️ فرمت حمله در گروه درست نیست.")
+                        + "\n\n"
+                        + _attack_help_text(group=True),
+                        parse_mode=MARKDOWN_V2,
                     )
                     return
                 preview = await attack_service.preview_by_username(
@@ -804,7 +810,7 @@ async def attack_message(
         else:
             parts = arguments.split(maxsplit=1)
             if len(parts) != 2:
-                await message.answer(_attack_help_text())
+                await message.answer(_attack_help_text(), parse_mode=MARKDOWN_V2)
                 return
             preview = await attack_service.preview_by_username(
                 session,

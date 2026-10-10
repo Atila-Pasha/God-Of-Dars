@@ -187,6 +187,11 @@ def test_shield_banner_shows_daily_limits_and_supplied_emoji_ids() -> None:
             unlock_level=level,
             daily_limit=2 if level == 1 else 1,
             description="محافظت کامل",
+            emoji=(
+                "5825861861278490879"
+                if name == "سپر زنگ تفریح"
+                else "5917839500750364054"
+            ),
         )
         for name, resource, price, minutes, level in (
             ("سپر زنگ تفریح", ResourceType.COIN, 120, 30, 1),

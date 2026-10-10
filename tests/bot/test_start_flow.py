@@ -34,6 +34,10 @@ async def test_start_member_initializes_user_and_shows_menu(monkeypatch) -> None
     initialize.assert_awaited_once_with(session, message.from_user)
     assert message.answer.await_count == 2
     assert "راهنمای کدام بخش" in message.answer.await_args_list[1].args[0]
+    assert all(
+        call.kwargs["parse_mode"] == "MarkdownV2"
+        for call in message.answer.await_args_list
+    )
     keyboard = message.answer.await_args_list[0].kwargs["reply_markup"]
     assert keyboard.is_persistent is False
     assert keyboard.resize_keyboard is True
@@ -68,6 +72,10 @@ async def test_first_login_explains_how_to_activate_mine_and_buy_teacher(
     await start.start_handler(message, session)
 
     assert message.answer.await_count == 3
+    assert all(
+        call.kwargs["parse_mode"] == "MarkdownV2"
+        for call in message.answer.await_args_list
+    )
     guide = message.answer.await_args_list[1].args[0]
     assert guide == start.FIRST_LOGIN_GUIDE
     assert "معدن منابع" in guide
@@ -95,7 +103,7 @@ async def test_first_login_confirmation_replaces_guide() -> None:
 
     await start.first_login_confirmation_handler(callback, callback_data)
 
-    assert "مأموریت شروع فعال شد" in callback.message.edit_text.await_args.args[0]
+    assert "مأموریت اول شروع شد" in callback.message.edit_text.await_args.args[0]
     assert callback.message.edit_text.await_args.kwargs["reply_markup"] is None
     callback.answer.assert_awaited_once()
 
@@ -116,6 +124,20 @@ def test_help_has_complete_overview() -> None:
     ):
         assert section in overview
 
+    assert "tg://emoji?id=" in overview
+    assert overview.startswith("![")
+
+
+def test_every_help_button_has_a_custom_emoji() -> None:
+    buttons = [button for row in help_keyboard().inline_keyboard for button in row]
+
+    assert len(buttons) == len(start.HELP_TEXTS)
+    assert all(button.icon_custom_emoji_id for button in buttons)
+    assert {
+        HelpCallback.unpack(button.callback_data).section for button in buttons
+    } == set(start.HELP_TEXTS)
+    assert all("tg://emoji?id=" in text for text in start.HELP_TEXTS.values())
+
 
 def test_help_slogans_button_lists_all_active_slogans() -> None:
     buttons = [button for row in help_keyboard().inline_keyboard for button in row]
@@ -135,6 +157,7 @@ async def test_slogans_help_button_opens_slogan_list() -> None:
     await start.help_callback_handler(callback, HelpCallback(section="slogans"))
 
     callback.message.edit_text.assert_awaited_once()
+    assert callback.message.edit_text.await_args.kwargs["parse_mode"] == "MarkdownV2"
     assert all(
         slogan in callback.message.edit_text.await_args.args[0] for slogan in SLOGANS
     )

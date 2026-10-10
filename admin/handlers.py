@@ -34,7 +34,7 @@ from admin.states import (
     TeacherStates,
     UserStates,
 )
-from app.bot.banners import MARKDOWN_V2
+from app.bot.banners import MARKDOWN_V2, bold, escape
 from app.bot.callbacks_chance import ChanceBoxCaptchaCallback, ChanceCardCallback
 from app.bot.chance_banners import chance_box_banner, chance_card_banner
 from app.bot.custom_emojis import (
@@ -44,6 +44,7 @@ from app.bot.custom_emojis import (
 )
 from app.bot.group_question_publisher import GroupQuestionPublisher
 from app.bot.middlewares.subscription import invalidate_channels_cache
+from app.bot.shield_presentation import shield_icon
 from app.bot.utils.telegram import safe_edit_reply_markup, safe_edit_text
 from app.core.config import settings
 from app.core.enums import ResourceType
@@ -188,6 +189,7 @@ SHIELD_EDIT_PROMPTS = {
     "duration_minutes": "مدت فعال بودن سپر را به دقیقه بفرستید (مثلاً 60):",
     "daily_limit": "محدودیت استفاده در روز را بفرستید؛ برای نامحدود، - بفرستید:",
     "description": "توضیح جدید را بفرستید؛ برای حذف، - بفرستید:",
+    "emoji": "اموجی سفارشی تلگرام یا آیدی آن را بفرستید؛ برای حذف، - بفرستید:",
 }
 
 
@@ -2111,17 +2113,21 @@ async def shields(message: Message, state: FSMContext, session: AsyncSession) ->
     if not items:
         await message.answer("هنوز سپری ثبت نشده است.")
     for shield in items:
+        currency = (
+            "الماس" if shield.purchase_resource is ResourceType.DIAMOND else "طلا"
+        )
         await message.answer(
-            f"🛡 {shield.name}\nشناسه: {shield.id}\n"
-            f"قیمت: {shield.purchase_price} "
-            f"{'الماس' if shield.purchase_resource is ResourceType.DIAMOND else 'طلا'}\n"
-            f"بازشدن در سطح: {shield.unlock_level}\n"
-            f"ارز خرید: {'الماس' if shield.purchase_resource is ResourceType.DIAMOND else 'طلا'}\n"
-            f"مدت فعال بودن: {shield.duration_minutes} دقیقه\n"
-            f"محدودیت روزانه: {shield.daily_limit if shield.daily_limit is not None else 'نامحدود'}\n"
-            f"وضعیت: {'فعال' if shield.is_active else 'غیرفعال'}\n"
-            f"توضیح: {shield.description or '—'}",
+            f"{shield_icon(shield)} {bold(shield.name)}\n"
+            f"شناسه: {escape(shield.id)}\n"
+            f"قیمت: {escape(shield.purchase_price)} {escape(currency)}\n"
+            f"بازشدن در سطح: {escape(shield.unlock_level)}\n"
+            f"مدت فعال بودن: {escape(shield.duration_minutes)} دقیقه\n"
+            f"محدودیت روزانه: {escape(shield.daily_limit if shield.daily_limit is not None else 'نامحدود')}\n"
+            f"وضعیت: {escape('فعال' if shield.is_active else 'غیرفعال')}\n"
+            f"توضیح: {escape(shield.description or '—')}\n"
+            f"اموجی: {escape(shield.emoji or '—')}",
             reply_markup=keyboards.shield_actions(shield.id),
+            parse_mode=MARKDOWN_V2,
         )
     await message.answer(
         "برای ساخت سپر، دکمهٔ «➕ سپر جدید» را بزنید.",
@@ -2270,13 +2276,29 @@ async def s_daily_limit(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ShieldStates.description)
-async def s_description(
-    message: Message, state: FSMContext, session: AsyncSession
-) -> None:
+async def s_description(message: Message, state: FSMContext) -> None:
     if not allowed(message) or not message.text:
         return
+    await state.update_data(
+        description=None if message.text.strip() == "-" else message.text.strip()
+    )
+    await state.set_state(ShieldStates.emoji)
+    await message.answer(
+        "اموجی سفارشی تلگرام سپر یا آیدی آن را بفرستید (برای خالی بودن - بفرستید):"
+    )
+
+
+@router.message(ShieldStates.emoji)
+async def s_emoji(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    try:
+        emoji_value = _custom_emoji_value(message)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
     data = await state.get_data()
-    data["description"] = None if message.text.strip() == "-" else message.text.strip()
+    data["emoji"] = emoji_value
     data.setdefault("reduction_percent", 0)
     data.setdefault("flat_absorption", 0)
     data.setdefault("purchase_resource", ResourceType.COIN)
@@ -2300,8 +2322,10 @@ async def s_description(
         return
     await state.clear()
     await message.answer(
-        f"✅ سپر «{shield.name}» با شناسه {shield.id} ذخیره شد.",
+        f"{shield_icon(shield)} {bold(f'سپر «{shield.name}» ذخیره شد')}\\.\n"
+        f"شناسه: {escape(shield.id)}",
         reply_markup=keyboards.content_menu(),
+        parse_mode=MARKDOWN_V2,
     )
 
 
@@ -2341,8 +2365,10 @@ async def shield_callback(
     if action == "edit":
         await state.clear()
         await callback.message.answer(
-            f"ویرایش سپر «{shield.name}»\nیک مورد را برای تغییر انتخاب کنید:",
+            f"{shield_icon(shield)} {bold(f'ویرایش سپر «{shield.name}»')}\n"
+            "یک مورد را برای تغییر انتخاب کنید:",
             reply_markup=keyboards.shield_edit_fields(shield_id),
+            parse_mode=MARKDOWN_V2,
         )
     elif action == "field" and len(parts) == 4:
         field = parts[3]
@@ -2358,8 +2384,9 @@ async def shield_callback(
     elif action == "done":
         await state.clear()
         await callback.message.answer(
-            f"ویرایش سپر «{shield.name}» تمام شد.",
+            f"{shield_icon(shield)} {bold(f'ویرایش سپر «{shield.name}» تمام شد')}\\.",
             reply_markup=keyboards.content_menu(),
+            parse_mode=MARKDOWN_V2,
         )
     else:
         await callback.answer("عملیات ویرایش معتبر نیست.", show_alert=True)
@@ -2391,6 +2418,8 @@ async def shield_edit_value(
             edit_value = raw_value
         elif field == "description":
             edit_value = None if raw_value == "-" else raw_value
+        elif field == "emoji":
+            edit_value = _custom_emoji_value(message)
         elif field == "daily_limit":
             edit_value = (
                 None if raw_value == "-" else number(raw_value, field, minimum=1)
@@ -2425,8 +2454,10 @@ async def shield_edit_value(
     await state.clear()
     await message.answer("تغییر ذخیره شد.", reply_markup=keyboards.content_menu())
     await message.answer(
-        f"ویرایش سپر «{shield.name}»\nیک مورد دیگر را برای تغییر انتخاب کنید:",
+        f"{shield_icon(shield)} {bold(f'ویرایش سپر «{shield.name}»')}\n"
+        "یک مورد دیگر را برای تغییر انتخاب کنید:",
         reply_markup=keyboards.shield_edit_fields(shield.id),
+        parse_mode=MARKDOWN_V2,
     )
 
 

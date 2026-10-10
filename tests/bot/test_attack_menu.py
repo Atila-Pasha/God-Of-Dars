@@ -32,6 +32,19 @@ def test_main_menu_attack_button_has_custom_sword_icon() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("chat_type", ["private", "supergroup"])
+async def test_attack_help_uses_rich_banner(chat_type: str) -> None:
+    message = SimpleNamespace(chat=SimpleNamespace(type=chat_type), answer=AsyncMock())
+
+    await battle.attack_help_handler(message)
+
+    text = message.answer.await_args.args[0]
+    assert "راهنمای حمله" in text
+    assert "tg://emoji?id=" in text
+    assert message.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
+
+
+@pytest.mark.asyncio
 async def test_attack_button_replaces_main_menu_with_back_and_attack_types() -> None:
     message = SimpleNamespace(answer=AsyncMock())
     state = SimpleNamespace(clear=AsyncMock())

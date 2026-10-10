@@ -10,7 +10,8 @@ def join_channel_keyboard(
     buttons = [
         [
             InlineKeyboardButton(
-                text=f"📢 عضویت در {channel}",
+                text=f"عضویت در {channel}",
+                icon_custom_emoji_id="5825791209066471425",
                 url=subscription_service.channel_url(channel),
             )
         ]
@@ -20,7 +21,8 @@ def join_channel_keyboard(
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text="✅ بررسی عضویت",
+                    text="بررسی عضویت",
+                    icon_custom_emoji_id="5825709849500985213",
                     callback_data=ChannelCallback(action="check").pack(),
                 )
             ]
@@ -33,7 +35,8 @@ def first_login_guide_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ فهمیدم؛ بزن بریم!",
+                    text="فهمیدم؛ بزن بریم!",
+                    icon_custom_emoji_id="5825709849500985213",
                     callback_data=FirstLoginCallback(action="confirm").pack(),
                 )
             ]

@@ -18,6 +18,7 @@ from app.bot.keyboards.main_menu import (
     section_back_keyboard,
 )
 from app.bot.keyboards.profile import level_confirmation_keyboard, profile_keyboard
+from app.bot.shield_presentation import shield_icon
 from app.bot.utils.telegram import safe_edit_text
 from app.core.game_logic import game_config
 from app.models.shield import Shield
@@ -306,17 +307,20 @@ async def _show_level_upgrade(target: CallbackQuery, session: AsyncSession) -> N
     next_level = snapshot.user.level + 1
     unlocks = await _level_unlocks(session, next_level)
     text = (
-        "⬆️ جهش سطح فرمانده\n\n"
-        f"سطح فعلی: {_number(snapshot.user.level)}\n"
-        f"سطح بعدی: {_number(next_level)}\n"
-        f"هزینه: {_number(cost)} موز\n"
-        f"موز شما: {_number(xp)}\n\n"
-        "🎁 با رسیدن به این سطح:\n"
+        f"{emoji('5866060208253441223', '⬆️')} {bold('جهش سطح فرمانده')}\n\n"
+        f"{bold('سطح فعلی:')} {escape(_number(snapshot.user.level))}\n"
+        f"{bold('سطح بعدی:')} {escape(_number(next_level))}\n"
+        f"{bold('هزینه:')} {escape(_number(cost))} موز\n"
+        f"{bold('موز شما:')} {escape(_number(xp))}\n\n"
+        f"{emoji('5825832256068918886', '🎁')} {bold('با رسیدن به این سطح:')}\n"
         f"{unlocks}\n\n"
-        "آیا ارتقای سطح را تأیید می‌کنی؟"
+        f"{bold('آیا ارتقای سطح را تأیید می‌کنی؟')}"
     )
     await safe_edit_text(
-        target.message, text, reply_markup=level_confirmation_keyboard()
+        target.message,
+        text,
+        reply_markup=level_confirmation_keyboard(),
+        parse_mode=MARKDOWN_V2,
     )
 
 
@@ -329,8 +333,10 @@ async def _level_unlocks(session: AsyncSession, next_level: int) -> str:
     next_slots = config.teacher_slots(next_level)
     if next_slots > previous_slots:
         lines.append(
-            f"• ظرفیت دبیرها از {_number(previous_slots)} به "
-            f"{_number(next_slots)} می‌رسد."
+            escape(
+                f"• ظرفیت دبیرها از {_number(previous_slots)} به "
+                f"{_number(next_slots)} می‌رسد."
+            )
         )
 
     teacher_result = await session.execute(
@@ -340,16 +346,19 @@ async def _level_unlocks(session: AsyncSession, next_level: int) -> str:
     )
     teacher_names = list(teacher_result.scalars().all())
     if teacher_names:
-        lines.append(f"• دبیر جدید: {'، '.join(teacher_names)}")
+        lines.append(escape(f"• دبیر جدید: {'، '.join(teacher_names)}"))
 
     shield_result = await session.execute(
-        select(Shield.name)
+        select(Shield)
         .where(Shield.is_active.is_(True), Shield.unlock_level == next_level)
         .order_by(Shield.id)
     )
-    shield_names = list(shield_result.scalars().all())
-    if shield_names:
-        lines.append(f"• سپر جدید: {'، '.join(shield_names)}")
+    shields = list(shield_result.scalars().all())
+    if shields:
+        names = "، ".join(
+            f"{shield_icon(shield)} {escape(shield.name)}" for shield in shields
+        )
+        lines.append(f"{escape('• سپر جدید:')} {names}")
 
     mine_levels = sorted(
         level
@@ -358,9 +367,11 @@ async def _level_unlocks(session: AsyncSession, next_level: int) -> str:
     )
     if mine_levels:
         rendered = "، ".join(_number(level) for level in mine_levels)
-        lines.append(f"• امکان ارتقای معدن به سطح {rendered}")
+        lines.append(escape(f"• امکان ارتقای معدن به سطح {rendered}"))
 
-    return "\n".join(lines) if lines else "• قابلیت تازه‌ای در این سطح باز نمی‌شود."
+    return (
+        "\n".join(lines) if lines else escape("• قابلیت تازه‌ای در این سطح باز نمی‌شود.")
+    )
 
 
 @router.message(Command("profile"))

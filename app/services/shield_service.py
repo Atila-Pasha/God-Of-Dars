@@ -341,6 +341,9 @@ class ShieldAdminService:
             ResourceType.DIAMOND,
         ):
             raise ValueError("purchase_resource must be coin or diamond")
+        emoji_value = values.get("emoji")
+        if emoji_value is not None and len(str(emoji_value)) > 32:
+            raise ValueError("emoji must be at most 32 characters")
 
     async def create_shield(self, session: AsyncSession, **values: object) -> Shield:
         values.setdefault("reduction_percent", 0)
@@ -373,6 +376,7 @@ class ShieldAdminService:
             "purchase_resource": values.get(
                 "purchase_resource", shield.purchase_resource
             ),
+            "emoji": values.get("emoji", shield.emoji),
         }
         self._validate(merged)
         for key, value in values.items():

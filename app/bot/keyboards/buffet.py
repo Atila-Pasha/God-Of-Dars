@@ -11,7 +11,7 @@ from app.bot.callbacks import (
     ShieldCallback,
     ShieldPurchaseCallback,
 )
-from app.bot.custom_emojis import premium_emoji_id
+from app.bot.shield_presentation import shield_button_label, shield_emoji_id
 from app.core.game_logic import BuffetConversion
 from app.models.shield import Shield
 from app.models.user_shield import UserShield
@@ -102,12 +102,10 @@ def shield_catalog_keyboard(
     rows = [
         [
             InlineKeyboardButton(
-                text=f"{shield.name} — سطح {shield.unlock_level}"
+                text=f"{shield_button_label(shield)} — سطح {shield.unlock_level}"
                 if shield.unlock_level > player_level
-                else shield.name,
-                icon_custom_emoji_id=SHIELD_ICONS.get(
-                    shield.name, premium_emoji_id("🛡")
-                ),
+                else shield_button_label(shield),
+                icon_custom_emoji_id=shield_emoji_id(shield),
                 callback_data=ShieldCallback(action="buy", shield_id=shield.id).pack(),
             )
         ]
@@ -123,23 +121,6 @@ def shield_catalog_keyboard(
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-SHIELD_ICONS = {
-    "سپر زنگ تفریح": "5825861861278490879",
-    "سپر آلودگی هوا": "5917839500750364054",
-    "سپر محمدی": "5915796556606348792",
-    "سپر کاظمی": "5917954648823570305",
-    "سپر خسروپناه": "5915702157520150395",
-}
-
-SHIELD_FALLBACKS = {
-    "سپر زنگ تفریح": "🛡️",
-    "سپر آلودگی هوا": "🌊",
-    "سپر محمدی": "💎",
-    "سپر کاظمی": "💎",
-    "سپر خسروپناه": "💎",
-}
 
 
 def shield_purchase_confirmation(shield: Shield) -> InlineKeyboardMarkup:

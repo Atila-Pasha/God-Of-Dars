@@ -24,8 +24,6 @@ from app.bot.callbacks import (
     ShieldPurchaseCallback,
 )
 from app.bot.keyboards.buffet import (
-    SHIELD_FALLBACKS,
-    SHIELD_ICONS,
     buffet_cancel_keyboard,
     buffet_keyboard,
     buffet_menu_keyboard,
@@ -41,6 +39,7 @@ from app.bot.keyboards.school import (
     confirmation_keyboard,
     teacher_catalog_page_keyboard,
 )
+from app.bot.shield_presentation import shield_icon, shield_plain_icon
 from app.bot.states import BuffetStates
 from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import (
@@ -121,6 +120,16 @@ def _shield_currency(shield) -> str:
     return "الماس" if shield.purchase_resource is ResourceType.DIAMOND else "طلا"
 
 
+def _shield_purchase_banner(shield) -> str:
+    return (
+        f"{shield_icon(shield)} {bold(f'خرید سپر «{shield.name}»')}\n\n"
+        f"قیمت: {escape(shield.purchase_price)} {escape(_shield_currency(shield))}\n"
+        f"مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
+        "اثر: جلوگیری کامل از حمله در مدت محافظت\n\n"
+        "آیا خرید را تأیید می‌کنید؟"
+    )
+
+
 async def _answer_shield_purchase_error(
     callback: CallbackQuery, source_message: Message | None, reason: str
 ) -> None:
@@ -197,17 +206,16 @@ async def group_purchase_message(
         if shield is not None:
             if user.level < shield.unlock_level:
                 await message.answer(
-                    f"سپر «{shield.name}» از سطح {shield.unlock_level} باز می‌شود."
+                    f"{shield_icon(shield)} "
+                    f"{bold(f'سپر «{shield.name}» از سطح {shield.unlock_level} باز می‌شود')}\\.",
+                    parse_mode=MARKDOWN_V2,
                 )
                 return
             await message.answer(
-                f"🛒 خرید سپر «{shield.name}»\n\n"
-                f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
-                f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
-                "اثر: جلوگیری کامل از حمله در مدت محافظت\n\n"
-                "آیا خرید را تأیید می‌کنید؟",
+                _shield_purchase_banner(shield),
                 reply_markup=shield_purchase_confirmation(shield),
                 reply_to_message_id=message.message_id,
+                parse_mode=MARKDOWN_V2,
             )
             return
         await message.answer("سپری با این نام پیدا نشد.")
@@ -436,11 +444,11 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
 
 
 def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str:
-    shield_icon = emoji("5915888842568638290", "🤩")
+    header_icon = emoji("5915888842568638290", "🤩")
     time_icon = emoji("6039539366177541657", "⏳")
     level_icon = emoji("5825727141039317043", "🎖️")
     lines = [
-        f"{shield_icon} {bold('زرادخانه سپرها')} {shield_icon}",
+        f"{header_icon} {bold('زرادخانه سپرها')} {header_icon}",
         f"{level_icon} سطح فرمانده: {bold(player_level)}",
     ]
     if owned:
@@ -450,7 +458,7 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
             )
             minutes = (remaining + 59) // 60
             lines.append(
-                f"● وضعیت دفاعی شما: {bold(item.shield.name)}\n"
+                f"● وضعیت دفاعی شما: {shield_icon(item.shield)} {bold(item.shield.name)}\n"
                 f"{time_icon} زمان باقی‌مانده: {escape(minutes)} دقیقه"
             )
     else:
@@ -482,7 +490,7 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
                 else ""
             )
             lines.append(
-                f"{emoji(SHIELD_ICONS.get(shield.name, '5825861861278490879'), SHIELD_FALLBACKS.get(shield.name, '🛡️'))} {bold(shield.name)}\n\n"
+                f"{shield_icon(shield)} {bold(shield.name)}\n\n"
                 f"{currency_icon} قیمت: {bold(shield.purchase_price)} "
                 f"{escape(_shield_currency(shield))}\n"
                 f"{time_icon} مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
@@ -599,7 +607,9 @@ async def shield_callback(
         elif callback_data.action == "equip":
             item = await shield_service.equip(session, user.id, callback_data.shield_id)
             await _shields_view(callback, session)
-            await callback.answer(f"سپر «{item.shield.name}» فعال شد.")
+            await callback.answer(
+                f"{shield_plain_icon(item.shield)} سپر «{item.shield.name}» فعال شد."
+            )
             return
         else:
             shield = await shield_service.get_shield(session, callback_data.shield_id)
@@ -609,12 +619,9 @@ async def shield_callback(
                 "اطلاعات خرید نمایش داده شد؛ تأیید کنید.",
             )
             await callback.message.answer(
-                f"🛒 خرید سپر «{shield.name}»\n\n"
-                f"قیمت: {shield.purchase_price} {_shield_currency(shield)}\n"
-                f"مدت محافظت: {shield.duration_minutes} دقیقه\n"
-                "اثر: جلوگیری کامل از حمله در مدت محافظت\n\n"
-                "آیا خرید را تأیید می‌کنید؟",
+                _shield_purchase_banner(shield),
                 reply_markup=shield_purchase_confirmation(shield),
+                parse_mode=MARKDOWN_V2,
             )
             return
         await callback.answer()
@@ -676,13 +683,14 @@ async def shield_purchase_callback(
         with suppress(TelegramAPIError):
             await callback.message.delete()
         await callback.message.answer(
-            f"✅ سپر «{purchase.shield.name}» خریداری شد.\n"
-            f"🛡 مدت محافظت: {purchase.shield.duration_minutes} دقیقه\n"
-            "سپر شما همین حالا فعال شد.",
+            f"{shield_icon(purchase.shield)} {bold(f'سپر «{purchase.shield.name}» خریداری شد')}\\.\n"
+            f"مدت محافظت: {escape(purchase.shield.duration_minutes)} دقیقه\n"
+            "سپر شما همین حالا فعال شد\\.",
             reply_to_message_id=(
                 source_message.message_id if source_message is not None else None
             ),
             disable_group_reply=source_message is None,
+            parse_mode=MARKDOWN_V2,
         )
         await callback.answer("خرید با موفقیت انجام شد.")
     except InsufficientCoins as error:

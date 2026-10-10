@@ -8,6 +8,7 @@ from aiogram.types import User as TelegramUser
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.banners import MARKDOWN_V2, rich_banner
 from app.bot.callbacks import ChannelCallback, FirstLoginCallback, HelpCallback
 from app.bot.handlers.quick import SLOGANS
 from app.bot.keyboards.help import help_keyboard
@@ -45,7 +46,10 @@ daily_quest_service = DailyQuestService()
 
 def join_message() -> str:
     channels = subscription_service.channels_label or "کانال اعلام‌شده در ربات"
-    return f"برای استفاده از ربات، ابتدا باید عضو کانال {channels} شوید.\nپس از عضویت، روی «بررسی عضویت» بزنید."
+    return rich_banner(
+        f"📢 یک قدم تا شروع بازی\n\n"
+        f"برای ورود، عضو کانال {channels} شو. بعد از عضویت، دکمهٔ «بررسی عضویت» رو بزن تا حسابت آماده بشه."
+    )
 
 
 MEMBERSHIP_ERROR_MESSAGE = (
@@ -53,124 +57,107 @@ MEMBERSHIP_ERROR_MESSAGE = (
 )
 USER_ERROR_MESSAGE = "در آماده‌سازی حساب شما مشکلی پیش آمد. لطفاً دوباره تلاش کنید."
 BANNED_USER_MESSAGE = "حساب شما مسدود شده است. لطفاً با پشتیبانی تماس بگیرید."
-MAIN_MENU_MESSAGE = (
-    "🔥 به قلمرو «God of Dars» خوش اومدی، فرمانده!\n\n"
-    "🎁 ۱۰۰ سکهٔ هدیهٔ شروع به حسابت اضافه شد.\n\n"
-    "مدرسه‌ات رو بساز، دبیرها رو قدرتمند کن و برای فتح رتبه‌بندی آماده شو.\n"
-    "از منوی پایین، اولین حرکتت رو انتخاب کن 👇"
+MAIN_MENU_MESSAGE = rich_banner(
+    "🔥 به God of Dars خوش اومدی، فرمانده!\n\n"
+    "🎁 ۱۰۰ سکهٔ شروع توی حسابت نشست. حالا وقتشه مدرسه‌ات رو بسازی و اولین تیم رو جمع کنی.\n\n"
+    "از منوی پایین «معدن منابع» رو باز کن؛ قدم‌به‌قدم کنارت هستم. 👇"
 )
-RETURNING_USER_MESSAGE = (
-    "👑 فرمانده برگشت!\n\nقلمرو منتظر دستور توئه؛ حرکت بعدی رو انتخاب کن 👇"
+RETURNING_USER_MESSAGE = rich_banner(
+    "👑 خوش برگشتی، فرمانده!\n\n"
+    "مدرسه و منابع منتظرت هستن. از منوی پایین ببین امروز از کجا می‌خوای شروع کنی. 👇"
 )
-FIRST_LOGIN_GUIDE = (
-    "🚀 مأموریت شروع | ساخت اولین تیم\n\n"
-    "1️⃣ وارد «⛏ معدن منابع» شو تا معدن فعال بشه، تولید طلا آغاز بشه "
-    "و ۱۰۰ سکهٔ دیگه جایزه بگیری.\n\n"
-    "2️⃣ با ۲۰۰ سکهٔ مجموع دو هدیه، وارد «🍽 بوفه» شو و یکی از دبیرهای "
-    "شروع، «براتی» یا «عمارلو»، رو بخر.\n\n"
-    "3️⃣ دبیرت رو در «🏫 مدرسه من» فعال کن و بعد برای اولین نبرد برو!\n\n"
-    "آماده‌ای فرمانده؟ دکمهٔ زیر رو بزن ⚡"
+FIRST_LOGIN_GUIDE = rich_banner(
+    "🎯 مأموریت اول: اولین تیم تو\n\n"
+    "⛏️ «معدن منابع» رو باز کن. تولید طلا شروع می‌شه و ۱۰۰ سکهٔ دیگه هدیه می‌گیری.\n\n"
+    "🍽 «بوفه» رو باز کن. با ۲۰۰ سکهٔ مجموع دو هدیه، یکی از دبیرهای شروع، «براتی» یا «عمارلو» رو بخر.\n\n"
+    "🏫 در «مدرسه من» دبیرت رو ببین و وقتی آماده بودی، از بخش «حمله» اولین نبردت رو شروع کن.\n\n"
+    "هر وقت خواستی، راهنمای هر بخش همین پایین در دسترسه. آماده‌ای؟"
 )
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
-HELP_MENU_TEXT = (
-    "📖 مرکز فرماندهی و راهنما\n\n"
-    "راهنمای کدام بخش رو می‌خوای، فرمانده؟\n"
-    "برای شروع، «راهنمای کامل بازی» رو بخون یا مستقیم سراغ بخش موردنظرت برو 👇"
+HELP_MENU_TEXT = rich_banner(
+    "📖 راهنمای بازی\n\n"
+    "راهنمای کدام بخش رو می‌خوای؟ اگر تازه شروع کردی، «راهنمای کامل بازی» مسیر رو از اولین سکه تا اولین نبرد نشونت می‌ده. 👇"
 )
 HELP_TEXTS = {
     "overview": (
-        "🧭 راهنمای کامل God of Dars\n"
-        "\n"
-        "🎯 هدف بازی\n"
-        "منابع جمع کن، دبیر بخر و ارتقا بده، دژت رو قوی کن، به حریف‌ها حمله کن "
-        "و در جدول برترین‌ها بالا برو.\n\n"
-        "🚀 شروع سریع\n"
-        "1. «معدن منابع» رو باز کن تا تولید شروع بشه و ۱۰۰ سکهٔ دیگه بگیری.\n"
-        "2. منابع آماده رو مرتب جمع کن و معدن رو ارتقا بده.\n"
-        "3. با 200 طلا از «بوفه» یک دبیر شروع بخر.\n"
-        "4. در «مدرسه من» دبیرها، دژ و بیمارستان رو مدیریت کن.\n"
-        "5. از بخش «حمله» حریف انتخاب کن و با حداکثر تعداد مجاز دبیر حمله کن.\n\n"
+        "🧭 نقشهٔ راه فرمانده\n\n"
+        "🎯 قراره چی کار کنی؟\n"
+        "منابع جمع کن، دبیرها رو به تیمت بیار، مدرسه‌ات رو قوی کن و با نبرد و درس‌خوندن در رتبه‌بندی بالا برو.\n\n"
+        "⛏️ شروع از معدن منابع\n"
+        "معدن رو یک‌بار باز کن تا تولید فعال بشه و هدیهٔ دوم ۱۰۰ سکه‌ای رو بگیری. بعد هر وقت محموله آماده بود، طلا و الماس رو برداشت کن.\n\n"
+        "🍽 بوفه و اولین دبیر\n"
+        "با ۲۰۰ سکهٔ شروع، یک دبیر تازه‌کار بخر. همین‌جا می‌تونی سپر بگیری یا طلا و الماس رو به هم تبدیل کنی.\n\n"
         "🏫 مدرسه من\n"
-        "دژ خط دفاعی توئه. استحکام و دفاعش رو ارتقا بده و آسیب‌ها رو تعمیر کن. "
-        "دبیرهای مصدوم را در بیمارستان درمان کن و پس از درمان، با دکمهٔ ترخیص دوباره فعالشان کن.\n\n"
-        "🍽 بوفه\n"
-        "محل خرید دبیر و سپر و تبدیل منابعه. سطح هر آیتم، قیمت و ظرفیت دبیرها رو "
-        "قبل از خرید بررسی کن. سپر در مدت فعال‌بودن جلوی حمله رو می‌گیره.\n\n"
-        "📚 کتابخانه\n"
-        "به سؤال روزانه پاسخ بده، مطالعهٔ زمان‌دار شروع کن و مشخصات همهٔ دبیرها رو "
-        "ببین. سؤال‌های گروهی هم با Reply پاسخ داده می‌شن.\n\n"
+        "دبیرها، دژ و بیمارستانت اینجاست. دژ آسیب‌دیده رو تعمیر کن؛ دبیر مصدوم هم بعد از درمان باید ترخیص بشه تا دوباره بجنگه.\n\n"
         "⚔️ حمله\n"
-        "حملهٔ رندوم یا با آیدی انتخاب کن، دبیرهای سالم و فعال رو بچین و پیش‌نمایش "
-        "خسارت و غنیمت رو قبل از تأیید ببین. حمله بعد از شروع زمان می‌بره.\n\n"
-        "🎯 فعالیت‌های روزانه\n"
-        "مأموریت‌های روز رو کامل کن و بعد از تکمیل، جایزهٔ هر مورد رو دریافت کن.\n\n"
-        "🧙 پروفایل و پیشرفت\n"
-        "منابع، آمار جنگ، دانش و دعوت‌ها رو ببین. موز، شرط اصلی بالا بردن سطح "
-        "فرمانده است؛ افزایش سطح ظرفیت‌ها و امکانات جدید رو باز می‌کنه.\n\n"
-        "👥 دعوت و رتبه‌بندی\n"
-        f"با /referral لینک اختصاصی بگیر؛ هر دعوت موفق {game_config.referral_reward_amount} الماس به معرف می‌دهد. "
-        "از /leaderboard هم رتبهٔ فرمانده‌ها، "
-        "دانش‌آموزها و مبارزها رو در بازه‌های روزانه، هفتگی و ماهانه ببین.\n\n"
-        "💡 هرجا گیر کردی، از همین منو راهنمای همان بخش رو باز کن.\n"
-        "برای دیدن شعارهای پاداش‌دار، دکمهٔ «شعارهای قابل استفاده» رو بزن."
+        "حریف و دبیرهای آماده رو انتخاب کن. پیش‌نمایش نبرد رو بخون و بعد حمله رو تأیید کن؛ نتیجه پس از پایان زمان حمله می‌رسه.\n\n"
+        "📚 کتابخانه و فعالیت‌های روزانه\n"
+        "سؤال روزانه رو جواب بده، مطالعه رو شروع کن و بعد از پایان زمان پاداشش رو بگیر. مأموریت‌های روز رو هم کامل کن و جایزه‌شون رو جداگانه دریافت کن.\n\n"
+        "🧙 پروفایل، دعوت و رتبه‌بندی\n"
+        "در پروفایل دارایی، جنگ و دانش خودت رو ببین. موز برای ارتقای سطح فرمانده لازمه. با /referral لینک دعوت بگیر؛ هر دعوت موفق "
+        f"{game_config.referral_reward_amount} الماس به معرف می‌دهد. با /leaderboard هم رتبه‌ها رو ببین.\n\n"
+        "💡 برای جزئیات بیشتر، دکمهٔ راهنمای همون بخش رو بزن."
     ),
     "attack": (
-        "⚔️ راهنمای میدان نبرد\n\n"
-        "در خصوصی: حمله {نام‌کاربری هدف} {اسم دبیر}\n"
-        "مثال: حمله @player فراهانی\n\n"
-        "در گروه: روی پیام هدف Reply بزن و بنویس:\n"
-        "حمله (انتخاب چند دبیر) یا حمله {اسم دبیر}\n\n"
-        "برای حمله تصادفی به یکی از بازیکنان هم‌سطح یا نزدیک:\n"
-        "حمله رندوم {اسم دبیر}\n"
-        "مثال: حمله رندوم فراهانی"
+        "⚔️ راهنمای حمله\n\n"
+        "🎯 انتخاب هدف\n"
+        "از دکمهٔ «حمله» حریف رو پیدا کن، یا در گفت‌وگوی خصوصی بنویس: حمله @player فراهانی\n\n"
+        "👥 نبرد در گروه\n"
+        "روی پیام حریف Reply بزن و «حمله» یا «حمله فراهانی» بنویس. برای حریف تصادفی هم می‌تونی «حمله رندوم فراهانی» رو بفرستی.\n\n"
+        "⏳ قبل از تأیید\n"
+        "فقط دبیر سالم و آماده می‌تونه بجنگه. پیش‌نمایش خسارت و غنیمت رو ببین؛ نتیجهٔ نبرد بعد از پایان زمان حمله اعلام می‌شه."
     ),
     "school": (
-        "🏫 راهنمای مدرسه و دبیرها\n\n"
-        "از «مدرسه من» دبیرهای خودت، بیمارستان و دژ را مدیریت کن.\n"
-        "پس از پایان زمان درمان، دبیر را از بیمارستان ترخیص کن تا دوباره فعال شود.\n"
-        "برای خرید دبیر از «بوفه» وارد بخش «خرید دبیر» شو.\n"
-        "اگر ظرفیت دبیرها پر باشد، یک دبیر را بفروش یا سطح فرمانده را افزایش بده."
+        "🏫 راهنمای مدرسه من\n\n"
+        "👨‍🏫 دبیرها\n"
+        "دبیرهایی که از بوفه می‌خری اینجا دیده می‌شن. می‌تونی ارتقاشون بدی یا در صورت نیاز بفروشی. ظرفیت تیم با سطح فرمانده بیشتر می‌شه.\n\n"
+        "🏰 دژ\n"
+        "دژ از منابعت دفاع می‌کنه. بعد از نبرد آسیبش رو تعمیر کن و برای دفاع قوی‌تر ارتقاش بده.\n\n"
+        "🏥 بیمارستان\n"
+        "دبیر مصدوم رو بستری کن. زمان باقی‌ماندهٔ درمان رو همین‌جا می‌بینی؛ وقتی تمام شد، «ترخیص» رو بزن تا دوباره آمادهٔ نبرد بشه."
     ),
     "buffet": (
-        "🍽 راهنمای بوفه و خرید\n\n"
-        "در بوفه می‌توانی دبیر و سپر بخری یا منابع را تبدیل کنی.\n"
-        "برای خرید دبیر بنویس:\n"
-        "خرید {اسم دبیر}\n\n"
-        "برای خرید سپر بنویس:\n"
-        "خرید سپر {اسم سپر}"
+        "🍽 راهنمای بوفه\n\n"
+        "👨‍🏫 خرید دبیر\n"
+        "فهرست رو باز کن، سطح بازشدن و قیمت رو ببین و بعد خرید رو تأیید کن. در گروه هم می‌تونی بنویسی: خرید فراهانی\n\n"
+        "🛡️ خرید سپر\n"
+        "سپر برای مدت مشخص جلوی حمله به دژت رو می‌گیره. زمان و محدودیت روزانهٔ هر سپر رو پیش از خرید بخون. در گروه: خرید سپر زنگ تفریح\n\n"
+        "🔄 تبدیل منابع\n"
+        "در صرافی طلا رو به الماس یا الماس رو به طلا تبدیل کن. مقدار رو طبق نرخ همان صفحه وارد کن و موجودی جدیدت رو بعد از تأیید ببین."
     ),
     "library": (
         "📚 راهنمای کتابخانه\n\n"
-        "از بخش «کتابخانه» سؤال روزانه، مطالعه و فهرست دبیرها رو ببین.\n"
-        "برای سؤال روزانه فقط یک فرصت پاسخ داری. مطالعهٔ زمان‌دار رو شروع کن و بعد "
-        "از پایان زمان پاداشت رو بگیر. در گروه، پاسخ سؤال گروهی رو با Reply بفرست."
+        "❓ سؤال روزانه\n"
+        "سؤال رو با دقت بخون؛ برای هر سؤال فقط یک بار می‌تونی پاسخ بدی.\n\n"
+        "📖 مطالعه\n"
+        "یک نوبت مطالعه شروع کن. بعد از پایان زمان، دوباره به کتابخانه سر بزن و پاداشت رو بگیر.\n\n"
+        "👨‍🏫 دانشنامه\n"
+        "پروندهٔ دبیرها و سپرها رو پیش از خرید اینجا ببین. برای سؤال گروهی هم روی پیام سؤال Reply بزن."
     ),
     "profile": (
         "🧙 راهنمای پروفایل\n\n"
-        "/profile — منوی پروفایل\n"
-        "/stat — اطلاعات پروفایل\n"
-        "/war — آمار جنگ\n"
-        "/assets — دارایی‌ها\n"
-        "/knowledge — دانش و دعوت‌ها"
+        "از دکمهٔ «پروفایل» شناسنامه، دارایی، کارنامهٔ نبرد و آمار دانش و دعوت‌ها رو باز کن. موزی که به دست میاری برای ارتقای سطح فرمانده مصرف می‌شه.\n\n"
+        "فرمان‌های مستقیم: /stat برای شناسنامه، /war برای جنگ، /assets برای دارایی و /knowledge برای دانش. /profile هم منوی پروفایل رو باز می‌کنه."
     ),
     "mine": (
-        "⛏ راهنمای معدن منابع\n\n"
-        "اولین بار با بازکردن معدن، تولید منابع فعال می‌شه. طلا و الماس آماده رو "
-        "مرتب برداشت کن. ارتقای معدن سرعت تولید رو بیشتر می‌کنه و به سطح فرمانده و "
-        "الماس نیاز داره."
+        "⛏️ راهنمای معدن منابع\n\n"
+        "اولین بازدیدت تولید رو فعال می‌کنه و هدیهٔ شروع معدن رو می‌ده. بعد از اون، هر وقت محموله آماده بود طلا و الماس رو برداشت کن.\n\n"
+        "📈 ارتقای معدن\n"
+        "ارتقا تولید رو بیشتر می‌کنه؛ برای هر سطح، مقدار الماس و سطح فرماندهٔ لازم در پیش‌نمایش نشون داده می‌شه."
     ),
     "referral": (
         "👥 راهنمای دعوت دوستان\n\n"
-        "با /referral لینک اختصاصی خودت رو بگیر و برای دوست‌هات بفرست. هر دعوت "
-        f"موفق {game_config.referral_reward_amount} الماس به معرف می‌دهد و در بخش دانش پروفایل ثبت می‌شه."
+        "با /referral لینک مخصوص خودت رو بگیر و برای دوستت بفرست. وقتی با همون لینک برای اولین بار وارد بازی بشه، "
+        f"هر دعوت موفق {game_config.referral_reward_amount} الماس به معرف می‌دهد. تعداد دعوت‌های موفق رو هم در بخش دانش پروفایل می‌بینی."
     ),
     "slogans": (
-        "🎯 شعارهای قابل استفاده\n\n"
+        "🎯 شعارهایی که پاداش می‌دن\n\n"
         + "\n".join(f"{index}. «{slogan}»" for index, slogan in enumerate(SLOGANS, 1))
-        + f"\n\nهر {game_config.slogan_cooldown_seconds // 60} دقیقه یکی از این شعارها رو بگو "
-        f"و {game_config.slogan_reward_banana} موز بگیر."
+        + f"\n\nهر {game_config.slogan_cooldown_seconds // 60} دقیقه یکی از این شعارها رو بفرست "
+        f"تا {game_config.slogan_reward_banana} موز بگیری."
     ),
 }
+HELP_TEXTS = {section: rich_banner(body) for section, body in HELP_TEXTS.items()}
 
 
 async def _membership_status(
@@ -263,13 +250,16 @@ async def _initialize_and_show_menu(
             await target.message.answer(
                 greeting,
                 reply_markup=main_menu_keyboard(),
+                parse_mode=MARKDOWN_V2,
             )
         except TelegramAPIError:
             logger.exception("Could not send main menu after callback")
             return False
     else:
         try:
-            await target.answer(greeting, reply_markup=main_menu_keyboard())
+            await target.answer(
+                greeting, reply_markup=main_menu_keyboard(), parse_mode=MARKDOWN_V2
+            )
         except TelegramAPIError:
             logger.exception("Could not send main menu message")
             return False
@@ -277,20 +267,27 @@ async def _initialize_and_show_menu(
         if isinstance(target, CallbackQuery) or hasattr(target, "message"):
             if target.message is not None:
                 await target.message.answer(
-                    FIRST_LOGIN_GUIDE, reply_markup=first_login_guide_keyboard()
+                    FIRST_LOGIN_GUIDE,
+                    reply_markup=first_login_guide_keyboard(),
+                    parse_mode=MARKDOWN_V2,
                 )
         else:
             await target.answer(
-                FIRST_LOGIN_GUIDE, reply_markup=first_login_guide_keyboard()
+                FIRST_LOGIN_GUIDE,
+                reply_markup=first_login_guide_keyboard(),
+                parse_mode=MARKDOWN_V2,
             )
     if isinstance(target, CallbackQuery) or hasattr(target, "message"):
         if target.message is not None:
             await target.message.answer(
                 HELP_MENU_TEXT,
                 reply_markup=help_keyboard(),
+                parse_mode=MARKDOWN_V2,
             )
     else:
-        await target.answer(HELP_MENU_TEXT, reply_markup=help_keyboard())
+        await target.answer(
+            HELP_MENU_TEXT, reply_markup=help_keyboard(), parse_mode=MARKDOWN_V2
+        )
     if referral_notice:
         if isinstance(target, CallbackQuery):
             if target.message is not None:
@@ -322,6 +319,7 @@ async def start_handler(
         await message.answer(
             join_message(),
             reply_markup=join_channel_keyboard(subscription_service),
+            parse_mode=MARKDOWN_V2,
         )
         return
 
@@ -342,7 +340,9 @@ async def start_handler(
 
 @router.message(Command("help"))
 async def help_handler(message: Message) -> None:
-    await message.answer(HELP_MENU_TEXT, reply_markup=help_keyboard())
+    await message.answer(
+        HELP_MENU_TEXT, reply_markup=help_keyboard(), parse_mode=MARKDOWN_V2
+    )
 
 
 @router.callback_query(FirstLoginCallback.filter())
@@ -355,9 +355,12 @@ async def first_login_confirmation_handler(
     if callback.message is not None:
         await safe_edit_text(
             callback.message,
-            "✅ مأموریت شروع فعال شد!\n\n"
-            "اولین مقصد: «⛏ معدن منابع» — برو که قلمرو منتظرته، فرمانده 🔥",
+            rich_banner(
+                "✅ مأموریت اول شروع شد!\n\n"
+                "اول برو سراغ «معدن منابع» تا تولید و هدیهٔ دوم فعال بشه. بعد توی بوفه اولین دبیرت رو بخر."
+            ),
             reply_markup=None,
+            parse_mode=MARKDOWN_V2,
         )
     await callback.answer("آماده‌ایم؛ بزن بریم! 🚀")
 
@@ -375,6 +378,7 @@ async def help_callback_handler(
         callback.message,
         text,
         reply_markup=help_keyboard(),
+        parse_mode=MARKDOWN_V2,
     )
     await callback.answer()
 
@@ -408,6 +412,7 @@ async def check_membership_handler(
                 callback.message,
                 join_message(),
                 reply_markup=join_channel_keyboard(subscription_service),
+                parse_mode=MARKDOWN_V2,
             )
         except TelegramAPIError:
             logger.exception("Could not restore channel join prompt")
@@ -456,6 +461,7 @@ async def main_menu_handler(
         await message.answer(
             join_message(),
             reply_markup=join_channel_keyboard(subscription_service),
+            parse_mode=MARKDOWN_V2,
         )
         return
 

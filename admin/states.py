@@ -51,6 +51,7 @@ class ShieldStates(StatesGroup):
     duration_minutes = State()
     daily_limit = State()
     description = State()
+    emoji = State()
     edit_value = State()
 
 

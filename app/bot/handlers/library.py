@@ -19,7 +19,6 @@ from app.bot.callbacks import (
     LibraryTeacherCallback,
     StudyCallback,
 )
-from app.bot.keyboards.buffet import SHIELD_ICONS
 from app.bot.keyboards.library import (
     answer_keyboard,
     library_keyboard,
@@ -30,6 +29,7 @@ from app.bot.keyboards.library import (
     teacher_library_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, section_back_keyboard
+from app.bot.shield_presentation import shield_icon
 from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import safe_edit_text
 from app.services.library_errors import (
@@ -293,7 +293,7 @@ def _shield_library_text() -> str:
 
 
 def _shield_library_detail_text(shield) -> str:
-    icon = emoji(SHIELD_ICONS.get(shield.name, "5825861861278490879"), "🛡️")
+    icon = shield_icon(shield)
     currency = "الماس" if shield.purchase_resource.value == "DIAMOND" else "طلا"
     return (
         f"{icon} {bold(shield.name)}\n\n"

@@ -9,7 +9,7 @@ from app.bot.callbacks import (
     StudyCallback,
 )
 from app.bot.custom_emojis import premium_emoji_id
-from app.bot.keyboards.buffet import SHIELD_ICONS
+from app.bot.shield_presentation import shield_button_label, shield_emoji_id
 from app.models.shield import Shield
 from app.models.study_pack import StudyPack
 from app.models.teacher import Teacher
@@ -50,10 +50,8 @@ def shield_library_keyboard(shields: Sequence[Shield]) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
-                text=shield.name,
-                icon_custom_emoji_id=SHIELD_ICONS.get(
-                    shield.name, "5825861861278490879"
-                ),
+                text=shield_button_label(shield),
+                icon_custom_emoji_id=shield_emoji_id(shield),
                 callback_data=LibraryShieldCallback(
                     action="view", shield_id=shield.id
                 ).pack(),
