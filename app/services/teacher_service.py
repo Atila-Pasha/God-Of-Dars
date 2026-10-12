@@ -109,6 +109,27 @@ class TeacherService:
     async def catalog(self, session: AsyncSession, user_id: int) -> list[Teacher]:
         return await self.repository.list_catalog(session, user_id)
 
+    async def buyable_catalog(
+        self, session: AsyncSession, user_id: int
+    ) -> list[Teacher]:
+        user = await self.repository.get_user(session, user_id)
+        resources = await self.repository.get_resources(session, user_id)
+        if user is None or resources is None:
+            return []
+        capacity = await self.capacity(session, user_id)
+        catalog = await self.catalog(session, user_id)
+        return [
+            teacher
+            for teacher in catalog
+            if teacher.is_active
+            and teacher.purchase_price >= 0
+            and user.level >= teacher.unlock_level
+            and capacity.can_fit(self.capacity_weight(teacher))
+            and teacher.purchase_resource in {ResourceType.COIN, ResourceType.DIAMOND}
+            and getattr(resources, teacher.purchase_resource.value.lower())
+            >= teacher.purchase_price
+        ]
+
     async def public_teachers(self, session: AsyncSession) -> list[Teacher]:
         return await self.repository.list_public(session)
 

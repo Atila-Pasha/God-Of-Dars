@@ -29,7 +29,15 @@ def test_group_policy_allows_profile_aliases_and_god() -> None:
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/leaderbord")
     )
-    for text in ("فروش فراهانی", "درمان فراهانی"):
+    for text in (
+        "فروش فراهانی",
+        "درمان فراهانی",
+        "دبیر های مجاز",
+        "دبیرهای مجاز",
+        "چه دبیر هایی رو میتونم بخرم؟",
+        "چه دبیر هایی رو میتونم بخرم",
+        "چه دبیرهایی رو می‌تونم بخرم؟",
+    ):
         assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
 
 

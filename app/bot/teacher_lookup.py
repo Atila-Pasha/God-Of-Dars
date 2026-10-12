@@ -1,8 +1,13 @@
 """Resolve group teacher names without silently choosing an ambiguous surname."""
 
+import re
 from collections.abc import Iterable
 
 from app.models.teacher import Teacher
+
+BUYABLE_TEACHERS_QUERY = re.compile(
+    r"^\s*(?:دبیر[\s\u200c]*های\s+مجاز|چه\s+دبیر[\s\u200c]*هایی\s+رو\s+می[\s\u200c]*تونم\s+بخرم)\s*[؟?]?\s*$"
+)
 
 
 def _normalized(value: str) -> str:

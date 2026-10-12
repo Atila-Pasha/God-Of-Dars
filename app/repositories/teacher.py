@@ -54,6 +54,14 @@ class TeacherRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_resources(
+        self, session: AsyncSession, user_id: int
+    ) -> Resource | None:
+        result = await session.execute(
+            select(Resource).where(Resource.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+
     async def count_owned(self, session: AsyncSession, user_id: int) -> int:
         result = await session.execute(
             select(func.count(UserTeacher.id)).where(UserTeacher.user_id == user_id)

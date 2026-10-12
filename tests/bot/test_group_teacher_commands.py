@@ -72,3 +72,41 @@ async def test_group_heal_starts_standard_recovery(monkeypatch) -> None:
 
     begin.assert_awaited_once()
     assert "آغاز شد" in message.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_group_buyable_teachers_lists_only_name_ability_and_teacher_emoji(
+    monkeypatch,
+) -> None:
+    message = _message("چه دبیر هایی رو میتونم بخرم؟")
+    teachers = [
+        SimpleNamespace(name="فراهانی", emoji="🔥", ability_text="ضربه *ویژه*"),
+        SimpleNamespace(name="احمدی", emoji="🦉", ability_text=None),
+    ]
+    monkeypatch.setattr(school, "_user", AsyncMock(return_value=SimpleNamespace(id=1)))
+    catalog = AsyncMock(return_value=teachers)
+    monkeypatch.setattr(school.teacher_service, "buyable_catalog", catalog)
+
+    await school.group_buyable_teachers(message, AsyncMock())
+
+    catalog.assert_awaited_once()
+    output = message.answer.await_args.args[0]
+    assert "فراهانی" in output and "احمدی" in output
+    assert "ضربه \\*ویژه\\*" in output
+    assert "ثبت نشده" in output
+    assert "tg://emoji?id=" in output
+    assert "قیمت" not in output and "ظرفیت" not in output
+    assert message.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
+
+
+@pytest.mark.asyncio
+async def test_group_buyable_teachers_empty(monkeypatch) -> None:
+    message = _message("دبیر های مجاز")
+    monkeypatch.setattr(school, "_user", AsyncMock(return_value=SimpleNamespace(id=1)))
+    monkeypatch.setattr(
+        school.teacher_service, "buyable_catalog", AsyncMock(return_value=[])
+    )
+
+    await school.group_buyable_teachers(message, AsyncMock())
+
+    assert "دبیری برای خرید نداری" in message.answer.await_args.args[0]

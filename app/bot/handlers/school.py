@@ -52,7 +52,7 @@ from app.bot.keyboards.school import (
     teachers_keyboard,
 )
 from app.bot.progress import premium_capacity_bar, premium_progress_bar
-from app.bot.teacher_lookup import matching_teachers
+from app.bot.teacher_lookup import BUYABLE_TEACHERS_QUERY, matching_teachers
 from app.bot.utils.telegram import (
     group_user_request,
     report_group_purchase_failure,
@@ -537,6 +537,41 @@ async def _group_owned_teacher(message: Message, session: AsyncSession, name: st
         await message.answer("دبیری با این نام در مدرسه‌ات پیدا نشد.")
         return user, None
     return user, next(item for item in owned if item.teacher.id == matches[0].id)
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(BUYABLE_TEACHERS_QUERY.pattern),
+)
+async def group_buyable_teachers(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+    try:
+        user = await _user(session, message.from_user.id)
+        teachers = await teacher_service.buyable_catalog(session, user.id)
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.")
+        return
+    if not teachers:
+        await message.answer(
+            "الان با سطح، ظرفیت و موجودی فعلی‌ات دبیری برای خرید نداری."
+        )
+        return
+    heading = f"{bold('دبیرهای قابل خرید:')}\n\n"
+    response = heading
+    for teacher in teachers:
+        ability = " ".join((teacher.ability_text or "ثبت نشده").split())
+        if len(ability) > 500:
+            ability = ability[:499] + "…"
+        entry = (
+            f"{teacher_icon(teacher.emoji)} {bold(teacher.name)}\n"
+            f"توانایی: {escape(ability)}"
+        )
+        if len(response) + len(entry) + 2 > 3500 and response != heading:
+            await message.answer(response, parse_mode=MARKDOWN_V2)
+            response = heading
+        response += ("\n\n" if response != heading else "") + entry
+    await message.answer(response, parse_mode=MARKDOWN_V2)
 
 
 @router.message(
