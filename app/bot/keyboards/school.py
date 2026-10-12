@@ -147,6 +147,23 @@ def confirmation_keyboard(
     )
 
 
+def teacher_purchase_back_keyboard(
+    *, origin: TeacherOrigin, page: int
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="بازگشت به فهرست دبیرها",
+                    callback_data=TeacherCallback(
+                        action="page", teacher_id=0, origin=origin, page=page
+                    ).pack(),
+                )
+            ]
+        ]
+    )
+
+
 def teachers_keyboard(
     teachers: list[UserTeacher],
     catalog: list[Teacher],

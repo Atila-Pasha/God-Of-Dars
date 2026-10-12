@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from app.bot.banners import attack_preview_banner, attack_result_banner, purchase_banner
 from app.bot.handlers.library import _teacher_detail_content
 from app.services.attack_service import AttackPreview, AttackResult
+from app.services.teacher_service import TeacherCapacity
 
 
 def test_purchase_banner_escapes_teacher_data_and_uses_custom_emoji() -> None:
@@ -22,6 +23,30 @@ def test_purchase_banner_escapes_teacher_data_and_uses_custom_emoji() -> None:
     assert "ملخک‌ها \\`قوی\\`" in text
     assert "سطح بازشدن: 3" in text
     assert "> سطح بازشدن: 3" in text
+
+
+def test_purchase_banner_shows_teacher_weight_and_after_purchase_capacity() -> None:
+    teacher = SimpleNamespace(
+        name="قضاتی",
+        ability_text=None,
+        emoji=None,
+        purchase_resource=SimpleNamespace(value="COIN"),
+        purchase_price=250,
+        unlock_level=1,
+        damage=100,
+    )
+    capacity = TeacherCapacity(owned=5, available=10, maximum=100, percent_based=True)
+
+    full = purchase_banner(teacher, capacity=capacity, weight=9)
+    assert "سهم این دبیر از ظرفیت" in full
+    assert "9%" in full and "5% از 10%" in full
+    assert "14% از 10%" in full
+    assert "ظرفیت کافی نیست" in full
+    assert "آیا خرید" not in full
+
+    fitting = purchase_banner(teacher, capacity=capacity, weight=5)
+    assert "10% از 10%" in fitting
+    assert "آیا خرید" in fitting
 
 
 def test_attack_preview_lists_teachers_without_icon_gap_or_summary() -> None:

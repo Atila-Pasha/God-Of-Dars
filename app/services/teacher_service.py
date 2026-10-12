@@ -32,6 +32,12 @@ class TeacherCapacity:
     maximum: int | None
     percent_based: bool = False
 
+    def can_fit(self, weight: int) -> bool:
+        after = self.owned + weight
+        return after <= self.available and (
+            self.maximum is None or after <= self.maximum
+        )
+
 
 @dataclass(frozen=True)
 class TeacherAttackSnapshot:
@@ -75,6 +81,16 @@ class TeacherService:
             available=self.config.teacher_slots(user.level),
             maximum=self.config.ownership_limit,
         )
+
+    def capacity_weight(self, teacher: Teacher) -> int:
+        if self.config.teacher_capacity_percent_enabled:
+            return self.config.teacher_weight_percent(teacher.damage)
+        return 1
+
+    async def is_owned(
+        self, session: AsyncSession, user_id: int, teacher_id: int
+    ) -> bool:
+        return await self.repository.is_owned(session, user_id, teacher_id)
 
     async def owned(self, session: AsyncSession, user_id: int) -> list[UserTeacher]:
         return await self.repository.list_owned(session, user_id)
@@ -142,8 +158,8 @@ class TeacherService:
 
         if self.config.teacher_capacity_percent_enabled:
             capacity = await self.capacity(session, user_id)
-            weight = self.config.teacher_weight_percent(teacher.damage)
-            if capacity.owned + weight > capacity.available:
+            weight = self.capacity_weight(teacher)
+            if not capacity.can_fit(weight):
                 raise TeacherSlotLocked
         else:
             owned_count = await self.repository.count_owned(session, user_id)

@@ -12,6 +12,7 @@ from app.services.school_errors import (
     ShieldAlreadyActive,
     TeacherSlotLocked,
 )
+from app.services.teacher_service import TeacherCapacity
 
 
 def group_message(text: str) -> SimpleNamespace:
@@ -45,18 +46,27 @@ async def test_group_teacher_purchase_opens_confirmation_without_private_menu(
     monkeypatch,
 ) -> None:
     message = group_message("خرید فراهانی")
-    teacher = SimpleNamespace(id=17, name="پارسا فراهانی")
+    teacher = SimpleNamespace(id=17, name="پارسا فراهانی", unlock_level=1)
     monkeypatch.setattr(
         buffet.user_service,
         "get_active_by_telegram_user_id",
-        AsyncMock(return_value=SimpleNamespace(level=10)),
+        AsyncMock(return_value=SimpleNamespace(id=5, level=10)),
     )
     monkeypatch.setattr(
         buffet.teacher_service,
         "public_teachers",
         AsyncMock(return_value=[teacher]),
     )
-    monkeypatch.setattr(buffet, "purchase_banner", lambda item: item.name)
+    monkeypatch.setattr(buffet, "purchase_banner", lambda item, **kwargs: item.name)
+    monkeypatch.setattr(
+        buffet.teacher_service,
+        "capacity",
+        AsyncMock(return_value=TeacherCapacity(5, 50, 100, True)),
+    )
+    monkeypatch.setattr(buffet.teacher_service, "capacity_weight", lambda item: 9)
+    monkeypatch.setattr(
+        buffet.teacher_service, "is_owned", AsyncMock(return_value=False)
+    )
     shield_catalog = AsyncMock()
     monkeypatch.setattr(buffet.shield_service, "catalog", shield_catalog)
 
@@ -68,6 +78,71 @@ async def test_group_teacher_purchase_opens_confirmation_without_private_menu(
         "confirm:teacher_buy:17"
     )
     shield_catalog.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_group_teacher_purchase_without_capacity_has_no_confirm_button(
+    monkeypatch,
+) -> None:
+    message = group_message("خرید فراهانی")
+    teacher = SimpleNamespace(
+        id=17,
+        name="پارسا فراهانی",
+        unlock_level=1,
+        damage=100,
+        emoji=None,
+        ability_text=None,
+        purchase_price=200,
+        purchase_resource=ResourceType.COIN,
+    )
+    monkeypatch.setattr(
+        buffet.user_service,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(id=5, level=2)),
+    )
+    monkeypatch.setattr(
+        buffet.teacher_service, "public_teachers", AsyncMock(return_value=[teacher])
+    )
+    monkeypatch.setattr(
+        buffet.teacher_service,
+        "capacity",
+        AsyncMock(return_value=TeacherCapacity(5, 10, 100, True)),
+    )
+    monkeypatch.setattr(
+        buffet.teacher_service, "is_owned", AsyncMock(return_value=False)
+    )
+
+    await buffet.group_purchase_message(message, AsyncMock())
+
+    assert "9%" in message.answer.await_args.args[0]
+    assert "14% از 10%" in message.answer.await_args.args[0]
+    assert message.answer.await_args.kwargs["reply_markup"] is None
+
+
+@pytest.mark.asyncio
+async def test_group_purchase_of_owned_teacher_stops_before_capacity_preview(
+    monkeypatch,
+) -> None:
+    message = group_message("خرید فراهانی")
+    teacher = SimpleNamespace(id=17, name="پارسا فراهانی", unlock_level=1)
+    monkeypatch.setattr(
+        buffet.user_service,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(id=5, level=10)),
+    )
+    monkeypatch.setattr(
+        buffet.teacher_service, "public_teachers", AsyncMock(return_value=[teacher])
+    )
+    monkeypatch.setattr(
+        buffet.teacher_service, "is_owned", AsyncMock(return_value=True)
+    )
+    capacity = AsyncMock()
+    monkeypatch.setattr(buffet.teacher_service, "capacity", capacity)
+
+    await buffet.group_purchase_message(message, AsyncMock())
+
+    assert "قبلاً" in message.answer.await_args.args[0]
+    capacity.assert_not_awaited()
 
 
 @pytest.mark.asyncio

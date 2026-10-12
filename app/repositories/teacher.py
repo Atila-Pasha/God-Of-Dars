@@ -60,6 +60,19 @@ class TeacherRepository:
         )
         return int(result.scalar_one())
 
+    async def is_owned(
+        self, session: AsyncSession, user_id: int, teacher_id: int
+    ) -> bool:
+        result = await session.scalar(
+            select(UserTeacher.id)
+            .where(
+                UserTeacher.user_id == user_id,
+                UserTeacher.teacher_id == teacher_id,
+            )
+            .limit(1)
+        )
+        return result is not None
+
     async def list_owned_power(
         self, session: AsyncSession, user_id: int
     ) -> list[tuple[int, int, int]]:

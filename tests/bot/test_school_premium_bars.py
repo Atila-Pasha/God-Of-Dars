@@ -8,10 +8,14 @@ from app.bot.keyboards.mine import mine_keyboard
 
 
 def test_school_capacity_bar_uses_green_premium_pieces() -> None:
-    bar = school._progress_bar(2, 30)
+    label, bar = school._capacity_banner(5, 10, percent_based=True).split("\n")
 
+    assert "5% از 10%" in label
+    assert "tg://emoji" not in label
+    assert bar.count("tg://emoji?id=") == 6
     assert "tg://emoji?id=594" in bar
     assert "tg://emoji?id=593" in bar
+    assert ") ![" in bar
     assert "█" not in bar and "░" not in bar
     assert bar.startswith("\u2066") and bar.endswith("\u2069")
 

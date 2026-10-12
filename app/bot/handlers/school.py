@@ -48,9 +48,10 @@ from app.bot.keyboards.school import (
     teacher_catalog_keyboard,
     teacher_catalog_page_keyboard,
     teacher_detail_keyboard,
+    teacher_purchase_back_keyboard,
     teachers_keyboard,
 )
-from app.bot.progress import premium_progress_bar
+from app.bot.progress import premium_capacity_bar, premium_progress_bar
 from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import (
     group_user_request,
@@ -123,6 +124,15 @@ def _duration_text(minutes: int | None) -> str:
 
 def _progress_bar(value: int, maximum: int, *, width: int = 8) -> str:
     return premium_progress_bar(value, maximum, width=width)
+
+
+def _capacity_banner(used: int, allowed: int, *, percent_based: bool) -> str:
+    unit = "%" if percent_based else ""
+    return (
+        f"{escape('استفاده‌شده:')} "
+        f"{bold(f'{used}{unit} از {allowed}{unit} مجاز')}\n"
+        f"{premium_capacity_bar(used, allowed)}"
+    )
 
 
 def _progress_percent(value: int, maximum: int) -> str:
@@ -288,9 +298,7 @@ async def _school_view(
         if user.level < castle_service.config.level_progression.max_level
         else "مسیر پیشرفت فرمانده"
     )
-    progress = _progress_bar(capacity.owned, capacity.available)
-    percentage = _progress_percent(capacity.owned, capacity.available)
-    unit = "%" if getattr(capacity, "percent_based", False) else ""
+    percent_based = getattr(capacity, "percent_based", False)
     text = (
         f"{SCHOOL} {bold('ستاد فرماندهی مدرسه')} {QUESTION}\n"
         "─────────────────────\n"
@@ -299,9 +307,8 @@ async def _school_view(
         f"{unlocks}\n\n"
         f"{FORT} سطح دژ: {escape(_number(castle.level))}\n"
         f"{emoji('5915633360734002967', '🛡️')} قدرت دفاعی: {escape(_number(castle.strength + castle.defense_power))}\n\n"
-        f"● {bold('ظرفیت تیم دبیرها از کل ۱۰۰٪' if getattr(capacity, 'percent_based', False) else 'ظرفیت تیم دبیرها')}\n"
-        f"{progress}  {escape(f'{capacity.owned}{unit} / {capacity.available}{unit}')} "
-        f"{escape(f'({percentage} از ظرفیت فعلی)') if getattr(capacity, 'percent_based', False) else escape(f'({percentage})')}"
+        f"● {bold('ظرفیت تیم دبیرها از کل ۱۰۰٪' if percent_based else 'ظرفیت تیم دبیرها')}\n"
+        f"{_capacity_banner(capacity.owned, capacity.available, percent_based=percent_based)}"
     )
     if isinstance(target, Message):
         await target.answer(
@@ -363,18 +370,16 @@ async def _teachers_view(
     capacity = await teacher_service.capacity(session, user.id)
     teachers = await teacher_service.owned(session, user.id)
     catalog = await teacher_service.catalog(session, user.id)
-    unit = "%" if getattr(capacity, "percent_based", False) else ""
+    percent_based = getattr(capacity, "percent_based", False)
     text_lines = [
         f"{emoji('5825625629487276345', '👨‍🏫')} {bold('تیم دبیرهای من')}",
         "",
         f"{LEVEL} سطح شما: {escape(_number(user.level))}",
         "",
         f"{emoji('5825667690102006523', '📊')} "
-        f"{'ظرفیت استفاده‌شده از کل ۱۰۰٪:' if getattr(capacity, 'percent_based', False) else 'ظرفیت استفاده‌شده:'}",
-        (
-            f"{_progress_bar(capacity.owned, capacity.available)}  "
-            f"{escape(f'{capacity.owned}{unit} / {capacity.available}{unit}')} "
-            f"{escape(f'({_progress_percent(capacity.owned, capacity.available)})')}"
+        f"{'ظرفیت تیم از کل ۱۰۰٪:' if percent_based else 'ظرفیت تیم:'}",
+        _capacity_banner(
+            capacity.owned, capacity.available, percent_based=percent_based
         ),
         "",
     ]
@@ -795,24 +800,34 @@ async def teacher_callback_handler(
             teacher = await teacher_service.catalog_teacher(
                 session, callback_data.teacher_id
             )
-            if callback_data.origin == "buffet":
-                await _send_or_edit(
-                    callback,
-                    purchase_banner(teacher),
-                    reply_markup=confirmation_keyboard(
-                        action="teacher_buy", target_id=teacher.id, origin="buffet"
-                    ),
-                    parse_mode=MARKDOWN_V2,
-                )
-                await callback.answer()
+            if not teacher.is_active:
+                await callback.answer("این دبیر دیگر قابل خرید نیست.", show_alert=True)
                 return
+            if user.level < teacher.unlock_level:
+                await callback.answer(
+                    f"این دبیر از سطح {teacher.unlock_level} قابل خرید است.",
+                    show_alert=True,
+                )
+                return
+            if await teacher_service.is_owned(session, user.id, teacher.id):
+                await callback.answer("این دبیر را قبلاً خریده‌ای.", show_alert=True)
+                return
+            capacity = await teacher_service.capacity(session, user.id)
+            weight = teacher_service.capacity_weight(teacher)
+            can_buy = capacity.can_fit(weight)
             await _send_or_edit(
                 callback,
-                purchase_banner(teacher),
-                reply_markup=confirmation_keyboard(
-                    action="teacher_buy",
-                    target_id=teacher.id,
-                    origin=callback_data.origin,
+                purchase_banner(teacher, capacity=capacity, weight=weight),
+                reply_markup=(
+                    confirmation_keyboard(
+                        action="teacher_buy",
+                        target_id=teacher.id,
+                        origin=callback_data.origin,
+                    )
+                    if can_buy
+                    else teacher_purchase_back_keyboard(
+                        origin=callback_data.origin, page=callback_data.page
+                    )
                 ),
                 parse_mode=MARKDOWN_V2,
             )

@@ -183,10 +183,24 @@ async def group_purchase_message(
                 await message.answer("دبیری با این نام پیدا نشد.")
                 return
             teacher = teachers[0]
+            if user.level < teacher.unlock_level:
+                await message.answer(
+                    f"دبیر «{teacher.name}» از سطح {teacher.unlock_level} باز می‌شود."
+                )
+                return
+            if await teacher_service.is_owned(session, user.id, teacher.id):
+                await message.answer("این دبیر را قبلاً خریده‌ای.")
+                return
+            capacity = await teacher_service.capacity(session, user.id)
+            weight = teacher_service.capacity_weight(teacher)
             await message.answer(
-                purchase_banner(teacher),
-                reply_markup=confirmation_keyboard(
-                    action="teacher_buy", target_id=teacher.id, origin="buffet"
+                purchase_banner(teacher, capacity=capacity, weight=weight),
+                reply_markup=(
+                    confirmation_keyboard(
+                        action="teacher_buy", target_id=teacher.id, origin="buffet"
+                    )
+                    if capacity.can_fit(weight)
+                    else None
                 ),
                 reply_to_message_id=message.message_id,
                 parse_mode=MARKDOWN_V2,

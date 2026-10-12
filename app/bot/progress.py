@@ -1,5 +1,7 @@
 """Premium custom-emoji progress bars for Persian Telegram banners."""
 
+from math import ceil
+
 from app.bot.banners import emoji
 
 _EMPTY = ("5931534188657254206", "5933785859621920322", "5931275038920548077")
@@ -9,6 +11,17 @@ _PARTIAL = (
     ("5947466314007192098", "5947256955826363081", "5949707002740481824"),
     ("5949257543002889576", "5949513969730330381", "5947323523524468309"),
 )
+
+
+def premium_capacity_bar(used: int, allowed: int, *, width: int = 6) -> str:
+    """A compact bar with separated premium cells for RTL capacity banners."""
+    width = max(2, width)
+    filled = min(width, max(0, ceil(width * used / max(1, allowed))))
+    cells = [
+        emoji(_FULL[1], "🟩") if index >= width - filled else emoji(_EMPTY[1], "⬜")
+        for index in range(width)
+    ]
+    return f"\u2066{' '.join(cells)}\u2069"
 
 
 def premium_progress_bar(

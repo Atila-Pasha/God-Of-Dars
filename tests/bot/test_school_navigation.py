@@ -13,6 +13,7 @@ from app.bot.handlers import profile, school
 from app.bot.keyboards.school import school_keyboard
 from app.services.recovery_service import HospitalSnapshot
 from app.services.school_errors import CastleNeedsRepair
+from app.services.teacher_service import TeacherCapacity
 
 
 def callback() -> SimpleNamespace:
@@ -68,6 +69,63 @@ def test_school_buttons_use_requested_custom_emojis() -> None:
         "دبیرها",
         "5915633360734002967",
     )
+
+
+@pytest.mark.asyncio
+async def test_teacher_purchase_preview_shows_capacity_and_returns_to_page_when_full(
+    monkeypatch,
+) -> None:
+    target = callback()
+    teacher = SimpleNamespace(
+        id=7,
+        name="قضاتی",
+        unlock_level=1,
+        is_active=True,
+        damage=100,
+        emoji=None,
+        ability_text=None,
+        purchase_price=250,
+        purchase_resource=SimpleNamespace(value="COIN"),
+    )
+    monkeypatch.setattr(
+        school, "_user", AsyncMock(return_value=SimpleNamespace(id=10, level=2))
+    )
+    monkeypatch.setattr(
+        school.teacher_service,
+        "catalog_teacher",
+        AsyncMock(return_value=teacher),
+    )
+    monkeypatch.setattr(
+        school.teacher_service,
+        "capacity",
+        AsyncMock(return_value=TeacherCapacity(5, 10, 100, True)),
+    )
+    monkeypatch.setattr(
+        school.teacher_service, "is_owned", AsyncMock(return_value=False)
+    )
+    send = AsyncMock()
+    monkeypatch.setattr(school, "_send_or_edit", send)
+
+    await school.teacher_callback_handler(
+        target,
+        TeacherCallback(action="buy", teacher_id=7, origin="buffet", page=2),
+        AsyncMock(),
+    )
+
+    text = send.await_args.args[1]
+    assert "9%" in text and "14% از 10%" in text
+    button = send.await_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert TeacherCallback.unpack(button.callback_data).action == "page"
+    assert TeacherCallback.unpack(button.callback_data).page == 2
+
+    school.teacher_service.capacity.return_value = TeacherCapacity(0, 10, 100, True)
+    await school.teacher_callback_handler(
+        target,
+        TeacherCallback(action="buy", teacher_id=7, origin="buffet", page=2),
+        AsyncMock(),
+    )
+    button = send.await_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert ConfirmationCallback.unpack(button.callback_data).action == "teacher_buy"
 
 
 @pytest.mark.asyncio

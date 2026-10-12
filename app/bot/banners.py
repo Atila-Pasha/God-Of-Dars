@@ -11,6 +11,7 @@ from app.core.game_logic import game_config
 if TYPE_CHECKING:
     from app.models.teacher import Teacher
     from app.services.attack_service import AttackPreview, AttackResult
+    from app.services.teacher_service import TeacherCapacity
 
 MARKDOWN_V2 = "MarkdownV2"
 _SPECIAL = re.compile(r"([\\_*\[\]()~`>#+\-=|{}.!])")
@@ -162,7 +163,12 @@ def attack_launch_banner(
     )
 
 
-def purchase_banner(teacher: Teacher) -> str:
+def purchase_banner(
+    teacher: Teacher,
+    *,
+    capacity: TeacherCapacity | None = None,
+    weight: int | None = None,
+) -> str:
     resource = getattr(teacher.purchase_resource, "value", teacher.purchase_resource)
     currency = "الماس" if resource == "DIAMOND" else "طلا"
     currency_icon = DIAMOND if currency == "الماس" else COIN
@@ -173,23 +179,40 @@ def purchase_banner(teacher: Teacher) -> str:
         .replace("\\", "\\\\")
         .replace("`", r"\`")
     )
-    capacity_line = ""
-    if (
-        game_config.teacher_capacity_percent_enabled
-        and getattr(teacher, "damage", None) is not None
-    ):
-        capacity_line = (
+    if weight is None and getattr(teacher, "damage", None) is not None:
+        weight = game_config.teacher_weight_percent(teacher.damage)
+    capacity_lines = []
+    if weight is not None and (capacity is None or capacity.percent_based):
+        capacity_lines.append(
             f"{emoji('5825920844064366385', '📊')} "
-            f"{bold('سهم از ظرفیت دبیرها')}: "
-            f"{escape(f'{game_config.teacher_weight_percent(teacher.damage)}%')}\n"
+            f"{bold('سهم این دبیر از ظرفیت')}: {escape(f'{weight}%')}"
         )
+    if capacity is not None:
+        unit = "%" if capacity.percent_based else ""
+        capacity_lines.extend(
+            (
+                f"{escape('ظرفیت فعلی شما:')} "
+                f"{escape(f'{capacity.owned}{unit} از {capacity.available}{unit} مجاز')}",
+                f"{escape('پس از خرید:')} "
+                f"{escape(f'{capacity.owned + (weight or 1)}{unit} از {capacity.available}{unit} مجاز')}",
+            )
+        )
+    capacity_text = "\n".join(capacity_lines)
+    if capacity_text:
+        capacity_text += "\n"
+    can_buy = capacity is None or capacity.can_fit(weight or 1)
     return (
         f"{teacher_icon(teacher.emoji)}    خرید دبیر «{bold(teacher.name)}»\n\n"
         f"● توانایی دبیر: `﹙{ability}﹚`\n\n"
         f"{currency_icon} {bold('قیمت')}: {escape(teacher.purchase_price)} {escape(currency)}\n"
-        f"{capacity_line}"
+        f"{capacity_text}"
         f"> سطح بازشدن: {escape(teacher.unlock_level)}\n\n"
-        f"{CONFIRM} {bold('آیا خرید این دبیر را تأیید می‌کنید؟')}"
+        + (
+            f"{CONFIRM} {bold('آیا خرید این دبیر را تأیید می‌کنید؟')}"
+            if can_buy
+            else f"{emoji('5825504038963125908', '❌')} "
+            f"{bold('ظرفیت کافی نیست؛ دبیر بفروش یا سطح فرمانده را بالا ببر.')}"
+        )
     )
 
 
