@@ -26,11 +26,13 @@ def school_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🏰 دژ",
+                    text="دژ",
+                    icon_custom_emoji_id="5825546447470206916",
                     callback_data=SchoolCallback(action="castle").pack(),
                 ),
                 InlineKeyboardButton(
-                    text="👨‍🏫 دبیرها",
+                    text="دبیرها",
+                    icon_custom_emoji_id="5915633360734002967",
                     callback_data=SchoolCallback(action="teachers").pack(),
                 ),
             ],

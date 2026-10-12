@@ -276,8 +276,7 @@ async def _school_view(
     if user.level < castle_service.config.level_progression.max_level:
         unlocks = await _level_unlocks(session, next_level)
         unlocks = "\n".join(
-            f"▫️ {escape(line.removeprefix('•').strip())}"
-            for line in unlocks.splitlines()
+            f"▫️ {line.removeprefix('•').strip()}" for line in unlocks.splitlines()
         )
     else:
         unlocks = "▫️ به بالاترین سطح فرماندهی رسیده‌ای\\."

@@ -9,7 +9,8 @@ from app.bot.callbacks import (
     HospitalCallback,
     TeacherCallback,
 )
-from app.bot.handlers import school
+from app.bot.handlers import profile, school
+from app.bot.keyboards.school import school_keyboard
 from app.services.recovery_service import HospitalSnapshot
 from app.services.school_errors import CastleNeedsRepair
 
@@ -19,6 +20,53 @@ def callback() -> SimpleNamespace:
         from_user=SimpleNamespace(id=42),
         message=SimpleNamespace(answer=AsyncMock(), edit_text=AsyncMock()),
         answer=AsyncMock(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_school_next_level_preserves_shield_custom_emoji(monkeypatch) -> None:
+    target = callback()
+    monkeypatch.setattr(
+        school, "_user", AsyncMock(return_value=SimpleNamespace(id=10, level=1))
+    )
+    monkeypatch.setattr(
+        school.castle_service,
+        "snapshot",
+        AsyncMock(
+            return_value=SimpleNamespace(level=1, strength=100, defense_power=20)
+        ),
+    )
+    monkeypatch.setattr(
+        school.teacher_service,
+        "capacity",
+        AsyncMock(return_value=SimpleNamespace(owned=1, available=2)),
+    )
+    shield_emoji = "![🛡️](tg://emoji?id=5915796556606348792)"
+    monkeypatch.setattr(
+        profile,
+        "_level_unlocks",
+        AsyncMock(return_value=f"• سپر جدید: {shield_emoji} سپر محمدی"),
+    )
+    send = AsyncMock()
+    monkeypatch.setattr(school, "_send_or_edit", send)
+
+    await school._school_view(target, AsyncMock())
+
+    banner = send.await_args.args[1]
+    assert f"▫️ سپر جدید: {shield_emoji} سپر محمدی" in banner
+    assert r"\![" not in banner
+    assert send.await_args.kwargs["parse_mode"] == school.MARKDOWN_V2
+
+
+def test_school_buttons_use_requested_custom_emojis() -> None:
+    castle, teachers = school_keyboard().inline_keyboard[0]
+    assert (castle.text, castle.icon_custom_emoji_id) == (
+        "دژ",
+        "5825546447470206916",
+    )
+    assert (teachers.text, teachers.icon_custom_emoji_id) == (
+        "دبیرها",
+        "5915633360734002967",
     )
 
 
