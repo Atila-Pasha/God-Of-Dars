@@ -33,7 +33,7 @@ services:
         max-size: "20m"
         max-file: "5"
   bot:
-    image: godofdars:teacher-capacity-20261012
+    image: godofdars:capacity-ui-20261012
     environment:
       RUNTIME_ROLE: bot
       DB_POOL_SIZE: 32
@@ -47,7 +47,7 @@ services:
     stop_grace_period: 60s
     logging: *logging
   attacks:
-    image: godofdars:teacher-capacity-20261012
+    image: godofdars:capacity-ui-20261012
     build: .
     restart: unless-stopped
     init: true
