@@ -60,6 +60,7 @@ def test_diamond_without_production_has_no_fake_capacity() -> None:
     assert "\u2066100%\u2069" in text
     assert _ore_bar(1530, 1440) in text
     assert "سقف تولید امروز تکمیل شد" in text
+    assert "۰۰:۰۰ به وقت تهران" in text
 
 
 def test_mine_bar_tracks_cargo_even_when_today_production_is_near_zero() -> None:

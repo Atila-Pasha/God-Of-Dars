@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
+from math import ceil
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +40,8 @@ class MineSnapshot:
 
 
 class MineService:
+    DAY_TIMEZONE = ZoneInfo("Asia/Tehran")
+
     def __init__(self, *, config: GameConfig | None = None) -> None:
         self.config = config or game_config
 
@@ -103,29 +107,33 @@ class MineService:
         last = mine.last_collected_at
         if last.tzinfo is None:
             last = last.replace(tzinfo=UTC)
+        current_day = now.astimezone(self.DAY_TIMEZONE).date()
         limit = self.config.mine_max_catchup_minutes
         elapsed_minutes = max(0, int((now - last).total_seconds() // 60))
         capped = elapsed_minutes > limit
         elapsed_minutes = min(elapsed_minutes, limit)
         start = now - timedelta(minutes=elapsed_minutes) if capped else last
         end = start + timedelta(minutes=elapsed_minutes)
-        midnight = datetime.combine(now.date(), time.min, tzinfo=UTC)
+        midnight = datetime.combine(
+            current_day, time.min, tzinfo=self.DAY_TIMEZONE
+        ).astimezone(UTC)
         today_minutes = min(
             elapsed_minutes,
-            max(0, int((end - max(start, midnight)).total_seconds() // 60)),
+            max(0, ceil((end - max(start, midnight)).total_seconds() / 60)),
         )
         previous_minutes = elapsed_minutes - today_minutes
+        start_day = start.astimezone(self.DAY_TIMEZONE).date()
         previous_used = (
             (mine.daily_produced_minutes or 0)
-            if mine.today == start.date() and start.date() != now.date()
+            if mine.today == start_day and start_day != current_day
             else 0
         )
         previous_credit = min(previous_minutes, max(0, limit - previous_used))
         current_used = (
-            (mine.daily_produced_minutes or 0) if mine.today == now.date() else 0
+            (mine.daily_produced_minutes or 0) if mine.today == current_day else 0
         )
         current_credit = min(today_minutes, max(0, limit - current_used))
-        mine.today = now.date()
+        mine.today = current_day
         # The today_* fields are uncollected cargo and persist across midnight.
         mine.daily_produced_minutes = current_used + current_credit
         credited_minutes = previous_credit + current_credit

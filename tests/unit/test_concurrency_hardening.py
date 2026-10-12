@@ -119,6 +119,44 @@ def test_mine_keeps_producing_after_early_collection() -> None:
     assert mine.daily_produced_minutes == 2
 
 
+def test_mine_resets_at_tehran_midnight_after_daily_cap() -> None:
+    service = MineService(config=game_config)
+    # 20:30 UTC is 00:00 the next day in Tehran.
+    now = datetime(2026, 10, 12, 20, 32, tzinfo=UTC)
+    mine = Mine(
+        level=1,
+        last_collected_at=now - timedelta(minutes=4),
+        today=(now - timedelta(hours=4)).date(),
+        today_coin=0,
+        today_diamond=0,
+        today_banana=0,
+        daily_produced_minutes=game_config.mine_max_catchup_minutes,
+    )
+
+    assert service._accrue(mine, now=now) == 2
+    assert mine.today == datetime(2026, 10, 13, tzinfo=UTC).date()
+    assert mine.daily_produced_minutes == 2
+    assert mine.today_coin == 2 * game_config.mine_level(1).coin_per_minute
+
+
+def test_mine_starts_new_tehran_day_before_utc_midnight() -> None:
+    service = MineService(config=game_config)
+    now = datetime(2026, 10, 12, 20, 55, tzinfo=UTC)
+    mine = Mine(
+        level=4,
+        last_collected_at=now - timedelta(minutes=2),
+        today=now.date(),
+        today_coin=0,
+        today_diamond=0,
+        today_banana=0,
+        daily_produced_minutes=game_config.mine_max_catchup_minutes,
+    )
+
+    assert service._accrue(mine, now=now) == 2
+    assert mine.daily_produced_minutes == 2
+    assert mine.today_coin == 2 * game_config.mine_level(4).coin_per_minute
+
+
 @pytest.mark.asyncio
 async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -> None:
     now = datetime.now(UTC)

@@ -75,7 +75,7 @@ def _mine_text(snapshot) -> str:
         f"{emoji('6039539366177541657', '⏳')} {bold('پیشرفت استخراج امروز')}: "
         f"{escape(produced_minutes)} از {escape(daily_limit)} دقیقه\n"
         f"{_extraction_bar(produced_minutes, daily_limit)}\n"
-        f"{escape('سقف تولید امروز تکمیل شد؛ فردا دوباره تولید شروع می‌شود.' if produced_minutes >= daily_limit else 'برای دیدن پیشرفت هر دقیقه، به‌روزرسانی را بزن.')}\n\n"
+        f"{escape('سقف تولید امروز تکمیل شد؛ ساعت ۰۰:۰۰ به وقت تهران دوباره شروع می‌شود.' if produced_minutes >= daily_limit else 'برای دیدن پیشرفت هر دقیقه، به‌روزرسانی را بزن.')}\n\n"
         f"{emoji('6007857303695400402', '📈')} {bold('تولید در هر دقیقه')}:\n\n"
         f"{COIN} طلا: {escape(production.coin_per_minute)}\n"
         f"{DIAMOND} الماس: {escape(production.diamond_per_minute)}\n\n"
@@ -85,7 +85,7 @@ def _mine_text(snapshot) -> str:
         f"{emoji('5823329527085931340', '🪙')} {bold('معدن طلا')}\n"
         f"موجودی قابل برداشت: {bold(_ltr(f'{snapshot.today_coin:,}'))} {emoji('5823329527085931340', '🪙')}\n"
         f"{_ore_bar(snapshot.today_coin, coin_scale)}\n\n"
-        f"هر زمان می‌توانی برداشت کنی؛ استخراج تا سقف {escape(daily_limit // 60)} ساعت در روز ادامه دارد\\.\n"
+        f"هر زمان می‌توانی برداشت کنی؛ استخراج تا سقف {escape(daily_limit // 60)} ساعت در هر روز به وقت تهران ادامه دارد\\.\n"
         "محمولهٔ برداشت‌نشده هم باقی می‌ماند\\.\n\n"
         f"{status}"
     )
