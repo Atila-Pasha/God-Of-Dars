@@ -64,6 +64,11 @@ class FakeTeacherRepository:
     async def list_owned(self, session, user_id):
         return [self.owned] if self.owned is not None else []
 
+    async def list_owned_power(self, session, user_id):
+        if self.owned is None:
+            return []
+        return [(self.owned.teacher.id, self.owned.teacher.damage, self.owned.level)]
+
 
 class FakeCastleRepository:
     def __init__(self, *, user, resources, castle):
@@ -143,6 +148,60 @@ async def test_level_capacity_is_configurable_and_clamped() -> None:
     assert config.teacher_slots(1) == 1
     assert config.teacher_slots(7) == 3
     assert config.teacher_slots(10) == 4
+
+
+def test_percentage_capacity_grows_and_stronger_teachers_use_more() -> None:
+    config = GameConfig(teacher_capacity_percent_enabled=True)
+    assert [
+        config.teacher_capacity_percent(level) for level in (1, 2, 3, 4, 20, 500)
+    ] == [10, 10, 15, 20, 100, 100]
+    assert config.teacher_weight_percent(10) == 5
+    assert config.teacher_weight_percent(100) == 9
+    assert config.teacher_weight_percent(300) == 19
+
+
+@pytest.mark.asyncio
+async def test_percentage_capacity_rejects_purchase_that_would_exceed_allowance() -> (
+    None
+):
+    model = teacher(id=8, damage=100)
+    existing = owned_teacher(teacher(id=7, damage=10))
+    repository = FakeTeacherRepository(
+        user=user(level=2),
+        resources=SimpleNamespace(coin=100, diamond=0),
+        teacher=model,
+        owned=existing,
+    )
+    service = TeacherService(
+        repository, config=GameConfig(teacher_capacity_percent_enabled=True)
+    )
+    capacity = await service.capacity(SimpleNamespace(), 10)
+    assert (capacity.owned, capacity.available, capacity.maximum) == (5, 10, 100)
+    with pytest.raises(TeacherSlotLocked):
+        await service.buy(SimpleNamespace(), 10, model.id)
+
+
+@pytest.mark.asyncio
+async def test_percentage_capacity_also_blocks_power_upgrade() -> None:
+    model = teacher(damage=20)
+    existing = owned_teacher(model)
+    repository = FakeTeacherRepository(
+        user=user(level=1),
+        resources=SimpleNamespace(coin=0, diamond=100),
+        teacher=model,
+        owned=existing,
+    )
+    service = TeacherService(
+        repository,
+        config=GameConfig(
+            teacher_capacity_percent_enabled=True,
+            teacher_capacity_start_percent=5,
+            teacher_damage_by_level={(model.id, 2): 40},
+        ),
+    )
+    with pytest.raises(TeacherSlotLocked):
+        await service.upgrade(SimpleNamespace(), 10, existing.id)
+    assert repository.resources.diamond == 100
 
 
 @pytest.mark.asyncio

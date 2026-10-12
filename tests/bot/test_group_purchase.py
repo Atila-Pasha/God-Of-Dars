@@ -199,7 +199,7 @@ async def test_confirmed_group_teacher_purchase_sends_no_catalog(monkeypatch) ->
     ("error", "reason"),
     (
         (InsufficientCoins(), "سکه کافی"),
-        (TeacherSlotLocked(), "ظرفیت دبیرهای شما پر است"),
+        (TeacherSlotLocked(), "ظرفیت درصدی دبیرهای شما کافی نیست"),
     ),
 )
 async def test_failed_group_teacher_purchase_posts_reason(

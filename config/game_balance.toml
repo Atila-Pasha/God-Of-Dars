@@ -1,6 +1,6 @@
 # Central game balance. Change this file instead of editing handlers/services.
 
-# Ownership capacity is separate from the attack limit below.
+# Historical count limit for compatibility; live ownership uses teacher_capacity.
 max_owned_teacher_slots = 30
 max_attack_teachers = 4
 initial_castle_strength = 100
@@ -235,6 +235,16 @@ level_500 = 30
 base = 1
 growth = 0
 interval = 1
+
+[teacher_capacity]
+# Capacity is a share of a 100% total. Levels 1–2: 10%; level 3: 15%;
+# then +5% per level until level 20 reaches 100%.
+enabled = true
+start_percent = 10
+growth_percent = 5
+# Weight is max(5, 4 + ceil(base damage / 20)) percent.
+base_weight = 4
+power_step = 20
 
 # ---------------------------------------------------------------------------
 

@@ -60,6 +60,17 @@ class TeacherRepository:
         )
         return int(result.scalar_one())
 
+    async def list_owned_power(
+        self, session: AsyncSession, user_id: int
+    ) -> list[tuple[int, int, int]]:
+        """Read only fields needed for percentage capacity calculations."""
+        result = await session.execute(
+            select(Teacher.id, Teacher.damage, UserTeacher.level)
+            .join(UserTeacher, UserTeacher.teacher_id == Teacher.id)
+            .where(UserTeacher.user_id == user_id)
+        )
+        return [(int(id_), int(damage), int(level)) for id_, damage, level in result]
+
     async def get_catalog_teacher(
         self, session: AsyncSession, teacher_id: int
     ) -> Teacher | None:

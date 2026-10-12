@@ -329,13 +329,22 @@ async def _level_unlocks(session: AsyncSession, next_level: int) -> str:
     lines: list[str] = []
     config = level_service.config
 
-    previous_slots = config.teacher_slots(next_level - 1)
-    next_slots = config.teacher_slots(next_level)
+    previous_slots = (
+        config.teacher_capacity_percent(next_level - 1)
+        if config.teacher_capacity_percent_enabled
+        else config.teacher_slots(next_level - 1)
+    )
+    next_slots = (
+        config.teacher_capacity_percent(next_level)
+        if config.teacher_capacity_percent_enabled
+        else config.teacher_slots(next_level)
+    )
     if next_slots > previous_slots:
+        unit = "%" if config.teacher_capacity_percent_enabled else ""
         lines.append(
             escape(
-                f"• ظرفیت دبیرها از {_number(previous_slots)} به "
-                f"{_number(next_slots)} می‌رسد."
+                f"• ظرفیت دبیرها از {_number(previous_slots)}{unit} به "
+                f"{_number(next_slots)}{unit} می‌رسد."
             )
         )
 

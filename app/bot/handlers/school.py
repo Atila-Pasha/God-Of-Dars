@@ -51,6 +51,7 @@ from app.bot.keyboards.school import (
     teachers_keyboard,
 )
 from app.bot.progress import premium_progress_bar
+from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import (
     group_user_request,
     report_group_purchase_failure,
@@ -69,10 +70,12 @@ from app.services.school_errors import (
     InsufficientCoins,
     InsufficientDiamonds,
     SchoolError,
+    SchoolUserNotFound,
     TeacherAlreadyOwned,
     TeacherLimitReached,
     TeacherLocked,
     TeacherNotFound,
+    TeacherNotOwned,
     TeacherNotPurchasable,
     TeacherSlotLocked,
 )
@@ -141,7 +144,7 @@ def _teacher_hp_banner(current_hp: int, max_hp: int) -> str:
 def _teacher_purchase_error(error: Exception) -> str:
     if isinstance(error, (TeacherSlotLocked, TeacherLimitReached)):
         return (
-            "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید "
+            "ظرفیت درصدی دبیرهای شما کافی نیست؛ یک دبیر را بفروشید "
             "یا سطح فرمانده را افزایش دهید."
         )
     if isinstance(error, TeacherAlreadyOwned):
@@ -287,6 +290,7 @@ async def _school_view(
     )
     progress = _progress_bar(capacity.owned, capacity.available)
     percentage = _progress_percent(capacity.owned, capacity.available)
+    unit = "%" if getattr(capacity, "percent_based", False) else ""
     text = (
         f"{SCHOOL} {bold('ستاد فرماندهی مدرسه')} {QUESTION}\n"
         "─────────────────────\n"
@@ -295,10 +299,9 @@ async def _school_view(
         f"{unlocks}\n\n"
         f"{FORT} سطح دژ: {escape(_number(castle.level))}\n"
         f"{emoji('5915633360734002967', '🛡️')} قدرت دفاعی: {escape(_number(castle.strength + castle.defense_power))}\n\n"
-        f"● {bold('ظرفیت تیم دبیرها')}\n"
-        f"{progress}  {escape(_number(capacity.owned))} / "
-        f"{escape(_number(capacity.available))} "
-        f"{escape(f'({percentage})')}"
+        f"● {bold('ظرفیت تیم دبیرها از کل ۱۰۰٪' if getattr(capacity, 'percent_based', False) else 'ظرفیت تیم دبیرها')}\n"
+        f"{progress}  {escape(f'{capacity.owned}{unit} / {capacity.available}{unit}')} "
+        f"{escape(f'({percentage} از ظرفیت فعلی)') if getattr(capacity, 'percent_based', False) else escape(f'({percentage})')}"
     )
     if isinstance(target, Message):
         await target.answer(
@@ -360,15 +363,17 @@ async def _teachers_view(
     capacity = await teacher_service.capacity(session, user.id)
     teachers = await teacher_service.owned(session, user.id)
     catalog = await teacher_service.catalog(session, user.id)
+    unit = "%" if getattr(capacity, "percent_based", False) else ""
     text_lines = [
         f"{emoji('5825625629487276345', '👨‍🏫')} {bold('تیم دبیرهای من')}",
         "",
         f"{LEVEL} سطح شما: {escape(_number(user.level))}",
         "",
-        f"{emoji('5825667690102006523', '📊')} ظرفیت استفاده‌شده:",
+        f"{emoji('5825667690102006523', '📊')} "
+        f"{'ظرفیت استفاده‌شده از کل ۱۰۰٪:' if getattr(capacity, 'percent_based', False) else 'ظرفیت استفاده‌شده:'}",
         (
             f"{_progress_bar(capacity.owned, capacity.available)}  "
-            f"{escape(_number(capacity.owned))} / {escape(_number(capacity.available))} "
+            f"{escape(f'{capacity.owned}{unit} / {capacity.available}{unit}')} "
             f"{escape(f'({_progress_percent(capacity.owned, capacity.available)})')}"
         ),
         "",
@@ -385,9 +390,21 @@ async def _teachers_view(
             catalog,
             can_buy=from_buffet
             and (
-                capacity.owned < capacity.available
-                and (capacity.maximum is None or capacity.owned < capacity.maximum)
-                and any(teacher.unlock_level <= user.level for teacher in catalog)
+                any(
+                    teacher.unlock_level <= user.level
+                    and (
+                        capacity.owned
+                        + teacher_service.config.teacher_weight_percent(teacher.damage)
+                        <= capacity.available
+                        if getattr(capacity, "percent_based", False)
+                        else capacity.owned < capacity.available
+                        and (
+                            capacity.maximum is None
+                            or capacity.owned < capacity.maximum
+                        )
+                    )
+                    for teacher in catalog
+                )
             ),
             back_action="back_buffet" if from_buffet else "back_school",
         ),
@@ -407,6 +424,11 @@ async def _teacher_view(
         damage = str(teacher_service.damage(teacher))
     damage_text = damage if damage == "تنظیم نشده" else _number(int(damage))
     details = f"🎖 سطح: {_number(teacher.level)}\n⚔️ قدرت ضربه: {damage_text}\n"
+    if teacher_service.config.teacher_capacity_percent_enabled:
+        details += (
+            f"📊 سهم از ظرفیت: "
+            f"{teacher_service.config.teacher_weight_percent(teacher_service.damage(teacher))}%\n"
+        )
     after_bar = (
         f"📌 وضعیت: {_status(teacher)}\n"
         f"✨ توانایی: {teacher.teacher.ability_text or 'تنظیم نشده'}\n\n"
@@ -490,6 +512,101 @@ async def _hospital_view(
         ),
         parse_mode=MARKDOWN_V2,
     )
+
+
+async def _group_owned_teacher(message: Message, session: AsyncSession, name: str):
+    if message.from_user is None:
+        raise SchoolUserNotFound
+    user = await _user(session, message.from_user.id)
+    if user is None:
+        raise SchoolUserNotFound
+    owned = await teacher_service.owned(session, user.id)
+    matches = matching_teachers((item.teacher for item in owned), name)
+    if len(matches) > 1:
+        await message.answer(
+            "چند دبیر با این نام داری؛ اسم کامل را بنویس: "
+            + "، ".join(item.name for item in matches)
+        )
+        return user, None
+    if not matches:
+        await message.answer("دبیری با این نام در مدرسه‌ات پیدا نشد.")
+        return user, None
+    return user, next(item for item in owned if item.teacher.id == matches[0].id)
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(r"^\s*فروش(?:\s+.*)?$"),
+)
+async def group_sell_teacher(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None or not message.text:
+        return
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer("فرمت دستور: فروش {اسم دبیر}")
+        return
+    try:
+        user, owned = await _group_owned_teacher(message, session, parts[1].strip())
+        if owned is None:
+            return
+        if owned.current_hp != owned.teacher.max_hp:
+            await message.answer(
+                f"{emoji('5825570280243732195', '🏥')} "
+                f"{escape('جان دبیر باید پیش از فروش کاملاً درمان شود.')}",
+                parse_mode=MARKDOWN_V2,
+            )
+            return
+        price = await teacher_service.sell(session, user.id, owned.id)
+        await message.answer(
+            f"{emoji('5825656871079387950', '💰')} "
+            f"{bold(f'دبیر «{owned.teacher.name}» فروخته شد')}\n"
+            f"{emoji('5825656871079387950', '🪙')} "
+            f"{escape(f'{price} سکه به حسابت اضافه شد.')}",
+            parse_mode=MARKDOWN_V2,
+        )
+    except AttackInProgress:
+        await session.rollback()
+        await message.answer(
+            "این دبیر در حال نبرد است؛ پس از پایان نبرد می‌توانی بفروشیش."
+        )
+    except (TeacherNotOwned, SchoolError):
+        await session.rollback()
+        await message.answer("فروش این دبیر فعلاً امکان‌پذیر نیست.")
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.")
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(r"^\s*درمان(?:\s+.*)?$"),
+)
+async def group_recover_teacher(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None or not message.text:
+        return
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer("فرمت دستور: درمان {اسم دبیر}")
+        return
+    try:
+        user, owned = await _group_owned_teacher(message, session, parts[1].strip())
+        if owned is None:
+            return
+        await hospital_service.begin_recovery(session, user.id, owned.id)
+        await message.answer(
+            f"{emoji('5825570280243732195', '🏥')} "
+            f"{bold(f'درمان دبیر «{owned.teacher.name}» آغاز شد.')}",
+            parse_mode=MARKDOWN_V2,
+        )
+    except HospitalFull:
+        await session.rollback()
+        await message.answer("تخت‌های بیمارستان پر هستند؛ دبیر آماده را ترخیص کن.")
+    except (TeacherNotOwned, SchoolError):
+        await session.rollback()
+        await message.answer(
+            "درمان این دبیر فعلاً امکان‌پذیر نیست؛ وضعیت جان و درمانش را بررسی کن."
+        )
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.")
 
 
 @router.message(F.text == SCHOOL_LABEL)

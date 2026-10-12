@@ -221,7 +221,7 @@ async def group_purchase_message(
         await message.answer("سپری با این نام پیدا نشد.")
     except TeacherSlotLocked:
         await message.answer(
-            "ظرفیت دبیرهای شما پر است؛ یک دبیر را بفروشید یا سطح فرمانده را افزایش دهید."
+            "ظرفیت درصدی دبیرهای شما کافی نیست؛ یک دبیر را بفروشید یا سطح فرمانده را افزایش دهید."
         )
     except TeacherLimitReached:
         await message.answer(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tomllib
 from copy import deepcopy
 from dataclasses import dataclass, field
+from math import ceil
 from pathlib import Path
 
 from app.core.enums import ResourceType
@@ -215,6 +216,11 @@ class GameConfig:
     teacher_slots_base: int = 1
     teacher_slots_growth: int = 0
     teacher_slots_interval: int = 1
+    teacher_capacity_percent_enabled: bool = False
+    teacher_capacity_start_percent: int = 10
+    teacher_capacity_growth_percent: int = 5
+    teacher_capacity_power_step: int = 20
+    teacher_capacity_base_weight: int = 4
     castle_upgrade_by_level: dict[int, CastleUpgrade] = field(default_factory=dict)
     castle_max_level: int = 500
     castle_cost_growth: float = 1.08
@@ -263,6 +269,13 @@ class GameConfig:
             raise ValueError("max_owned_teacher_slots must be positive")
         if self.max_attack_teachers < 1:
             raise ValueError("max_attack_teachers must be positive")
+        if (
+            not 1 <= self.teacher_capacity_start_percent <= 100
+            or self.teacher_capacity_growth_percent < 0
+            or self.teacher_capacity_power_step < 1
+            or self.teacher_capacity_base_weight < 0
+        ):
+            raise ValueError("teacher percentage capacity is invalid")
         if self.slogan_reward_banana < 1 or self.slogan_cooldown_seconds < 1:
             raise ValueError("slogan reward and cooldown must be positive")
         if (
@@ -399,6 +412,25 @@ class GameConfig:
             capacity
             if self.ownership_limit is None
             else min(capacity, self.ownership_limit)
+        )
+
+    def teacher_capacity_percent(self, player_level: int) -> int:
+        """Levels 1–2 share 10%; each level from 3 adds 5%, up to 100%."""
+        return min(
+            100,
+            self.teacher_capacity_start_percent
+            + max(0, player_level - 2) * self.teacher_capacity_growth_percent,
+        )
+
+    def teacher_weight_percent(self, base_damage: int) -> int:
+        """A teacher uses at least 5% and stronger base damage uses more."""
+        return min(
+            100,
+            max(
+                5,
+                self.teacher_capacity_base_weight
+                + ceil(max(0, base_damage) / self.teacher_capacity_power_step),
+            ),
         )
 
     @property
@@ -791,6 +823,21 @@ class GameConfig:
             ),
             teacher_slots_interval=int(
                 data.get("teacher_slots_progression", {}).get("interval", 1)
+            ),
+            teacher_capacity_percent_enabled=bool(
+                data.get("teacher_capacity", {}).get("enabled", False)
+            ),
+            teacher_capacity_start_percent=int(
+                data.get("teacher_capacity", {}).get("start_percent", 10)
+            ),
+            teacher_capacity_growth_percent=int(
+                data.get("teacher_capacity", {}).get("growth_percent", 5)
+            ),
+            teacher_capacity_power_step=int(
+                data.get("teacher_capacity", {}).get("power_step", 20)
+            ),
+            teacher_capacity_base_weight=int(
+                data.get("teacher_capacity", {}).get("base_weight", 4)
             ),
             castle_upgrade_by_level=castle_upgrades,
             castle_max_level=int(

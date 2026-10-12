@@ -55,6 +55,26 @@ def test_ready_teacher_has_discharge_button_and_waiting_teacher_does_not() -> No
 
     recovery.recovery_end_at = datetime.now(UTC) + timedelta(minutes=1)
     assert not HospitalService.ready_for_discharge(teacher)
+    markup = hospital_keyboard(
+        [teacher], can_activate=True, can_recover=True, instant_recovery_cost=5
+    )
+    actions = [
+        HospitalCallback.unpack(button.callback_data).action
+        for row in markup.inline_keyboard
+        for button in row
+    ]
+    assert "instant" in actions
+
+    teacher.status = TeacherStatus.INJURED
+    markup = hospital_keyboard(
+        [teacher], can_activate=True, can_recover=True, instant_recovery_cost=5
+    )
+    actions = [
+        HospitalCallback.unpack(button.callback_data).action
+        for row in markup.inline_keyboard
+        for button in row
+    ]
+    assert "recover" in actions and "instant" not in actions
 
 
 def test_recovery_text_shows_exact_remaining_duration_and_assumes_utc() -> None:

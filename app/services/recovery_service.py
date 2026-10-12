@@ -179,7 +179,7 @@ class HospitalService:
             await session.delete(teacher)
             await session.flush()
             raise InvalidTeacherState
-        if teacher.status not in {TeacherStatus.INJURED, TeacherStatus.RECOVERING}:
+        if teacher.status is not TeacherStatus.RECOVERING:
             raise InvalidTeacherState
         if self.ready_for_discharge(teacher):
             raise InvalidTeacherState

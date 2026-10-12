@@ -19,6 +19,7 @@ from app.bot.keyboards.main_menu import (
     main_menu_keyboard,
 )
 from app.bot.keyboards.start import first_login_guide_keyboard, join_channel_keyboard
+from app.bot.middlewares.group import GROUP_CHAT_TYPES
 from app.bot.middlewares.subscription import refresh_channels, subscription_service
 from app.bot.utils.telegram import safe_edit_text
 from app.core.game_logic import game_config
@@ -110,11 +111,11 @@ HELP_TEXTS = {
     "school": (
         "🏫 راهنمای مدرسه من\n\n"
         "👨‍🏫 دبیرها\n"
-        "دبیرهایی که از بوفه می‌خری اینجا دیده می‌شن. می‌تونی ارتقاشون بدی یا در صورت نیاز بفروشی. ظرفیت تیم با سطح فرمانده بیشتر می‌شه.\n\n"
+        "دبیرهایی که از بوفه می‌خری اینجا دیده می‌شن. هر دبیر بر اساس قدرتش درصدی از ظرفیت تیم را می‌گیرد؛ ظرفیت مجاز با سطح فرمانده بیشتر می‌شه. در گروه هم می‌تونی «فروش فراهانی» بنویسی.\n\n"
         "🏰 دژ\n"
         "دژ از منابعت دفاع می‌کنه. بعد از نبرد آسیبش رو تعمیر کن و برای دفاع قوی‌تر ارتقاش بده.\n\n"
         "🏥 بیمارستان\n"
-        "دبیر مصدوم رو بستری کن. زمان باقی‌ماندهٔ درمان رو همین‌جا می‌بینی؛ وقتی تمام شد، «ترخیص» رو بزن تا دوباره آمادهٔ نبرد بشه."
+        "دبیر مصدوم رو بستری کن یا در گروه «درمان فراهانی» بنویس. پس از شروع درمان، درمان فوری هم در دسترس است. زمان باقی‌ماندهٔ درمان رو همین‌جا می‌بینی؛ وقتی تمام شد، «ترخیص» رو بزن تا دوباره آمادهٔ نبرد بشه."
     ),
     "buffet": (
         "🍽 راهنمای بوفه\n\n"
@@ -416,6 +417,30 @@ async def check_membership_handler(
             )
         except TelegramAPIError:
             logger.exception("Could not restore channel join prompt")
+        return
+
+    if (
+        getattr(getattr(callback.message, "chat", None), "type", None)
+        in GROUP_CHAT_TYPES
+    ):
+        try:
+            user = await user_service.get_or_create_from_telegram(
+                session, callback.from_user
+            )
+        except UserInitializationError:
+            await callback.answer(USER_ERROR_MESSAGE, show_alert=True)
+            return
+        except UserInactiveError:
+            await callback.answer(BANNED_USER_MESSAGE, show_alert=True)
+            return
+        if not user.is_active:
+            await callback.answer(BANNED_USER_MESSAGE, show_alert=True)
+            return
+        try:
+            await safe_edit_text(callback.message, "عضویتت تایید شد", reply_markup=None)
+        except TelegramAPIError:
+            await callback.message.answer("عضویتت تایید شد")
+        await callback.answer()
         return
 
     try:

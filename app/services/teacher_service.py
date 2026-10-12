@@ -30,6 +30,7 @@ class TeacherCapacity:
     owned: int
     available: int
     maximum: int | None
+    percent_based: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,20 @@ class TeacherService:
         user = await self.repository.get_user(session, user_id)
         if user is None:
             raise TeacherNotFound
+        if self.config.teacher_capacity_percent_enabled:
+            teachers = await self.repository.list_owned_power(session, user_id)
+            used = sum(
+                self.config.teacher_weight_percent(
+                    self.config.teacher_damage(teacher_id, level, base_damage)
+                )
+                for teacher_id, base_damage, level in teachers
+            )
+            return TeacherCapacity(
+                owned=used,
+                available=self.config.teacher_capacity_percent(user.level),
+                maximum=100,
+                percent_based=True,
+            )
         owned = await self.repository.count_owned(session, user_id)
         return TeacherCapacity(
             owned=owned,
@@ -125,18 +140,20 @@ class TeacherService:
         ):
             raise TeacherAlreadyOwned
 
-        owned_count = await self.repository.count_owned(session, user_id)
-        level_capacity = self.config.teacher_slots(user.level)
-        if owned_count >= level_capacity:
-            raise TeacherSlotLocked
-        if (
-            self.config.ownership_limit is not None
-            and owned_count >= self.config.ownership_limit
-        ):
-            raise TeacherLimitReached
-        available_slots = self.config.teacher_slots(user.level)
-        if owned_count >= available_slots:
-            raise TeacherSlotLocked
+        if self.config.teacher_capacity_percent_enabled:
+            capacity = await self.capacity(session, user_id)
+            weight = self.config.teacher_weight_percent(teacher.damage)
+            if capacity.owned + weight > capacity.available:
+                raise TeacherSlotLocked
+        else:
+            owned_count = await self.repository.count_owned(session, user_id)
+            if owned_count >= self.config.teacher_slots(user.level):
+                raise TeacherSlotLocked
+            if (
+                self.config.ownership_limit is not None
+                and owned_count >= self.config.ownership_limit
+            ):
+                raise TeacherLimitReached
         if user.level < teacher.unlock_level:
             raise TeacherLocked
         if teacher.purchase_price < 0:
@@ -203,6 +220,12 @@ class TeacherService:
             raise OperationNotConfigured from exc
         if next_damage <= current_damage:
             raise OperationNotConfigured
+        if self.config.teacher_capacity_percent_enabled:
+            capacity = await self.capacity(session, user_id)
+            current_weight = self.config.teacher_weight_percent(current_damage)
+            next_weight = self.config.teacher_weight_percent(next_damage)
+            if capacity.owned - current_weight + next_weight > capacity.available:
+                raise TeacherSlotLocked
         upgrade_cost = self.upgrade_cost(owned_teacher)
         if resources.diamond < upgrade_cost:
             raise InsufficientDiamonds

@@ -451,7 +451,7 @@ def hospital_keyboard(
                 ]
             )
         if (
-            teacher.status in {TeacherStatus.INJURED, TeacherStatus.RECOVERING}
+            teacher.status is TeacherStatus.RECOVERING
             and instant_recovery_cost is not None
         ):
             rows.append(

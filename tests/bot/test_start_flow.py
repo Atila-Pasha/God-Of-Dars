@@ -16,6 +16,39 @@ def telegram_user() -> TelegramUser:
 
 
 @pytest.mark.asyncio
+async def test_membership_callback_in_group_only_confirms_membership(
+    monkeypatch,
+) -> None:
+    callback = SimpleNamespace(
+        from_user=telegram_user(),
+        bot=AsyncMock(),
+        message=SimpleNamespace(
+            chat=SimpleNamespace(type="supergroup"),
+            edit_text=AsyncMock(),
+            answer=AsyncMock(),
+        ),
+        answer=AsyncMock(),
+    )
+    session = AsyncMock()
+    monkeypatch.setattr(
+        start.subscription_service, "is_member", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(
+        start.user_service,
+        "get_or_create_from_telegram",
+        AsyncMock(return_value=SimpleNamespace(is_active=True)),
+    )
+
+    await start.check_membership_handler(callback, session)
+
+    callback.message.edit_text.assert_awaited_once_with(
+        "عضویتت تایید شد", reply_markup=None
+    )
+    callback.message.answer.assert_not_awaited()
+    callback.answer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_start_member_initializes_user_and_shows_menu(monkeypatch) -> None:
     message = SimpleNamespace(
         from_user=telegram_user(),

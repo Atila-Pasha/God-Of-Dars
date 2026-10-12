@@ -44,7 +44,7 @@ ALLOWED_GROUP_COMMANDS = frozenset(
     }
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
-GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "معرفی")
+GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "معرفی", "فروش", "درمان")
 GROUP_PROFILE_ALIASES = frozenset(
     {
         "پروفایل",

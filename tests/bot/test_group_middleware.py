@@ -29,6 +29,8 @@ def test_group_policy_allows_profile_aliases_and_god() -> None:
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/leaderbord")
     )
+    for text in ("فروش فراهانی", "درمان فراهانی"):
+        assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
 
 
 def test_group_policy_allows_leaderboard_phrases() -> None:

@@ -6,6 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 from app.bot.custom_emojis import CUSTOM_EMOJI_IDS, premium_emoji_id
+from app.core.game_logic import game_config
 
 if TYPE_CHECKING:
     from app.models.teacher import Teacher
@@ -172,10 +173,21 @@ def purchase_banner(teacher: Teacher) -> str:
         .replace("\\", "\\\\")
         .replace("`", r"\`")
     )
+    capacity_line = ""
+    if (
+        game_config.teacher_capacity_percent_enabled
+        and getattr(teacher, "damage", None) is not None
+    ):
+        capacity_line = (
+            f"{emoji('5825920844064366385', '📊')} "
+            f"{bold('سهم از ظرفیت دبیرها')}: "
+            f"{escape(f'{game_config.teacher_weight_percent(teacher.damage)}%')}\n"
+        )
     return (
         f"{teacher_icon(teacher.emoji)}    خرید دبیر «{bold(teacher.name)}»\n\n"
         f"● توانایی دبیر: `﹙{ability}﹚`\n\n"
         f"{currency_icon} {bold('قیمت')}: {escape(teacher.purchase_price)} {escape(currency)}\n"
+        f"{capacity_line}"
         f"> سطح بازشدن: {escape(teacher.unlock_level)}\n\n"
         f"{CONFIRM} {bold('آیا خرید این دبیر را تأیید می‌کنید؟')}"
     )
