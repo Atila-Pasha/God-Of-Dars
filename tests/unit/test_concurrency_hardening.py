@@ -57,6 +57,7 @@ def test_mine_daily_cap_persists_after_collection_and_resets_next_day() -> None:
     service = MineService(config=game_config)
     noon = datetime(2026, 10, 5, 12, tzinfo=UTC)
     cap = game_config.mine_max_catchup_minutes
+    assert cap == 12 * 60
     mine = Mine(
         level=1,
         last_collected_at=noon - timedelta(minutes=10),

@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from app.bot.keyboards.start import join_channel_keyboard
+from app.bot.middlewares.group import GROUP_CHAT_TYPES, is_group_bot_command
 from app.core.config import settings
 from app.repositories.bot_settings import BotSettingsRepository
 from app.services.subscription_service import SubscriptionService
@@ -101,7 +102,9 @@ class SubscriptionMiddleware(BaseMiddleware):
     @staticmethod
     def _is_bypassed(event: TelegramObject) -> bool:
         if isinstance(event, Message):
-            return False
+            return event.chat.type in GROUP_CHAT_TYPES and not is_group_bot_command(
+                event
+            )
         if isinstance(event, CallbackQuery):
             # This exact handler verifies membership before initialization.
             return event.data == "channel:check"

@@ -29,6 +29,7 @@ from app.bot.keyboards.library import (
     teacher_library_keyboard,
 )
 from app.bot.keyboards.main_menu import MENU_SECTION_BY_LABEL, section_back_keyboard
+from app.bot.middlewares.subscription import refresh_channels, subscription_service
 from app.bot.shield_presentation import shield_icon
 from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import safe_edit_text
@@ -611,6 +612,20 @@ async def group_reply_answer_handler(
         telegram_message_id=message.reply_to_message.message_id,
     )
     if publication is None:
+        return
+
+    # Group replies are not commands, so the subscription middleware stays
+    # silent. Check membership only for actual published question answers.
+    bot = message.bot
+    if bot is None:
+        return
+    try:
+        await refresh_channels(session)
+        if not await subscription_service.is_member(
+            bot, message.from_user.id, force_refresh=True
+        ):
+            return
+    except Exception:  # noqa: BLE001 - avoid sending group-wide error messages
         return
 
     try:

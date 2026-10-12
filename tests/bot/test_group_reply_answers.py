@@ -8,16 +8,45 @@ from app.core.enums import ResourceType
 from app.services.library_errors import DuplicateAnswer, QuestionAlreadyAnswered
 
 
+@pytest.fixture(autouse=True)
+def allow_question_members(monkeypatch) -> None:
+    monkeypatch.setattr(library, "refresh_channels", AsyncMock())
+    monkeypatch.setattr(
+        library.subscription_service, "is_member", AsyncMock(return_value=True)
+    )
+
+
 def reply_message(text: str = "تهران") -> SimpleNamespace:
     return SimpleNamespace(
         from_user=SimpleNamespace(id=42, first_name="آرش", last_name=None),
         message_id=701,
         text=text,
         chat=SimpleNamespace(id=-100123, type="supergroup"),
+        bot=SimpleNamespace(),
         reply_to_message=SimpleNamespace(message_id=700, delete=AsyncMock()),
         answer=AsyncMock(),
         delete=AsyncMock(),
     )
+
+
+@pytest.mark.asyncio
+async def test_non_member_group_question_reply_is_ignored_silently(monkeypatch) -> None:
+    message = reply_message()
+    monkeypatch.setattr(
+        library.question_service,
+        "get_group_question_by_message",
+        AsyncMock(return_value=SimpleNamespace(question_id=10, group_id=3)),
+    )
+    monkeypatch.setattr(
+        library.subscription_service, "is_member", AsyncMock(return_value=False)
+    )
+    answer = AsyncMock()
+    monkeypatch.setattr(library.question_service, "answer_group_question", answer)
+
+    await library.group_reply_answer_handler(message, AsyncMock())
+
+    answer.assert_not_awaited()
+    message.answer.assert_not_awaited()
 
 
 def test_correct_answer_banner_uses_the_awarded_resource_icons() -> None:

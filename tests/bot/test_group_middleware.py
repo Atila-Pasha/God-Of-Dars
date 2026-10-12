@@ -38,6 +38,9 @@ def test_group_policy_allows_leaderboard_phrases() -> None:
 
 def test_group_policy_ignores_unrelated_plain_text() -> None:
     assert not GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="تهران"))
+    assert not GroupAccessMiddleware._message_is_allowed(
+        SimpleNamespace(text="اطلاعات زیادی داریم")
+    )
 
 
 def test_group_policy_allows_replies_for_group_question_answers() -> None:

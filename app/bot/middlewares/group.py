@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.custom_emojis import reset_group_reply_context, set_group_reply_context
+from app.bot.handlers.leaderboard import GROUP_LEADERBOARD_PHRASES
 from app.bot.handlers.quick import SLOGANS
 from app.bot.keyboards.main_menu import MENU_SECTION_LABELS
 from app.core.config import settings
@@ -43,10 +44,39 @@ ALLOWED_GROUP_COMMANDS = frozenset(
     }
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
-GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "اطلاعات", "معرفی")
+GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "معرفی")
 GROUP_PROFILE_ALIASES = frozenset(
-    {"پروفایل", "اطلاعات پروفایل", "کاربر", "اطلاعات کاربر"}
+    {
+        "پروفایل",
+        "اطلاعات پروفایل",
+        "کاربر",
+        "اطلاعات کاربر",
+        "اطلاعات جنگ",
+        "اطلاعات دارایی",
+        "اطلاعات دانش",
+    }
 )
+
+
+def is_group_bot_command(message: Message) -> bool:
+    """Recognize messages that intentionally invoke a group bot feature."""
+    text = (message.text or "").strip()
+    if not text:
+        return False
+    if (
+        text in GROUP_PROFILE_ALIASES
+        or text == "گاد"
+        or text in SLOGANS
+        or text in GROUP_LEADERBOARD_PHRASES
+    ):
+        return True
+    if text.startswith("/"):
+        command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
+        return command.removeprefix("/").casefold() in ALLOWED_GROUP_COMMANDS
+    return any(
+        text == prefix or text.startswith(f"{prefix} ")
+        for prefix in GROUP_COMMAND_PREFIXES
+    )
 
 
 class GroupAccessMiddleware(BaseMiddleware):
@@ -224,45 +254,13 @@ class GroupAccessMiddleware(BaseMiddleware):
         text = (message.text or "").strip()
         if not text:
             return False
-        if text in GROUP_PROFILE_ALIASES or text == "گاد" or text in SLOGANS:
+        if is_group_bot_command(message):
             return True
-        # These are intentionally plain-text group commands. Require a word
-        # boundary so ordinary messages such as "حملهای..." are not commands.
-        if any(
-            text == prefix or text.startswith(f"{prefix} ")
-            for prefix in GROUP_COMMAND_PREFIXES
-        ):
-            return True
-        if text.startswith("/"):
-            command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
-            return command.removeprefix("/").casefold() in ALLOWED_GROUP_COMMANDS
         if text in MENU_SECTION_LABELS:
             return False
         # Group question answers are sent as replies to the published question.
         # Other free-form text must never enter feature handlers.
-        if getattr(message, "reply_to_message", None) is not None:
-            return True
-        return text.startswith("برترین ") and any(
-            text == phrase
-            for phrase in (
-                "برترین فرمانده",
-                "برترین دانش آموز",
-                "برترین دانش آموزش",
-                "برترین مبارز",
-                "برترین فرمانده روزانه",
-                "برترین فرمانده هفتگی",
-                "برترین فرمانده ماهانه",
-                "برترین دانش آموز روزانه",
-                "برترین دانش آموز هفتگی",
-                "برترین دانش آموز ماهانه",
-                "برترین دانش آموزش روزانه",
-                "برترین دانش آموزش هفتگی",
-                "برترین دانش آموزش ماهانه",
-                "برترین مبارز روزانه",
-                "برترین مبارز هفتگی",
-                "برترین مبارز ماهانه",
-            )
-        )
+        return getattr(message, "reply_to_message", None) is not None
 
     @staticmethod
     def _callback_is_allowed(callback: CallbackQuery) -> bool:

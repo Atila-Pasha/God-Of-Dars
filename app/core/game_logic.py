@@ -240,7 +240,7 @@ class GameConfig:
     buffet_conversions: tuple[BuffetConversion, ...] = ()
     shield_rules: ShieldRules = field(default_factory=ShieldRules)
     mine_levels: dict[int, MineLevel] = field(default_factory=dict)
-    mine_max_catchup_minutes: int = 1_440
+    mine_max_catchup_minutes: int = 720
     mine_max_level: int = 100
     mine_coin_growth: float = 1.10
     mine_diamond_growth: float = 1.08
@@ -873,7 +873,7 @@ class GameConfig:
                 ),
             ),
             mine_levels=mine_levels,
-            mine_max_catchup_minutes=int(mine_data.get("max_catchup_minutes", 1_440)),
+            mine_max_catchup_minutes=int(mine_data.get("max_catchup_minutes", 720)),
             mine_max_level=int(mine_data.get("max_level", 100)),
             mine_coin_growth=float(mine_data.get("coin_growth", 1.10)),
             mine_diamond_growth=float(mine_data.get("diamond_growth", 1.08)),

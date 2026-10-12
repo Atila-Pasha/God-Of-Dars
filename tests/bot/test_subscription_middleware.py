@@ -110,3 +110,40 @@ def test_start_and_old_buttons_do_not_bypass_gate():
             id="test", from_user=user, chat_instance="test", message=message, data=data
         )
         assert not SubscriptionMiddleware._is_bypassed(callback)
+
+
+@pytest.mark.asyncio
+async def test_group_replies_do_not_trigger_join_prompt(monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from aiogram.types import Chat, Message, User
+
+    user = User(id=42, is_bot=False, first_name="test")
+    chat = Chat(id=-100123, type="supergroup")
+    source = Message(
+        message_id=1, date=datetime.now(UTC), chat=chat, from_user=user, text="سلام"
+    )
+    reply = Message(
+        message_id=2,
+        date=datetime.now(UTC),
+        chat=chat,
+        from_user=user,
+        text="جواب معمولی",
+        reply_to_message=source,
+    )
+    handler = AsyncMock()
+    member_check = AsyncMock(return_value=False)
+    prompt = AsyncMock()
+    monkeypatch.setattr(subscription.subscription_service, "is_member", member_check)
+    monkeypatch.setattr(SubscriptionMiddleware, "_show_join_prompt", prompt)
+
+    await SubscriptionMiddleware()(handler, reply, {})
+
+    handler.assert_awaited_once()
+    member_check.assert_not_awaited()
+    prompt.assert_not_awaited()
+    command = reply.model_copy(update={"text": "/stat"})
+    assert not SubscriptionMiddleware._is_bypassed(command)
+    assert not SubscriptionMiddleware._is_bypassed(
+        reply.model_copy(update={"text": "اطلاعات پروفایل"})
+    )

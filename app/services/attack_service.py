@@ -269,7 +269,8 @@ class AttackService:
         return [
             teacher
             for teacher in owned
-            if teacher.current_hp > 0 and teacher.status is TeacherStatus.ACTIVE
+            if teacher.current_hp > 0
+            and teacher.status in {TeacherStatus.ACTIVE, TeacherStatus.INJURED}
         ]
 
     async def target_preview(
@@ -605,7 +606,7 @@ class AttackService:
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
-            if teacher.status is not TeacherStatus.ACTIVE:
+            if teacher.status not in {TeacherStatus.ACTIVE, TeacherStatus.INJURED}:
                 raise InvalidTeacherState
             teachers.append(teacher)
 
@@ -934,7 +935,7 @@ class AttackService:
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
-            if teacher.status is not TeacherStatus.ACTIVE:
+            if teacher.status not in {TeacherStatus.ACTIVE, TeacherStatus.INJURED}:
                 raise InvalidTeacherState
             teachers.append(teacher)
         return await self._preview_with_teachers(session, attacker, target, teachers)
@@ -956,7 +957,7 @@ class AttackService:
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
-            if teacher.status is not TeacherStatus.ACTIVE:
+            if teacher.status not in {TeacherStatus.ACTIVE, TeacherStatus.INJURED}:
                 raise InvalidTeacherState
             teachers.append(teacher)
         return await self._preview_with_teachers(session, attacker, target, teachers)
@@ -1086,7 +1087,7 @@ class AttackService:
             raise TeacherNotOwned
         if teacher.status is TeacherStatus.RECOVERING:
             raise TeacherInHospital
-        if teacher.status is not TeacherStatus.ACTIVE:
+        if teacher.status not in {TeacherStatus.ACTIVE, TeacherStatus.INJURED}:
             raise InvalidTeacherState
 
         return await self._attack_with_teacher(session, attacker, target, teacher)
@@ -1109,7 +1110,7 @@ class AttackService:
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
-            if teacher.status is not TeacherStatus.ACTIVE:
+            if teacher.status not in {TeacherStatus.ACTIVE, TeacherStatus.INJURED}:
                 raise InvalidTeacherState
         _, castles = await lock_attack_dependencies(session, (attacker, target))
         names = tuple(item.teacher.name for item in teachers)

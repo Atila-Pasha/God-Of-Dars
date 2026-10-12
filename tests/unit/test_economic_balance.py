@@ -11,9 +11,9 @@ catalog = import_module(
 def test_mine_and_castle_progression_do_not_outgrow_high_level_income() -> None:
     for level in (1, 5, 10, 20, 50, 100, 200, 300, 400, 500):
         mine = game_config.mine_level(level)
-        daily_diamonds = mine.diamond_per_minute * 1_440
+        daily_diamonds = mine.diamond_per_minute * game_config.mine_max_catchup_minutes
         assert mine.diamond_cost is not None
-        assert mine.diamond_cost <= max(1, daily_diamonds * 2, 13_000)
+        assert mine.diamond_cost <= max(1, daily_diamonds * 3, 13_000)
 
         castle_cost = game_config.castle_upgrade(level).diamond_cost
         assert castle_cost <= max(500, daily_diamonds * 4, 2_400)

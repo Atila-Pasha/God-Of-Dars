@@ -396,6 +396,45 @@ async def _attack_fixture() -> tuple[int, int, int, int]:
 
 
 @pytest.mark.asyncio
+async def test_injured_teacher_with_remaining_hp_can_launch_attack() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            owned = await session.get(UserTeacher, owned_id)
+            owned.current_hp = 30
+            owned.status = TeacherStatus.INJURED
+
+        async with AsyncSessionLocal() as session:
+            telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == attacker_id)
+            )
+            service = AttackService()
+            available = await service.available_attack_teachers(
+                session, attacker_telegram_id=telegram_id
+            )
+            assert owned_id in {teacher.id for teacher in available}
+            preview = await service.preview_by_teacher_ids(
+                session,
+                attacker_telegram_id=telegram_id,
+                target_id=target_id,
+                teacher_ids=[owned_id],
+            )
+            assert preview.teacher_id == owned_id
+            launch = await service.start_attack_by_ids(
+                session,
+                attacker_telegram_id=telegram_id,
+                target_id=target_id,
+                teacher_ids=[owned_id],
+            )
+            assert len(launch.attack_ids) == 1
+            await session.rollback()
+    finally:
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status,retryable",
     [

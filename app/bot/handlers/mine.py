@@ -29,7 +29,7 @@ from app.core.enums import ResourceType
 from app.core.game_logic import GameConfigurationError
 from app.services.mine_service import MineService
 from app.services.school_errors import (
-    InsufficientCoins,
+    InsufficientDiamonds,
     MineLevelLocked,
     MineNotFound,
     MineUpgradeUnavailable,
@@ -240,7 +240,7 @@ async def mine_callback(
             await callback.answer("معدن با موفقیت ارتقا پیدا کرد.")
             return
         await callback.answer()
-    except InsufficientCoins:
+    except InsufficientDiamonds:
         await callback.answer("الماس کافی برای ارتقای معدن ندارید.", show_alert=True)
     except MineLevelLocked:
         await callback.answer(

@@ -351,7 +351,10 @@ class TeacherService:
         )
         if owned_teacher is None:
             raise TeacherNotOwned
-        if owned_teacher.status is not TeacherStatus.ACTIVE:
+        if owned_teacher.current_hp <= 0 or owned_teacher.status not in {
+            TeacherStatus.ACTIVE,
+            TeacherStatus.INJURED,
+        }:
             raise InvalidTeacherState
         return TeacherAttackSnapshot(
             user_teacher_id=owned_teacher.id,
