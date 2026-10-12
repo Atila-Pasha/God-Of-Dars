@@ -29,6 +29,15 @@ def mine_keyboard(*, can_upgrade: bool) -> InlineKeyboardMarkup:
                 )
             ]
         )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="به‌روزرسانی",
+                icon_custom_emoji_id="6039539366177541657",
+                callback_data=MineCallback(action="refresh").pack(),
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

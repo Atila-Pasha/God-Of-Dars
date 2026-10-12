@@ -74,3 +74,9 @@ def test_mine_shows_independent_collection_buttons() -> None:
     upgrade = mine_keyboard(can_upgrade=True).inline_keyboard[1][0]
     assert upgrade.style == "success"
     assert upgrade.icon_custom_emoji_id == "5866060208253441223"
+    assert mine_keyboard(can_upgrade=True).inline_keyboard[2][0].callback_data == (
+        "mine:refresh"
+    )
+    assert mine_keyboard(can_upgrade=False).inline_keyboard[1][0].callback_data == (
+        "mine:refresh"
+    )

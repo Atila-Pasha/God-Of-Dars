@@ -97,6 +97,28 @@ def test_mine_daily_cap_applies_across_repeated_opens() -> None:
     assert mine.today_coin == 5 * game_config.mine_level(1).coin_per_minute
 
 
+def test_mine_keeps_producing_after_early_collection() -> None:
+    service = MineService(config=game_config)
+    now = datetime(2026, 10, 5, 12, tzinfo=UTC)
+    mine = Mine(
+        level=1,
+        last_collected_at=now - timedelta(minutes=1),
+        today=now.date(),
+        today_coin=0,
+        today_diamond=0,
+        today_banana=0,
+        daily_produced_minutes=0,
+    )
+    rate = game_config.mine_level(1).coin_per_minute
+
+    assert service._accrue(mine, now=now) == 1
+    assert mine.today_coin == rate
+    mine.today_coin = 0  # The player collected the first minute's cargo.
+    assert service._accrue(mine, now=now + timedelta(minutes=1)) == 1
+    assert mine.today_coin == rate
+    assert mine.daily_produced_minutes == 2
+
+
 @pytest.mark.asyncio
 async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -> None:
     now = datetime.now(UTC)

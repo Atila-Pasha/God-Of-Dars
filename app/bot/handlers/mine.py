@@ -48,12 +48,14 @@ MINE_LABEL = next(
 def _mine_text(snapshot) -> str:
     production = snapshot.production
     daily_limit = mine_service.config.mine_max_catchup_minutes
+    produced_minutes = min(daily_limit, max(0, snapshot.daily_produced_minutes))
     ready = snapshot.today_coin > 0 or snapshot.today_diamond > 0
-    status = (
-        f"{emoji('5823388325188214894', '✅')} محموله آمادهٔ برداشت است\\."
-        if ready
-        else f"{emoji('6039539366177541657', '⏳')} کوره‌ها مشغول کارند؛ کمی دیگر سر بزن\\."
-    )
+    if ready:
+        status = f"{emoji('5823388325188214894', '✅')} محموله آمادهٔ برداشت است\\."
+    elif produced_minutes >= daily_limit:
+        status = "فعلاً محموله‌ای برای برداشت باقی نمانده است\\."
+    else:
+        status = f"{emoji('6039539366177541657', '⏳')} معدن مشغول استخراج است\\."
     coin_scale = max(1, production.coin_per_minute * daily_limit)
     diamond_scale = production.diamond_per_minute * daily_limit
     if diamond_scale:
@@ -70,7 +72,10 @@ def _mine_text(snapshot) -> str:
     return (
         f"{emoji('5823474022670671455', '⛏️')} {bold('معدن فرماندهی')} {emoji('5935912783261470019', '✨')}\n\n"
         f"{FORT} سطح معدن: {bold(snapshot.level)}\n"
-        f"{emoji('6039539366177541657', '⚙️')} زمان تولید محاسبه‌شده: {escape(snapshot.collected_minutes)} دقیقه\n\n"
+        f"{emoji('6039539366177541657', '⏳')} {bold('پیشرفت استخراج امروز')}: "
+        f"{escape(produced_minutes)} از {escape(daily_limit)} دقیقه\n"
+        f"{_extraction_bar(produced_minutes, daily_limit)}\n"
+        f"{escape('سقف تولید امروز تکمیل شد؛ فردا دوباره تولید شروع می‌شود.' if produced_minutes >= daily_limit else 'برای دیدن پیشرفت هر دقیقه، به‌روزرسانی را بزن.')}\n\n"
         f"{emoji('6007857303695400402', '📈')} {bold('تولید در هر دقیقه')}:\n\n"
         f"{COIN} طلا: {escape(production.coin_per_minute)}\n"
         f"{DIAMOND} الماس: {escape(production.diamond_per_minute)}\n\n"
@@ -80,13 +85,22 @@ def _mine_text(snapshot) -> str:
         f"{emoji('5823329527085931340', '🪙')} {bold('معدن طلا')}\n"
         f"موجودی قابل برداشت: {bold(_ltr(f'{snapshot.today_coin:,}'))} {emoji('5823329527085931340', '🪙')}\n"
         f"{_ore_bar(snapshot.today_coin, coin_scale)}\n\n"
-        f"سقف تولید روزانه: {escape(daily_limit // 60)} ساعت؛ محمولهٔ برداشت‌نشده باقی می‌ماند\\.\n\n"
+        f"هر زمان می‌توانی برداشت کنی؛ استخراج تا سقف {escape(daily_limit // 60)} ساعت در روز ادامه دارد\\.\n"
+        "محمولهٔ برداشت‌نشده هم باقی می‌ماند\\.\n\n"
         f"{status}"
     )
 
 
 def _ore_bar(amount: int, scale: int) -> str:
     return premium_progress_bar(amount, scale, show_percent=True)
+
+
+def _extraction_bar(minutes: int, daily_limit: int) -> str:
+    percentage = min(100, max(0, minutes * 100 / max(1, daily_limit)))
+    return (
+        f"{premium_progress_bar(minutes, daily_limit)}  "
+        f"{_ltr(escape(f'{percentage:.1f}%'))}"
+    )
 
 
 def _ltr(value: str) -> str:
@@ -171,6 +185,10 @@ async def mine_callback(
             await callback.message.answer(
                 "به منوی اصلی برگشتید.", reply_markup=main_menu_keyboard()
             )
+        elif callback_data.action == "refresh":
+            await _show(callback, session)
+            await callback.answer("وضعیت معدن به‌روز شد.")
+            return
         elif callback_data.action in {"collect", "collect_coin", "collect_diamond"}:
             resource_type = {
                 "collect_coin": ResourceType.COIN,

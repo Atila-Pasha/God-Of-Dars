@@ -33,3 +33,25 @@ async def test_mine_upgrade_reports_insufficient_diamonds(monkeypatch) -> None:
     callback.answer.assert_awaited_once_with(
         "الماس کافی برای ارتقای معدن ندارید.", show_alert=True
     )
+
+
+@pytest.mark.asyncio
+async def test_mine_refresh_reopens_current_snapshot(monkeypatch) -> None:
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(),
+        answer=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        mine.user_service,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(id=7)),
+    )
+    show = AsyncMock()
+    monkeypatch.setattr(mine, "_show", show)
+    session = AsyncMock()
+
+    await mine.mine_callback(callback, MineCallback(action="refresh"), session)
+
+    show.assert_awaited_once_with(callback, session)
+    callback.answer.assert_awaited_once_with("وضعیت معدن به‌روز شد.")

@@ -174,6 +174,7 @@ class ShieldPurchaseCallback(CallbackData, prefix="shield_purchase"):
 
 class MineCallback(CallbackData, prefix="mine"):
     action: Literal[
+        "refresh",
         "collect",
         "collect_coin",
         "collect_diamond",
