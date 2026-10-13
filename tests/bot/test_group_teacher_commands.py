@@ -70,10 +70,16 @@ async def test_group_heal_starts_standard_recovery(monkeypatch) -> None:
     )
     begin = AsyncMock()
     monkeypatch.setattr(school.hospital_service, "begin_recovery", begin)
+    session = AsyncMock()
 
-    await school.group_recover_teacher(message, AsyncMock())
+    async def answer_after_commit(*_args, **_kwargs):
+        session.commit.assert_awaited_once()
 
-    begin.assert_awaited_once()
+    message.answer.side_effect = answer_after_commit
+
+    await school.group_recover_teacher(message, session)
+
+    begin.assert_awaited_once_with(session, 1, 5)
     assert "آغاز شد" in message.answer.await_args.args[0]
 
 
@@ -88,6 +94,11 @@ async def test_group_discharge_uses_hospital_service(monkeypatch) -> None:
     discharge = AsyncMock(return_value=owned)
     monkeypatch.setattr(school.hospital_service, "discharge", discharge)
     session = AsyncMock()
+
+    async def answer_after_commit(*_args, **_kwargs):
+        session.commit.assert_awaited_once()
+
+    message.answer.side_effect = answer_after_commit
 
     await school.group_discharge_teacher(message, session)
 

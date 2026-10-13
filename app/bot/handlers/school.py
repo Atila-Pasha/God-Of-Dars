@@ -478,7 +478,9 @@ async def _hospital_view(
         f"{emoji('6039539366177541657', '⏳')} {bold('سرعت درمان بیمارستان')}",
         f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')}",
         "",
-        escape("زمان بستری جدید بر اساس جان ازدست‌رفتهٔ هر دبیر حساب می‌شود."),
+        escape(
+            "زمان بستری بر اساس جان ازدست‌رفته حساب می‌شود. پس از پایان درمان، تخت آزاد می‌شود؛ برای بازگشت دبیر به نبرد باید ترخیصش کنی."
+        ),
         "",
     ]
     if not patients:
@@ -636,6 +638,7 @@ async def group_recover_teacher(message: Message, session: AsyncSession) -> None
         if owned is None:
             return
         await hospital_service.begin_recovery(session, user.id, owned.id)
+        await session.commit()
         await message.answer(
             f"{emoji('5825570280243732195', '🏥')} "
             f"{bold(f'درمان دبیر «{owned.teacher.name}» آغاز شد.')}",
@@ -643,7 +646,14 @@ async def group_recover_teacher(message: Message, session: AsyncSession) -> None
         )
     except HospitalFull:
         await session.rollback()
-        await message.answer("تخت‌های بیمارستان پر هستند؛ دبیر آماده را ترخیص کن.")
+        await message.answer(
+            "همهٔ تخت‌ها در حال درمان‌اند؛ بعد از پایان درمان یک تخت آزاد می‌شود یا می‌توانی بیمارستان را ارتقا بدهی."
+        )
+    except AttackInProgress:
+        await session.rollback()
+        await message.answer(
+            "حملهٔ این دبیر هنوز تمام نشده؛ بعد از مشخص‌شدن نتیجه می‌تونی درمانش رو شروع کنی."
+        )
     except (TeacherNotOwned, SchoolError):
         await session.rollback()
         await message.answer(
@@ -669,6 +679,7 @@ async def group_discharge_teacher(message: Message, session: AsyncSession) -> No
         if owned is None:
             return
         discharged = await hospital_service.discharge(session, user.id, owned.id)
+        await session.commit()
         await message.answer(
             f"{emoji('5825709849500985213', '✅')} "
             f"{bold(f'دبیر «{discharged.teacher.name}» ترخیص شد و دوباره آمادهٔ نبرد است.')}",
@@ -1016,11 +1027,19 @@ async def teacher_callback_handler(
             await hospital_service.send_to_hospital(
                 session, user.id, callback_data.teacher_id
             )
+            await session.commit()
             await _teacher_view(callback, session, callback_data.teacher_id)
             await callback.answer("دبیر به بیمارستان فرستاده شد.")
-    except HospitalFull:
+    except AttackInProgress:
+        await session.rollback()
         await callback.answer(
-            "تخت‌های بیمارستان پر هستند. دبیر درمان‌شده را ترخیص کن یا بیمارستان را ارتقا بده.",
+            "حملهٔ این دبیر هنوز تمام نشده؛ بعد از نتیجهٔ حمله دوباره برای درمان اقدام کن.",
+            show_alert=True,
+        )
+    except HospitalFull:
+        await session.rollback()
+        await callback.answer(
+            "همهٔ تخت‌ها در حال درمان‌اند؛ بعد از پایان درمان تخت آزاد می‌شود یا بیمارستان را ارتقا بده.",
             show_alert=True,
         )
     except InsufficientDiamonds:
@@ -1095,10 +1114,12 @@ async def confirmation_callback_handler(
             await hospital_service.instant_recover(
                 session, user.id, callback_data.target_id
             )
+            await session.commit()
             await _hospital_view(callback, session)
             notice = "دبیر با پرداخت الماس فوراً درمان شد."
         elif callback_data.action == "hospital_upgrade":
             await hospital_service.upgrade(session, user.id)
+            await session.commit()
             await _hospital_view(callback, session)
             notice = "بیمارستان ارتقا پیدا کرد؛ بستری‌های جدید سریع‌تر درمان می‌شوند."
         elif callback_data.action == "teacher_buy":
@@ -1292,12 +1313,21 @@ async def hospital_callback_handler(
             return
         else:
             notice = None
+        await session.commit()
         await _hospital_view(callback, session)
         await callback.answer(notice)
-    except HospitalFull:
+    except AttackInProgress:
+        await session.rollback()
         await callback.answer(
-            "تخت‌های بیمارستان پر هستند. دبیر درمان‌شده را ترخیص کن یا بیمارستان را ارتقا بده.",
+            "حملهٔ این دبیر هنوز تمام نشده؛ بعد از نتیجهٔ حمله دوباره برای درمان اقدام کن.",
+            show_alert=True,
+        )
+    except HospitalFull:
+        await session.rollback()
+        await callback.answer(
+            "همهٔ تخت‌ها در حال درمان‌اند؛ بعد از پایان درمان تخت آزاد می‌شود یا بیمارستان را ارتقا بده.",
             show_alert=True,
         )
     except SchoolError:
+        await session.rollback()
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)

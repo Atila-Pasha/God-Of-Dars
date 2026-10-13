@@ -77,7 +77,7 @@ class TeacherInHospital(SchoolError):
 
 
 class HospitalFull(SchoolError):
-    """All hospital beds are occupied until discharge."""
+    """All hospital beds are currently treating patients."""
 
 
 class HospitalUpgradeUnavailable(SchoolError):

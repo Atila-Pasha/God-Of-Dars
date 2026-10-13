@@ -832,6 +832,14 @@ class AttackService:
         self._transfer_loot(session, attacker, target, loot, attack_id=attack.id)
         self._credit_mine_loot(session, attacker, mine_loot, attack_id=attack.id)
         if teacher is not None and injury:
+            # Legacy in-flight attacks can resolve after hospital admission.
+            # Their injury interrupts that treatment; never leave an open
+            # recovery attached to a teacher that is INJURED again.
+            if teacher.status is TeacherStatus.RECOVERING:
+                interrupted_at = datetime.now(UTC)
+                for recovery in teacher.recoveries:
+                    if recovery.completed_at is None:
+                        recovery.completed_at = interrupted_at
             teacher.current_hp = max(0, teacher.current_hp - injury)
             if teacher.current_hp == 0:
                 await session.delete(teacher)
