@@ -175,6 +175,38 @@ def test_loot_is_capped_by_teacher_power_not_target_wealth():
     assert modest_loot["loot_diamond"] == rich_loot["loot_diamond"] == 1
 
 
+@pytest.mark.parametrize(
+    ("coin", "diamond", "damage", "expected"),
+    [
+        (0, 0, 20, 10),
+        (1, 0, 20, 0),
+        (0, 1, 20, 0),
+        (0, 0, 0, 0),
+    ],
+)
+def test_empty_target_bonus_requires_damage_and_no_lootable_resources(
+    coin, diamond, damage, expected
+) -> None:
+    target = SimpleNamespace(resources=SimpleNamespace(coin=coin, diamond=diamond))
+
+    assert AttackService()._empty_target_bonus(target, damage) == expected
+
+
+def test_empty_target_bonus_credits_attacker_without_debiting_target() -> None:
+    attacker = SimpleNamespace(id=1, resources=SimpleNamespace(coin=3))
+    target = SimpleNamespace(resources=SimpleNamespace(coin=0, diamond=0))
+    session = SimpleNamespace(add=lambda transaction: ledger.append(transaction))
+    ledger = []
+
+    AttackService._award_empty_target_bonus(session, attacker, 10, attack_id=7)
+
+    assert attacker.resources.coin == 13
+    assert target.resources.coin == 0
+    assert len(ledger) == 1
+    assert ledger[0].reason == "ATTACK_EMPTY_TARGET_BONUS"
+    assert ledger[0].reference_id == 7
+
+
 def test_stronger_teacher_has_a_larger_but_still_bounded_loot_capacity():
     rules = AttackRules(
         loot_coin_per_power=10,

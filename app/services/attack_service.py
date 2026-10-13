@@ -66,6 +66,7 @@ class AttackResult:
     teacher_injuries: tuple[TeacherInjury, ...] = ()
     castle_strength_before: int = 0
     source_chat_id: int | None = None
+    bot_bonus_coin: int = 0
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ class AttackPreview:
     teacher_ids: str = ""
     teacher_emojis: tuple[str | None, ...] = ()
     teacher_details: tuple[tuple[str, str | None, str | None], ...] = ()
+    bot_bonus_coin: int = 0
 
 
 @dataclass(frozen=True)
@@ -778,6 +780,9 @@ class AttackService:
             castle_result.castle_strength_before,
             attack.teacher_damage_snapshot,
         )
+        empty_target_bonus = self._empty_target_bonus(
+            target, castle_result.applied_damage
+        )
         loot["loot_banana"] = 0
         self._transfer_loot(session, attacker, target, loot, attack_id=attack.id)
         if teacher is not None and injury:
@@ -825,6 +830,12 @@ class AttackService:
                 {"loot_coin": 0, "loot_diamond": 0, "loot_banana": attack.loot_banana},
                 attack_id=attack.id,
             )
+            if empty_target_bonus:
+                awarded_bonus = self._award_empty_target_bonus(
+                    session, attacker, empty_target_bonus, attack_id=attack.id
+                )
+                attack.bot_bonus_coin = awarded_bonus
+                attack.loot_coin = (attack.loot_coin or 0) + awarded_bonus
         await session.flush()
         command_records = (
             await session.scalars(
@@ -862,6 +873,7 @@ class AttackService:
             teacher_details=((teacher_name, teacher_ability, teacher_icon),),
             castle_strength_before=castle_result.castle_strength_before,
             source_chat_id=attack.source_chat_id,
+            bot_bonus_coin=attack.bot_bonus_coin,
         )
 
     async def _selection_for_update(
@@ -995,6 +1007,8 @@ class AttackService:
             castle.strength,
             sum(self.teacher_service.damage(teacher) for teacher in teachers),
         )
+        empty_target_bonus = self._empty_target_bonus(target, damage)
+        loot["loot_coin"] += empty_target_bonus
         return AttackPreview(
             # The confirmation callback is clicked by Telegram and therefore
             # must carry the Telegram id, not the database user id.
@@ -1026,6 +1040,7 @@ class AttackService:
                 )
                 for teacher in teachers
             ),
+            bot_bonus_coin=empty_target_bonus,
             **loot,
         )
 
@@ -1132,6 +1147,7 @@ class AttackService:
         total_injury = 0
         teacher_results = []
         attack_command_id = str(uuid4())
+        target_started_empty = not self._target_has_lootable_resources(target)
         for teacher in teachers:
             teacher_damage = self.teacher_service.damage(teacher)
             damage, injury = self.config.attack_rules.resolve(
@@ -1220,6 +1236,17 @@ class AttackService:
                 },
                 attack_id=last_attack.id,
             )
+            if (
+                target_started_empty
+                and self.config.attack_rules.empty_target_bonus_coin
+            ):
+                bonus = self.config.attack_rules.empty_target_bonus_coin
+                awarded_bonus = self._award_empty_target_bonus(
+                    session, attacker, bonus, attack_id=last_attack.id
+                )
+                last_attack.bot_bonus_coin = awarded_bonus
+                last_attack.loot_coin = (last_attack.loot_coin or 0) + awarded_bonus
+                total_loot["loot_coin"] += awarded_bonus
         return AttackResult(
             attack=last_attack,
             attacker_telegram_id=attacker.telegram_user_id,
@@ -1250,6 +1277,7 @@ class AttackService:
             castle_strength_before=teacher_results[0][
                 0
             ].target_castle_strength_snapshot,
+            bot_bonus_coin=last_attack.bot_bonus_coin,
         )
 
     async def _ensure_target_attackable(
@@ -1308,6 +1336,38 @@ class AttackService:
             "loot_diamond": amount(target.resources.diamond, ResourceType.DIAMOND),
             "loot_banana": self.config.attack_rules.banana_reward,
         }
+
+    @staticmethod
+    def _target_has_lootable_resources(target) -> bool:
+        resources = target.resources
+        return resources is not None and (resources.coin > 0 or resources.diamond > 0)
+
+    def _empty_target_bonus(self, target, castle_damage: int) -> int:
+        if castle_damage <= 0 or self._target_has_lootable_resources(target):
+            return 0
+        return self.config.attack_rules.empty_target_bonus_coin
+
+    @staticmethod
+    def _award_empty_target_bonus(
+        session, attacker, amount: int, *, attack_id: int
+    ) -> int:
+        if amount <= 0 or attacker.resources is None:
+            return 0
+        before = attacker.resources.coin
+        attacker.resources.coin = before + amount
+        session.add(
+            Transaction(
+                user_id=attacker.id,
+                resource_type=ResourceType.COIN,
+                amount=amount,
+                balance_before=before,
+                balance_after=before + amount,
+                reason="ATTACK_EMPTY_TARGET_BONUS",
+                reference_type="ATTACK",
+                reference_id=attack_id,
+            )
+        )
+        return amount
 
     @staticmethod
     def _transfer_loot(

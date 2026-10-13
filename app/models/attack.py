@@ -86,6 +86,9 @@ class Attack(Base):
             "loot_diamond >= 0", name="ck_attacks_loot_diamond_non_negative"
         ),
         CheckConstraint("loot_banana >= 0", name="ck_attacks_loot_banana_non_negative"),
+        CheckConstraint(
+            "bot_bonus_coin >= 0", name="ck_attacks_bot_bonus_coin_non_negative"
+        ),
         CheckConstraint("attacker_id <> target_id", name="ck_attacks_different_users"),
     )
 
@@ -155,6 +158,9 @@ class Attack(Base):
     loot_coin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     loot_diamond: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     loot_banana: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    bot_bonus_coin: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     is_successful: Mapped[bool | None] = mapped_column(nullable=True)
 
     attacker: Mapped[User] = relationship(

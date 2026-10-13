@@ -31,6 +31,9 @@ defense_absorption_ratio = 1.0
 counter_damage_ratio = 0.25
 loot_percent = 10
 banana_reward = 20
+# One small coin reward from the game when a successful target has no lootable
+# coin or diamond. Awarded once per attack command, never taken from the target.
+empty_target_bonus_coin = 10
 # First calculate loot from the destroyed castle fraction, then cap it by the
 # attacking teacher's power. A rich target can therefore never make the same
 # teacher exceed its own carrying capacity.

@@ -94,6 +94,7 @@ async def _command_result(session, result):
         loot_coin=sum(row.loot_coin for row in records),
         loot_diamond=sum(row.loot_diamond for row in records),
         loot_banana=sum(row.loot_banana for row in records),
+        bot_bonus_coin=sum(row.bot_bonus_coin for row in records),
         castle_strength_before=min(
             records[0].target_castle_strength_snapshot,
             result.castle_strength_after

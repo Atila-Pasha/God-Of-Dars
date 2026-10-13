@@ -34,6 +34,7 @@ def _attack_row(
         loot_coin=damage,
         loot_diamond=1,
         loot_banana=0,
+        bot_bonus_coin=0,
         target_castle_strength_snapshot=100,
         source_chat_id=-100123,
     )

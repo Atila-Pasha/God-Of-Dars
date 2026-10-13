@@ -127,7 +127,40 @@ def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
     for banner in (attacker, defender):
         assert "tg://emoji?id=5825699971076202989) طلا: 10" in banner
         assert "tg://emoji?id=5825753314570018832) الماس: 2" in banner
-        assert "tg://emoji?id=5902520589356113908) موز: 1" in banner
+    assert "tg://emoji?id=5902520589356113908) موز: 1" in attacker
+    assert "tg://emoji?id=5902520589356113908) موز: 0" in defender
+
+
+def test_empty_target_bonus_is_visible_only_to_attacker_and_not_a_defender_loss() -> (
+    None
+):
+    result = AttackResult(
+        attack=SimpleNamespace(id=1),
+        attacker_telegram_id=1,
+        attacker_name="آرش",
+        target_name="نگار",
+        target_telegram_id=2,
+        teacher_name="قضاتی",
+        ability_text=None,
+        castle_damage=20,
+        teacher_injury=0,
+        castle_strength_after=80,
+        loot_coin=10,
+        loot_diamond=0,
+        loot_banana=20,
+        bot_bonus_coin=10,
+        castle_strength_before=100,
+    )
+
+    attacker = attack_result_banner(result)
+    defender = attack_result_banner(result, recipient="defender")
+
+    assert "حریف غنیمتی نداشت" in attacker
+    assert "*10 سکه*" in attacker
+    assert "طلا: 10" in attacker
+    assert "طلا: 0" in defender
+    assert "موز: 0" in defender
+    assert "پاداش این حمله" not in defender
 
 
 def test_destroyed_castle_report_calls_out_weak_attack() -> None:

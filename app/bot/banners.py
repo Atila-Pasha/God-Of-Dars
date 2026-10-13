@@ -242,6 +242,11 @@ def attack_preview_banner(preview: AttackPreview) -> str:
     details = _teacher_lines(
         preview.teacher_details, preview.teacher_name, preview.teacher_emojis
     )
+    loot_source = (
+        "غنیمت احتمالی با پاداش بازی"
+        if preview.bot_bonus_coin
+        else "غنیمت احتمالی از منابع حریف"
+    )
     return (
         f"{SWORD} {bold('قربان! به این موارد توجه کنید:')}\n\n"
         f"{TARGET} هدف: {bold(preview.target_name)}\n\n"
@@ -250,7 +255,7 @@ def attack_preview_banner(preview: AttackPreview) -> str:
         f"> {escape(preview.defense_power)} DMG {DEFENSE}\n\n"
         f"{INJURY} آسیب احتمالی دبیر:\n"
         f"> {escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
-        f"{LOOT} {bold('غنیمت')} احتمالی از منابع حریف:\n"
+        f"{LOOT} {bold(loot_source)}:\n"
         f"{COIN} {bold('طلا')}: {escape(preview.loot_coin)}\n"
         f"{BANANA} {bold('موز')}: {escape(preview.loot_banana)}\n\n"
         f"{QUESTION} {bold('فرمان حمله رو صادر می‌کنی؟')}"
@@ -319,6 +324,18 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
     destruction = (
         "ضعیف کشی کردی" if weak_target and recipient != "defender" else f"{percent}%"
     )
+    coin_amount = (
+        result.loot_coin - result.bot_bonus_coin
+        if recipient == "defender"
+        else result.loot_coin
+    )
+    banana_amount = 0 if recipient == "defender" else result.loot_banana
+    bonus_note = (
+        f"{COIN} حریف غنیمتی نداشت؛ {bold(f'{result.bot_bonus_coin} سکه')} "
+        "پاداش این حمله از طرف بازیه\\.\n\n"
+        if recipient != "defender" and result.bot_bonus_coin
+        else ""
+    )
     return (
         f"{FINISH} {bold(headline)} {FINISH}\n\n"
         f"{REPORT} {bold('گزارش نتیجهٔ نبرد:')}\n"
@@ -332,9 +349,10 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{HEAL} آسیب واردشده به دبیر:\n"
         f"> {escape(result.teacher_injury)} HP {HEAL}\n\n"
         f"{LOOT} {loot_label}:\n"
-        f"{COIN} طلا: {escape(result.loot_coin)}\n"
+        f"{COIN} طلا: {escape(coin_amount)}\n"
         f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
-        f"{BANANA} موز: {escape(result.loot_banana)}\n\n"
+        f"{BANANA} موز: {escape(banana_amount)}\n\n"
+        f"{bonus_note}"
         f"{closing}"
     )
 
