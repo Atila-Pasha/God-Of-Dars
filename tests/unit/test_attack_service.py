@@ -17,13 +17,14 @@ async def test_castle_damage_never_exceeds_remaining_strength() -> None:
     service = CastleService()
     service.repository = SimpleNamespace(get_by_user=AsyncMock(return_value=castle))
     service.shield_service = SimpleNamespace(
+        has_free_shield=AsyncMock(return_value=False),
         consume_for_attack=AsyncMock(
             return_value=SimpleNamespace(
                 incoming_damage=100,
                 blocked_damage=0,
                 remaining_damage=100,
             )
-        )
+        ),
     )
     session = SimpleNamespace(flush=AsyncMock())
 
@@ -129,7 +130,8 @@ async def test_attack_preview_rejects_a_target_with_an_active_shield():
     service = AttackService()
     service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=100))
     service.castle_service.shield_service = SimpleNamespace(
-        has_active_shield=AsyncMock(return_value=True)
+        has_free_shield=AsyncMock(return_value=False),
+        has_active_shield=AsyncMock(return_value=True),
     )
 
     with pytest.raises(TargetProtectedByShield):
@@ -194,6 +196,9 @@ async def test_destroyed_castle_ignores_equipped_shield():
     service = AttackService()
     service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=0))
     service.castle_service.shield_service.has_active_shield = AsyncMock()
+    service.castle_service.shield_service.has_free_shield = AsyncMock(
+        return_value=False
+    )
 
     await service._ensure_target_attackable(SimpleNamespace(), 7)
 

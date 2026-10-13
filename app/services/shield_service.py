@@ -88,6 +88,8 @@ class ShieldService:
         teacher_names: tuple[str, ...] | None = None,
     ) -> bool:
         now = datetime.now(UTC)
+        if await self.has_free_shield(session, user_id, now=now):
+            return True
         result = await session.execute(
             select(UserShield)
             .where(
@@ -103,6 +105,14 @@ class ShieldService:
         return active is not None and not self._kazemi_bypassed(
             active.shield, teacher_names
         )
+
+    async def has_free_shield(
+        self, session: AsyncSession, user_id: int, *, now: datetime | None = None
+    ) -> bool:
+        until = await session.scalar(
+            select(User.free_shield_until).where(User.id == user_id)
+        )
+        return until is not None and until > (now or datetime.now(UTC))
 
     async def get_shield(self, session: AsyncSession, shield_id: int) -> Shield | None:
         result = await session.execute(select(Shield).where(Shield.id == shield_id))
@@ -282,6 +292,8 @@ class ShieldService:
         if incoming_damage < 0:
             raise GameConfigurationError("Incoming damage cannot be negative")
         now = datetime.now(UTC)
+        if await self.has_free_shield(session, user_id, now=now):
+            return ShieldMitigation(incoming_damage, incoming_damage, 0)
         statement = (
             select(UserShield)
             .where(

@@ -15,11 +15,13 @@ from app.bot.banners import (
     attack_result_banner,
     attack_teacher_injury_banner,
     castle_repair_reminder_banner,
+    rich_banner,
 )
 from app.core.config import settings
 from app.core.enums import AttackStatus
 from app.db.session import AsyncSessionLocal
 from app.models.attack import Attack
+from app.models.user import User
 from app.models.user_teacher import UserTeacher
 from app.repositories.user import UserRepository
 from app.services.attack_service import AttackService, TeacherInjury
@@ -43,6 +45,21 @@ def _needs_repair_reminder(result) -> bool:
         and result.castle_strength_before > 0
         and result.castle_damage * 2 > result.castle_strength_before
     )
+
+
+async def _award_free_shield(session, result) -> bool:
+    """Count a completed attack command once while the target row is locked."""
+    if result.blocked_by_shield or result.castle_damage + result.raid_damage <= 0:
+        return False
+    defender = await session.get(User, result.attack.target_id, with_for_update=True)
+    if defender is None:
+        return False
+    defender.attacks_since_free_shield += 1
+    if defender.attacks_since_free_shield < 5:
+        return False
+    defender.attacks_since_free_shield = 0
+    defender.free_shield_until = datetime.now(UTC) + timedelta(hours=1)
+    return True
 
 
 async def _command_result(session, result):
@@ -104,7 +121,10 @@ async def _command_result(session, result):
             + sum(row.result_damage or 0 for row in records),
         ),
         source_chat_id=records[0].source_chat_id,
-        blocked_by_shield=all((row.result_damage or 0) == 0 for row in records)
+        blocked_by_shield=all(
+            (row.result_damage or 0) + (row.result_raid_damage or 0) == 0
+            for row in records
+        )
         and result.blocked_by_shield,
     )
 
@@ -175,6 +195,11 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                     )
                     if result is not None:
                         result = await _command_result(session, result)
+                    shield_awarded = (
+                        await _award_free_shield(session, result)
+                        if result is not None
+                        else False
+                    )
                     can_upgrade = result is not None and await _can_upgrade_level(
                         session, result.attacker_telegram_id
                     )
@@ -215,6 +240,41 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "parse_mode": MARKDOWN_V2,
                             },
                         )
+                        if not result.blocked_by_shield:
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="ATTACK_REVENGE_PROMPT",
+                                recipient_user_id=result.attack.target_id,
+                                idempotency_key=f"ATTACK_REVENGE_PROMPT:{key}:TARGET",
+                                payload={
+                                    "chat_id": result.target_telegram_id,
+                                    "text": rich_banner(
+                                        "🗡️ می‌خوای تلافی کنی؟\n"
+                                        f"{result.attacker_name} به دژت حمله کرد. "
+                                        "اگه می‌خوای جوابش رو بدی، دبیرهات رو انتخاب کن."
+                                    ),
+                                    "parse_mode": MARKDOWN_V2,
+                                    "revenge_attack_id": result.attack.id,
+                                    "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",
+                                },
+                            )
+                        if shield_awarded:
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="FREE_SHIELD_GRANTED",
+                                recipient_user_id=result.attack.target_id,
+                                idempotency_key=f"FREE_SHIELD_GRANTED:{key}:TARGET",
+                                payload={
+                                    "chat_id": result.target_telegram_id,
+                                    "text": rich_banner(
+                                        "🛡 این پنجمین حمله‌ای بود که به دژت شد!\n"
+                                        "یک ساعت سپر رایگان روی دژت فعاله؛ "
+                                        "تا پایان این مدت کسی نمی‌تونه بهت حمله کنه."
+                                    ),
+                                    "parse_mode": MARKDOWN_V2,
+                                    "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",
+                                },
+                            )
                         if _needs_repair_reminder(result):
                             await notification_service.enqueue(
                                 session,

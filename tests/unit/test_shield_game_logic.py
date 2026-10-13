@@ -67,9 +67,10 @@ async def test_active_timed_shield_blocks_the_entire_attack() -> None:
         shield=shield,
     )
     session = SimpleNamespace(
+        scalar=AsyncMock(return_value=None),
         execute=AsyncMock(
             return_value=SimpleNamespace(scalar_one_or_none=lambda: active)
-        )
+        ),
     )
 
     result = await ShieldService(

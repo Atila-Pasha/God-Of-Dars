@@ -751,7 +751,9 @@ class AttackService:
                 )
             )
             command_names = tuple(name for name in names if name) or command_names
-        if (
+        if await self.castle_service.shield_service.has_free_shield(
+            session, target.id
+        ) or (
             target_castle.strength > 0
             and await self.castle_service.shield_service.has_active_shield(
                 session, target.id, command_names
@@ -1428,9 +1430,11 @@ class AttackService:
         teacher_names: tuple[str, ...] | None = None,
     ) -> None:
         castle = await self.castles.get_by_user(session, target_id)
+        shield_service = self.castle_service.shield_service
+        if await shield_service.has_free_shield(session, target_id):
+            raise TargetProtectedByShield
         if castle is not None and castle.strength == 0:
             return
-        shield_service = self.castle_service.shield_service
         protected = (
             await shield_service.has_active_shield(session, target_id)
             if teacher_names is None

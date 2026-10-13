@@ -32,6 +32,7 @@ from app.bot.callbacks import (
     AttackCountdownCallback,
     AttackMenuCallback,
     RandomAttackCallback,
+    RevengeCallback,
 )
 from app.bot.custom_emojis import reset_persist_group_message, set_persist_group_message
 from app.bot.keyboards.main_menu import section_back_keyboard
@@ -437,6 +438,45 @@ async def _show_teacher_selection(
             reply_to_message_id=reply_to_message_id,
             parse_mode=MARKDOWN_V2,
         )
+
+
+@router.callback_query(RevengeCallback.filter())
+async def revenge_callback_handler(
+    callback: CallbackQuery,
+    callback_data: RevengeCallback,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or callback.message.chat.type != "private"
+    ):
+        await callback.answer()
+        return
+    attack = await session.get(Attack, callback_data.attack_id)
+    defender = (
+        await session.get(User, attack.target_id)
+        if attack is not None and attack.status is AttackStatus.RESOLVED
+        else None
+    )
+    if defender is None or defender.telegram_user_id != callback.from_user.id:
+        await callback.answer("این پیام برای شما نیست.", show_alert=True)
+        return
+    if callback_data.action == "no":
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("باشه، فعلاً بی‌خیالش شدی.")
+        return
+    attacker = await session.get(User, attack.attacker_id)
+    if attacker is None or not attacker.is_active:
+        await callback.answer(
+            "این بازیکن فعلاً برای حمله در دسترس نیست.", show_alert=True
+        )
+        return
+    await state.clear()
+    await state.update_data(mode="id", target_id=attacker.id, selected_teacher_ids=[])
+    await callback.answer()
+    await _show_teacher_selection(callback, session, state, mode="id")
 
 
 async def _send_result(message: Message, result: AttackResult) -> None:
