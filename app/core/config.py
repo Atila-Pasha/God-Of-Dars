@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     RUNTIME_ROLE: Literal["combined", "bot", "attacks"] = "combined"
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000, ge=0)
     DB_LOCK_TIMEOUT_MS: int = Field(default=10000, ge=0)
+    DB_IDLE_TRANSACTION_TIMEOUT_MS: int = Field(default=75000, gt=0)
     DB_POOL_SIZE: int = Field(default=20, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=30, ge=0)
     DB_POOL_TIMEOUT: int = Field(default=30, gt=0)
@@ -24,6 +25,9 @@ class Settings(BaseSettings):
     TELEGRAM_HTTP_LIMIT: int = Field(default=100, ge=1)
     TELEGRAM_API_CONCURRENCY: int = Field(default=30, ge=1)
     TELEGRAM_RETRY_AFTER_MAX: int = Field(default=3, ge=0)
+    TELEGRAM_MAX_RETRY_DELAY_SECONDS: int = Field(default=10, ge=0)
+    TELEGRAM_REQUEST_TIMEOUT_SECONDS: int = Field(default=25, gt=0)
+    UPDATE_HANDLER_TIMEOUT_SECONDS: int = Field(default=60, gt=0)
     WORKER_COUNT: int = Field(default=4, ge=1)
     NOTIFICATION_WORKER_COUNT: int = Field(default=4, ge=1)
     NOTIFICATION_SEND_CONCURRENCY: int = Field(default=20, ge=1)

@@ -115,6 +115,11 @@ class GroupAccessMiddleware(BaseMiddleware):
                 *(event.new_chat_members or ()),
             )
             await self._register_group(event, data.get("session"))
+            # Registration is independent of the command. Persist it now so
+            # Telegram replies cannot hold newly created user/group row locks.
+            session = data.get("session")
+            if session is not None and session.in_transaction():
+                await session.commit()
             if not self._message_is_allowed(event):
                 # Keep groups quiet for private-menu input and unsupported
                 # commands; a warning for each input only creates spam.
@@ -146,6 +151,8 @@ class GroupAccessMiddleware(BaseMiddleware):
                 event.new_chat_member.user,
             )
             await self._register_chat(event.chat, session)
+            if session is not None and session.in_transaction():
+                await session.commit()
         return await handler(event, data)
 
     async def _register_group(

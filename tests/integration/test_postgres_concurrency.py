@@ -396,6 +396,72 @@ async def _attack_fixture() -> tuple[int, int, int, int]:
 
 
 @pytest.mark.asyncio
+async def test_attack_previews_do_not_lock_owned_or_shared_teacher_rows() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    try:
+        async with AsyncSessionLocal() as session:
+            attacker_telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == attacker_id)
+            )
+            target_telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == target_id)
+            )
+            teacher_name = await session.scalar(
+                select(Teacher.name).where(Teacher.id == teacher_id)
+            )
+            service = AttackService()
+            await service.preview_by_teacher_ids(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_id=target_id,
+                teacher_ids=[owned_id],
+            )
+            await service.preview_by_telegram_id(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_telegram_id=target_telegram_id,
+                teacher_name=teacher_name,
+            )
+            # Keep the preview transaction open, as a slow Telegram reply would.
+            async with AsyncSessionLocal() as concurrent:
+                assert (
+                    await concurrent.scalar(
+                        select(UserTeacher.id)
+                        .where(UserTeacher.id == owned_id)
+                        .with_for_update(nowait=True)
+                    )
+                    == owned_id
+                )
+                assert (
+                    await concurrent.scalar(
+                        select(Teacher.id)
+                        .where(Teacher.id == teacher_id)
+                        .with_for_update(nowait=True)
+                    )
+                    == teacher_id
+                )
+                await concurrent.rollback()
+            await session.rollback()
+
+            # Real attacks still lock the owned copy, never the shared catalog.
+            owned = await service.teachers.get_owned_by_name_for_update(
+                session, attacker_id, teacher_name
+            )
+            assert owned.id == owned_id
+            async with AsyncSessionLocal() as concurrent:
+                assert (
+                    await concurrent.scalar(
+                        select(Teacher.id)
+                        .where(Teacher.id == teacher_id)
+                        .with_for_update(nowait=True)
+                    )
+                    == teacher_id
+                )
+    finally:
+        await _cleanup([attacker_id, target_id])
+
+
+@pytest.mark.asyncio
 async def test_destroyed_castle_direct_attack_raids_uncollected_mine_cargo() -> None:
     attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
     try:

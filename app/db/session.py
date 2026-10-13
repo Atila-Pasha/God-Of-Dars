@@ -16,6 +16,9 @@ if settings.DATABASE_URL.startswith("postgresql+asyncpg://"):
             "server_settings": {
                 "statement_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
                 "lock_timeout": str(settings.DB_LOCK_TIMEOUT_MS),
+                "idle_in_transaction_session_timeout": str(
+                    settings.DB_IDLE_TRANSACTION_TIMEOUT_MS
+                ),
                 "application_name": f"godofdars-{settings.RUNTIME_ROLE}",
             }
         },

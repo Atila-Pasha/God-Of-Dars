@@ -712,6 +712,8 @@ async def attack_menu_callback_handler(
     except SchoolError as error:
         await _report_error(callback.message, error)
         return
+    # Random selection writes and user locks must be released before Telegram I/O.
+    await session.commit()
     await state.clear()
     with suppress(TelegramAPIError):
         await callback.message.delete()
@@ -821,6 +823,8 @@ async def attack_message(
     except SchoolError as error:
         await _report_error(message, error)
         return
+    # Sending a group reply can be rate-limited; do not hold preview locks.
+    await session.commit()
     if random_selection is not None:
         text = _random_attack_preview_content(random_selection)
         keyboard = _random_attack_confirmation_keyboard(

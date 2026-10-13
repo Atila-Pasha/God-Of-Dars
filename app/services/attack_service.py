@@ -989,13 +989,10 @@ class AttackService:
             raise TeacherNotOwned
         teachers = []
         for name in names:
-            teacher = await self.teachers.get_owned_by_name_for_update(
-                session, attacker.id, name
-            )
+            teacher = await self.teachers.get_owned_by_name(session, attacker.id, name)
             if teacher is None:
                 raise TeacherNotOwned
             if teacher.current_hp <= 0:
-                await session.delete(teacher)
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
@@ -1011,13 +1008,10 @@ class AttackService:
             raise CannotAttackSelf
         teachers = []
         for teacher_id in self._parse_teacher_ids(teacher_ids):
-            teacher = await self.teachers.get_owned_for_update(
-                session, attacker.id, teacher_id
-            )
+            teacher = await self.teachers.get_owned(session, attacker.id, teacher_id)
             if teacher is None:
                 raise TeacherNotOwned
             if teacher.current_hp <= 0:
-                await session.delete(teacher)
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital

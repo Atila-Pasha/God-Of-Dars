@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextvars import ContextVar
 from functools import wraps
 from typing import Any
@@ -17,6 +18,8 @@ from aiogram.types import (
 
 from app.bot.utils.telegram import schedule_message_deletion
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # The visible character is retained as a fallback. Telegram replaces it with
 # the custom emoji when the entity is present, while old clients still see a
@@ -413,8 +416,9 @@ def install() -> None:
         reply_fallback_used = False
         for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
             try:
-                async with _telegram_semaphore():
-                    result = await original_call(self, method, *args, **kwargs)
+                async with asyncio.timeout(settings.TELEGRAM_REQUEST_TIMEOUT_SECONDS):
+                    async with _telegram_semaphore():
+                        result = await original_call(self, method, *args, **kwargs)
                     sent_messages = result if isinstance(result, list) else (result,)
                     for sent in sent_messages:
                         if (
@@ -430,7 +434,15 @@ def install() -> None:
                             schedule_message_deletion(sent, delay_seconds=20)
                     return result
             except TelegramRetryAfter as exc:
-                if attempt >= settings.TELEGRAM_RETRY_AFTER_MAX:
+                if (
+                    attempt >= settings.TELEGRAM_RETRY_AFTER_MAX
+                    or exc.retry_after > settings.TELEGRAM_MAX_RETRY_DELAY_SECONDS
+                ):
+                    logger.warning(
+                        "Telegram %s rate-limited for %s seconds; releasing update",
+                        method.__class__.__name__,
+                        exc.retry_after,
+                    )
                     raise
                 await asyncio.sleep(exc.retry_after)
             except TelegramBadRequest as exc:
