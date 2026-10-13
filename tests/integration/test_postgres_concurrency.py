@@ -595,6 +595,8 @@ async def test_preview_drops_defense_for_teachers_after_castle_falls() -> None:
                 teacher_ids=[first_owned_id, second_owned_id],
             )
             assert (result.castle_damage, result.raid_damage) == (5, 10)
+            assert preview.loot_coin == result.loot_coin
+            assert preview.loot_diamond == result.loot_diamond
     finally:
         async with AsyncSessionLocal() as session, session.begin():
             await session.execute(

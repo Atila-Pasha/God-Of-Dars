@@ -1038,9 +1038,16 @@ class AttackService:
         remaining_strength = castle.strength
         raid_damage = 0
         injury = 0
+        wallet_coin = target.resources.coin if target.resources is not None else 0
+        wallet_diamond = target.resources.diamond if target.resources is not None else 0
+        loot = {"loot_coin": 0, "loot_diamond": 0, "loot_banana": 0}
+        mine_loot_coin = mine_loot_diamond = 0
+        mine_cargo = None
         for teacher in teachers:
+            teacher_power = self.teacher_service.damage(teacher)
+            strength_before = remaining_strength
             raw_damage, teacher_injury = self.config.attack_rules.resolve(
-                self.teacher_service.damage(teacher),
+                teacher_power,
                 castle.defense_power if remaining_strength > 0 else 0,
                 teacher.current_hp,
             )
@@ -1057,35 +1064,53 @@ class AttackService:
             applied_damage = min(remaining_strength, unblocked_damage)
             remaining_strength -= applied_damage
             raid_damage += unblocked_damage - applied_damage
+            loot_damage = applied_damage or (unblocked_damage - applied_damage)
+            wallet_loot = self._loot(
+                target,
+                loot_damage,
+                strength_before,
+                teacher_power,
+                coin_balance=wallet_coin,
+                diamond_balance=wallet_diamond,
+            )
+            wallet_coin -= wallet_loot["loot_coin"]
+            wallet_diamond -= wallet_loot["loot_diamond"]
+            loot["loot_coin"] += wallet_loot["loot_coin"]
+            loot["loot_diamond"] += wallet_loot["loot_diamond"]
+            if (
+                remaining_strength == 0
+                and loot_damage > 0
+                and wallet_loot["loot_coin"] == 0
+                and wallet_loot["loot_diamond"] == 0
+            ):
+                if mine_cargo is None:
+                    mine_cargo = await self._preview_mine_cargo(session, target.id)
+                if mine_cargo is not None:
+                    cargo_loot = self._loot(
+                        target,
+                        loot_damage,
+                        strength_before,
+                        teacher_power,
+                        coin_balance=mine_cargo.today_coin,
+                        diamond_balance=mine_cargo.today_diamond,
+                    )
+                    mine_cargo.today_coin -= cargo_loot["loot_coin"]
+                    mine_cargo.today_diamond -= cargo_loot["loot_diamond"]
+                    mine_loot_coin += cargo_loot["loot_coin"]
+                    mine_loot_diamond += cargo_loot["loot_diamond"]
+                    loot["loot_coin"] += cargo_loot["loot_coin"]
+                    loot["loot_diamond"] += cargo_loot["loot_diamond"]
         damage = castle.strength - remaining_strength
         loot_damage = damage or raid_damage
-        loot = self._loot(
-            target,
-            loot_damage,
-            castle.strength,
-            sum(self.teacher_service.damage(teacher) for teacher in teachers),
-        )
-        mine_loot = await self._raid_mine(
-            session,
-            target,
-            loot_damage=loot_damage,
-            castle_strength=castle.strength,
-            attack_power=sum(
-                self.teacher_service.damage(teacher) for teacher in teachers
-            ),
-            breached=damage == castle.strength
-            and loot["loot_coin"] == 0
-            and loot["loot_diamond"] == 0,
-            preview=True,
-        )
-        loot["loot_coin"] += mine_loot[0]
-        loot["loot_diamond"] += mine_loot[1]
         empty_target_bonus = (
             self._empty_target_bonus(target, loot_damage)
             if loot["loot_coin"] == 0 and loot["loot_diamond"] == 0
             else 0
         )
         loot["loot_coin"] += empty_target_bonus
+        loot["loot_banana"] = (
+            self.config.attack_rules.banana_reward if loot_damage > 0 else 0
+        )
         return AttackPreview(
             # The confirmation callback is clicked by Telegram and therefore
             # must carry the Telegram id, not the database user id.
@@ -1119,8 +1144,8 @@ class AttackService:
             ),
             bot_bonus_coin=empty_target_bonus,
             estimated_raid_damage=raid_damage,
-            mine_loot_coin=mine_loot[0],
-            mine_loot_diamond=mine_loot[1],
+            mine_loot_coin=mine_loot_coin,
+            mine_loot_diamond=mine_loot_diamond,
             **loot,
         )
 
@@ -1423,44 +1448,44 @@ class AttackService:
         castle_strength: int,
         attack_power: int,
         breached: bool,
-        preview: bool = False,
     ) -> tuple[int, int]:
         """Take uncollected mine cargo only after the castle has fallen."""
         if not breached or loot_damage <= 0:
             return (0, 0)
-        statement = select(Mine).where(Mine.user_id == target.id)
-        if not preview:
-            statement = statement.with_for_update()
-        mine = await session.scalar(statement)
+        mine = await session.scalar(
+            select(Mine).where(Mine.user_id == target.id).with_for_update()
+        )
         if mine is None:
             return (0, 0)
-        cargo = (
-            SimpleNamespace(
-                level=mine.level,
-                last_collected_at=mine.last_collected_at,
-                today=mine.today,
-                daily_produced_minutes=mine.daily_produced_minutes,
-                today_coin=mine.today_coin,
-                today_diamond=mine.today_diamond,
-                today_banana=mine.today_banana,
-            )
-            if preview
-            else mine
-        )
-        self.mine_service._accrue(cargo)
+        self.mine_service._accrue(mine)
         loot = self._loot(
             target,
             loot_damage,
             castle_strength,
             attack_power,
-            coin_balance=cargo.today_coin,
-            diamond_balance=cargo.today_diamond,
+            coin_balance=mine.today_coin,
+            diamond_balance=mine.today_diamond,
         )
         coin, diamond = loot["loot_coin"], loot["loot_diamond"]
-        if not preview:
-            cargo.today_coin -= coin
-            cargo.today_diamond -= diamond
+        mine.today_coin -= coin
+        mine.today_diamond -= diamond
         return coin, diamond
+
+    async def _preview_mine_cargo(self, session: AsyncSession, target_id: int):
+        mine = await session.scalar(select(Mine).where(Mine.user_id == target_id))
+        if mine is None:
+            return None
+        cargo = SimpleNamespace(
+            level=mine.level,
+            last_collected_at=mine.last_collected_at,
+            today=mine.today,
+            daily_produced_minutes=mine.daily_produced_minutes,
+            today_coin=mine.today_coin,
+            today_diamond=mine.today_diamond,
+            today_banana=mine.today_banana,
+        )
+        self.mine_service._accrue(cargo)
+        return cargo
 
     @staticmethod
     def _credit_mine_loot(
