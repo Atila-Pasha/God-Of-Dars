@@ -127,6 +127,7 @@ async def test_tampered_confirmation_cannot_schedule_self_attack():
 @pytest.mark.asyncio
 async def test_attack_preview_rejects_a_target_with_an_active_shield():
     service = AttackService()
+    service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=100))
     service.castle_service.shield_service = SimpleNamespace(
         has_active_shield=AsyncMock(return_value=True)
     )
@@ -173,6 +174,30 @@ def test_loot_is_capped_by_teacher_power_not_target_wealth():
 
     assert modest_loot["loot_coin"] == rich_loot["loot_coin"] == 100
     assert modest_loot["loot_diamond"] == rich_loot["loot_diamond"] == 1
+
+
+def test_destroyed_castle_still_yields_bounded_wallet_loot():
+    service = AttackService()
+    target = SimpleNamespace(resources=SimpleNamespace(coin=1000, diamond=20))
+
+    loot = service._loot(target, castle_damage=20, castle_strength=0, attack_power=20)
+
+    assert loot["loot_coin"] > 0
+    assert loot["loot_diamond"] > 0
+    assert loot["loot_coin"] <= service.config.attack_rules.loot_cap(
+        20, ResourceType.COIN
+    )
+
+
+@pytest.mark.asyncio
+async def test_destroyed_castle_ignores_equipped_shield():
+    service = AttackService()
+    service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=0))
+    service.castle_service.shield_service.has_active_shield = AsyncMock()
+
+    await service._ensure_target_attackable(SimpleNamespace(), 7)
+
+    service.castle_service.shield_service.has_active_shield.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

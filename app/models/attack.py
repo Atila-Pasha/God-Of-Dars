@@ -81,6 +81,15 @@ class Attack(Base):
         CheckConstraint(
             "result_damage >= 0", name="ck_attacks_result_damage_non_negative"
         ),
+        CheckConstraint(
+            "result_raid_damage >= 0", name="ck_attacks_raid_damage_non_negative"
+        ),
+        CheckConstraint(
+            "mine_loot_coin >= 0", name="ck_attacks_mine_loot_coin_non_negative"
+        ),
+        CheckConstraint(
+            "mine_loot_diamond >= 0", name="ck_attacks_mine_loot_diamond_non_negative"
+        ),
         CheckConstraint("loot_coin >= 0", name="ck_attacks_loot_coin_non_negative"),
         CheckConstraint(
             "loot_diamond >= 0", name="ck_attacks_loot_diamond_non_negative"
@@ -155,9 +164,18 @@ class Attack(Base):
         BigInteger, nullable=False
     )
     result_damage: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    result_raid_damage: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     loot_coin: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     loot_diamond: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     loot_banana: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    mine_loot_coin: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    mine_loot_diamond: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     bot_bonus_coin: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default="0"
     )

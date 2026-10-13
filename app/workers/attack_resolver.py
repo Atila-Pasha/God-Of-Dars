@@ -90,11 +90,14 @@ async def _command_result(session, result):
         teacher_details=details,
         teacher_injuries=injuries,
         castle_damage=sum(row.result_damage or 0 for row in records),
+        raid_damage=sum(row.result_raid_damage or 0 for row in records),
         teacher_injury=sum(row.result_teacher_injury for row in records),
         loot_coin=sum(row.loot_coin for row in records),
         loot_diamond=sum(row.loot_diamond for row in records),
         loot_banana=sum(row.loot_banana for row in records),
         bot_bonus_coin=sum(row.bot_bonus_coin for row in records),
+        mine_loot_coin=sum(row.mine_loot_coin for row in records),
+        mine_loot_diamond=sum(row.mine_loot_diamond for row in records),
         castle_strength_before=min(
             records[0].target_castle_strength_snapshot,
             result.castle_strength_after

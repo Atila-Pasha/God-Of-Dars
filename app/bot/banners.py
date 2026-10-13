@@ -245,6 +245,8 @@ def attack_preview_banner(preview: AttackPreview) -> str:
     loot_source = (
         "غنیمت احتمالی با پاداش بازی"
         if preview.bot_bonus_coin
+        else "غنیمت احتمالی از معدن حریف"
+        if preview.mine_loot_coin or preview.mine_loot_diamond
         else "غنیمت احتمالی از منابع حریف"
     )
     return (
@@ -336,6 +338,17 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         if recipient != "defender" and result.bot_bonus_coin
         else ""
     )
+    mine_note = (
+        f"{LOOT} بخشی از محصول جمع‌نشدهٔ معدن حریف هم غارت شد\\.\n\n"
+        if result.mine_loot_coin or result.mine_loot_diamond
+        else ""
+    )
+    raid_note = (
+        f"{DAMAGE} فشار حمله پس از سقوط دژ:\n"
+        f"> {escape(result.raid_damage)} DMG {DAMAGE}\n\n"
+        if result.raid_damage > 0
+        else ""
+    )
     return (
         f"{FINISH} {bold(headline)} {FINISH}\n\n"
         f"{REPORT} {bold('گزارش نتیجهٔ نبرد:')}\n"
@@ -344,6 +357,7 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{TEACHERS} دبیرها:\n{teacher_lines}\n\n"
         f"{DAMAGE} تخریب واردشده به قلعه:\n"
         f"> {escape(result.castle_damage)} DMG {INJURY}\n\n"
+        f"{raid_note}"
         f"{CASTLE} قدرت باقی‌ماندهٔ دژ:\n"
         f"> {escape(result.castle_strength_after)} DMG {CASTLE}\n\n"
         f"{HEAL} آسیب واردشده به دبیر:\n"
@@ -353,6 +367,7 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
         f"{BANANA} موز: {escape(banana_amount)}\n\n"
         f"{bonus_note}"
+        f"{mine_note}"
         f"{closing}"
     )
 
