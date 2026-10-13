@@ -262,8 +262,15 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         result.castle_strength_after + result.castle_damage
     )
     percent = min(100, round(result.castle_damage * 100 / before)) if before > 0 else 0
+    weak_target = before == 0 and not result.blocked_by_shield
     if result.blocked_by_shield:
         outcome = "سپر دفاعی حمله را خنثی کرد؛ دژ سالم ماند."
+    elif weak_target:
+        outcome = (
+            "ضعیف کشی کردی؛ دژ دشمن از قبل کامل نابود شده بود."
+            if recipient != "defender"
+            else "دژت پیش از این حمله هم کامل نابود شده بود."
+        )
     elif percent >= 100:
         outcome = (
             "نیروها قلعهٔ دشمن را فتح کردند!"
@@ -309,11 +316,14 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         else f"“Keep going, commander\\.” {STAR}"
     )
     loot_label = "منابع ازدست‌رفته" if recipient == "defender" else "غنیمت‌های کسب‌شده"
+    destruction = (
+        "ضعیف کشی کردی" if weak_target and recipient != "defender" else f"{percent}%"
+    )
     return (
         f"{FINISH} {bold(headline)} {FINISH}\n\n"
         f"{REPORT} {bold('گزارش نتیجهٔ نبرد:')}\n"
         f"{escape(outcome)} {FORCES}\n"
-        f"● میزان تخریب: {bold(f'{percent}%')}\n\n"
+        f"● میزان تخریب: {bold(destruction)}\n\n"
         f"{TEACHERS} دبیرها:\n{teacher_lines}\n\n"
         f"{DAMAGE} تخریب واردشده به قلعه:\n"
         f"> {escape(result.castle_damage)} DMG {INJURY}\n\n"
@@ -326,6 +336,14 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
         f"{BANANA} موز: {escape(result.loot_banana)}\n\n"
         f"{closing}"
+    )
+
+
+def castle_repair_reminder_banner() -> str:
+    return (
+        f"{CASTLE} {bold('فرمانده، دژت نیاز به تعمیر داره!')}\n\n"
+        f"{HEAL} بیش از نیمی از سلامت دژت در این حمله از بین رفت\\.\n"
+        f"{DIAMOND} دکمهٔ زیر رو بزن و هزینهٔ تعمیر رو ببین\\."
     )
 
 

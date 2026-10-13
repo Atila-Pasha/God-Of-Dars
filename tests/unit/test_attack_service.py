@@ -34,6 +34,19 @@ async def test_castle_damage_never_exceeds_remaining_strength() -> None:
     assert (second.applied_damage, second.castle_strength_after) == (0, 0)
 
 
+@pytest.mark.asyncio
+async def test_destroyed_castle_has_no_battle_defense() -> None:
+    service = CastleService()
+    service.snapshot = AsyncMock(
+        return_value=SimpleNamespace(level=3, strength=0, defense_power=60)
+    )
+
+    battle = await service.battle_snapshot(SimpleNamespace(), 1)
+
+    assert battle.defense_power == 0
+    assert AttackRules().resolve(20, battle.defense_power, 100) == (20, 0)
+
+
 @pytest.mark.parametrize(
     ("names", "expected"),
     [

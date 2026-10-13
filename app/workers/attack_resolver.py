@@ -14,6 +14,7 @@ from app.bot.banners import (
     MARKDOWN_V2,
     attack_result_banner,
     attack_teacher_injury_banner,
+    castle_repair_reminder_banner,
 )
 from app.core.config import settings
 from app.core.enums import AttackStatus
@@ -34,6 +35,14 @@ notification_service = NotificationService()
 
 def _result_text(result, *, recipient: str = "attacker") -> str:
     return attack_result_banner(result, recipient=recipient)
+
+
+def _needs_repair_reminder(result) -> bool:
+    return (
+        not result.blocked_by_shield
+        and result.castle_strength_before > 0
+        and result.castle_damage * 2 > result.castle_strength_before
+    )
 
 
 async def _command_result(session, result):
@@ -85,7 +94,11 @@ async def _command_result(session, result):
         loot_coin=sum(row.loot_coin for row in records),
         loot_diamond=sum(row.loot_diamond for row in records),
         loot_banana=sum(row.loot_banana for row in records),
-        castle_strength_before=records[0].target_castle_strength_snapshot,
+        castle_strength_before=min(
+            records[0].target_castle_strength_snapshot,
+            result.castle_strength_after
+            + sum(row.result_damage or 0 for row in records),
+        ),
         source_chat_id=records[0].source_chat_id,
         blocked_by_shield=all((row.result_damage or 0) == 0 for row in records)
         and result.blocked_by_shield,
@@ -198,6 +211,20 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "parse_mode": MARKDOWN_V2,
                             },
                         )
+                        if _needs_repair_reminder(result):
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="CASTLE_REPAIR_REMINDER",
+                                recipient_user_id=result.attack.target_id,
+                                idempotency_key=f"CASTLE_REPAIR_REMINDER:{key}:TARGET",
+                                payload={
+                                    "chat_id": result.target_telegram_id,
+                                    "text": castle_repair_reminder_banner(),
+                                    "parse_mode": MARKDOWN_V2,
+                                    "castle_repair_reminder": True,
+                                    "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",
+                                },
+                            )
                         if result.source_chat_id is not None:
                             await notification_service.enqueue(
                                 session,

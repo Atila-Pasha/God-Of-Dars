@@ -766,7 +766,7 @@ class AttackService:
             )
         castle_damage, injury = self.config.attack_rules.resolve(
             attack.teacher_damage_snapshot,
-            attack.target_defense_power_snapshot,
+            attack.target_defense_power_snapshot if target_castle.strength > 0 else 0,
             teacher.current_hp if teacher is not None else 0,
         )
         castle_result = await self.castle_service.receive_attack_damage(
@@ -1136,7 +1136,9 @@ class AttackService:
             teacher_damage = self.teacher_service.damage(teacher)
             damage, injury = self.config.attack_rules.resolve(
                 teacher_damage,
-                target_castle.defense.defense_power,
+                target_castle.defense.defense_power
+                if target_castle.strength > 0
+                else 0,
                 teacher.current_hp,
             )
             castle_damage_result = await self.castle_service.receive_attack_damage(
@@ -1169,7 +1171,11 @@ class AttackService:
                 attack_command_id=attack_command_id,
                 teacher_damage_snapshot=teacher_damage,
                 target_castle_strength_snapshot=castle_damage_result.castle_strength_before,
-                target_defense_power_snapshot=target_castle.defense.defense_power,
+                target_defense_power_snapshot=(
+                    target_castle.defense.defense_power
+                    if castle_damage_result.castle_strength_before > 0
+                    else 0
+                ),
                 result_damage=applied_damage,
                 loot_coin=loot["loot_coin"],
                 loot_diamond=loot["loot_diamond"],

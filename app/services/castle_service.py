@@ -185,7 +185,12 @@ class CastleService:
     async def battle_snapshot(
         self, session: AsyncSession, user_id: int
     ) -> CastleSnapshot:
-        return await self.snapshot(session, user_id)
+        castle = await self.snapshot(session, user_id)
+        return CastleSnapshot(
+            level=castle.level,
+            strength=castle.strength,
+            defense_power=castle.defense_power if castle.strength > 0 else 0,
+        )
 
     async def receive_attack_damage(
         self,
