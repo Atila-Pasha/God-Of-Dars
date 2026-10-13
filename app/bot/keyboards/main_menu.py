@@ -1,4 +1,12 @@
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
+
+GAME_GROUP_URL = "https://t.me/godofdars_gap"
+GAME_GROUP_EMOJI_ID = "5453957997418004470"
 
 MENU_SECTIONS = (
     ("مدرسه من", "school", "5825697157872623308"),
@@ -8,6 +16,7 @@ MENU_SECTIONS = (
     ("پروفایل", "profile", "5825647731388981287"),
     ("فعالیت‌های روزانه", "daily", "5825898080737697438"),
     ("حمله", "attack", "5823192436024813346"),
+    ("گروه بازی", "game_group", GAME_GROUP_EMOJI_ID),
 )
 
 MENU_SECTION_KEYS = frozenset(section for _, section, _ in MENU_SECTIONS)
@@ -32,6 +41,20 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=keyboard,
         is_persistent=False,
         resize_keyboard=True,
+    )
+
+
+def game_group_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="بزن بریم تو گپ",
+                    icon_custom_emoji_id=GAME_GROUP_EMOJI_ID,
+                    url=GAME_GROUP_URL,
+                )
+            ]
+        ]
     )
 
 
