@@ -21,7 +21,7 @@ from app.bot.custom_emojis import reset_group_reply_context, set_group_reply_con
 from app.bot.handlers.leaderboard import GROUP_LEADERBOARD_PHRASES
 from app.bot.handlers.quick import SLOGANS
 from app.bot.keyboards.main_menu import MENU_SECTION_LABELS
-from app.bot.teacher_lookup import BUYABLE_TEACHERS_QUERY
+from app.bot.teacher_lookup import BUYABLE_TEACHERS_QUERY, TEACHER_STATUS_QUERY
 from app.core.config import settings
 from app.services.group_service import GroupService
 from app.services.user_service import (
@@ -45,7 +45,7 @@ ALLOWED_GROUP_COMMANDS = frozenset(
     }
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
-GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "معرفی", "فروش", "درمان")
+GROUP_COMMAND_PREFIXES = ("حمله", "خرید", "معرفی", "فروش", "درمان", "ترخیص")
 GROUP_PROFILE_ALIASES = frozenset(
     {
         "پروفایل",
@@ -68,6 +68,7 @@ def is_group_bot_command(message: Message) -> bool:
         text in GROUP_PROFILE_ALIASES
         or text == "گاد"
         or BUYABLE_TEACHERS_QUERY.fullmatch(text)
+        or TEACHER_STATUS_QUERY.fullmatch(text)
         or text in SLOGANS
         or text in GROUP_LEADERBOARD_PHRASES
     ):

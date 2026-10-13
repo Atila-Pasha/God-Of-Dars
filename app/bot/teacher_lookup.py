@@ -8,6 +8,7 @@ from app.models.teacher import Teacher
 BUYABLE_TEACHERS_QUERY = re.compile(
     r"^\s*(?:دبیر[\s\u200c]*های\s+مجاز|چه\s+دبیر[\s\u200c]*هایی\s+رو\s+می[\s\u200c]*تونم\s+بخرم)\s*[؟?]?\s*$"
 )
+TEACHER_STATUS_QUERY = re.compile(r"^\s*وضعیت\s+دبیر[\s\u200c]*ها\s*[؟?]?\s*$")
 
 
 def _normalized(value: str) -> str:
