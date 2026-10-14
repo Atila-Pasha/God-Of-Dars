@@ -52,6 +52,7 @@ class ShieldStates(StatesGroup):
     daily_limit = State()
     description = State()
     emoji = State()
+    sticker = State()
     edit_value = State()
 
 

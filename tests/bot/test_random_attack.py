@@ -8,7 +8,11 @@ import pytest
 from app.bot.callbacks import RandomAttackCallback
 from app.bot.handlers import battle
 from app.services.attack_service import AttackPreview, RandomAttackPreview
-from app.services.school_errors import AttackInProgress, RandomAttackSelectionExpired
+from app.services.school_errors import (
+    AttackInProgress,
+    RandomAttackSelectionExpired,
+    TargetProtectedByShield,
+)
 
 
 def random_preview(*, version: int = 1) -> RandomAttackPreview:
@@ -75,6 +79,43 @@ async def test_active_attack_error_uses_requested_banner() -> None:
     assert "tg://emoji?id=5823388325188214894" in text
     assert "*حمله فعال دارید*\\!\nپس از پایان آن می‌توانید دوباره حمله کنید\\." in text
     assert target.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
+
+
+@pytest.mark.asyncio
+async def test_shield_rejection_sends_sticker_before_named_message() -> None:
+    target = message()
+    order = []
+    target.answer_sticker = AsyncMock(side_effect=lambda sticker: order.append(("sticker", sticker)))
+    target.answer = AsyncMock(side_effect=lambda content: order.append(("message", content)))
+
+    await battle._report_error(
+        target, TargetProtectedByShield("سپر کاظمی", "telegram-sticker-id")
+    )
+
+    assert order[0] == ("sticker", "telegram-sticker-id")
+    assert order[1][0] == "message"
+    assert "سپر کاظمی" in order[1][1]
+    assert "نمی‌توانید به او حمله کنید" in order[1][1]
+
+
+@pytest.mark.asyncio
+async def test_admin_bot_shield_sticker_is_resolved_for_game_bot() -> None:
+    target = message()
+    target.answer_sticker = AsyncMock()
+    target.bot = SimpleNamespace(
+        get_sticker_set=AsyncMock(
+            return_value=SimpleNamespace(
+                stickers=[
+                    SimpleNamespace(file_unique_id="shared-id", file_id="game-bot-id")
+                ]
+            )
+        )
+    )
+    await battle._report_error(
+        target, TargetProtectedByShield("سپر آبی", "set:ShieldPack:shared-id")
+    )
+    target.bot.get_sticker_set.assert_awaited_once_with("ShieldPack")
+    target.answer_sticker.assert_awaited_once_with("game-bot-id")
 
 
 def callback(

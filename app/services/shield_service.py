@@ -90,6 +90,16 @@ class ShieldService:
         now = datetime.now(UTC)
         if await self.has_free_shield(session, user_id, now=now):
             return True
+        return await self.active_shield(session, user_id, teacher_names) is not None
+
+    async def active_shield(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        teacher_names: tuple[str, ...] | None = None,
+    ) -> Shield | None:
+        """Return the equipped protection that actually blocks this attack."""
+        now = datetime.now(UTC)
         result = await session.execute(
             select(UserShield)
             .where(
@@ -102,9 +112,9 @@ class ShieldService:
             .limit(1)
         )
         active = result.scalar_one_or_none()
-        return active is not None and not self._kazemi_bypassed(
-            active.shield, teacher_names
-        )
+        if active is None or self._kazemi_bypassed(active.shield, teacher_names):
+            return None
+        return active.shield
 
     async def has_free_shield(
         self, session: AsyncSession, user_id: int, *, now: datetime | None = None
@@ -356,6 +366,13 @@ class ShieldAdminService:
         emoji_value = values.get("emoji")
         if emoji_value is not None and len(str(emoji_value)) > 32:
             raise ValueError("emoji must be at most 32 characters")
+        sticker_value = values.get("sticker")
+        if sticker_value is not None and (
+            not isinstance(sticker_value, str)
+            or not sticker_value.strip()
+            or len(sticker_value) > 512
+        ):
+            raise ValueError("sticker must be a valid file ID of at most 512 characters")
 
     async def create_shield(self, session: AsyncSession, **values: object) -> Shield:
         values.setdefault("reduction_percent", 0)
@@ -389,6 +406,7 @@ class ShieldAdminService:
                 "purchase_resource", shield.purchase_resource
             ),
             "emoji": values.get("emoji", shield.emoji),
+            "sticker": values.get("sticker", shield.sticker),
         }
         self._validate(merged)
         for key, value in values.items():

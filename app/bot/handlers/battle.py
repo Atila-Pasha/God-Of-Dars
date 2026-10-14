@@ -67,6 +67,33 @@ from app.services.school_errors import (
 router = Router(name="battle")
 attack_service = AttackService()
 MAX_ATTACK_TEACHERS = attack_service.config.max_attack_teachers
+_shield_sticker_ids: dict[str, str] = {}
+
+
+async def _send_shield_sticker(message: Message, value: str) -> None:
+    sticker_id = value
+    if value.startswith("set:"):
+        bot = message.bot
+        if bot is None:
+            return
+        sticker_id = _shield_sticker_ids.get(value, "")
+        if not sticker_id:
+            if ":" not in value[4:]:
+                return
+            set_name, unique_id = value[4:].rsplit(":", 1)
+            sticker_set = await bot.get_sticker_set(set_name)
+            sticker_id = next(
+                (
+                    sticker.file_id
+                    for sticker in sticker_set.stickers
+                    if sticker.file_unique_id == unique_id
+                ),
+                "",
+            )
+            if not sticker_id:
+                return
+            _shield_sticker_ids[value] = sticker_id
+    await message.answer_sticker(sticker_id)
 
 
 def _source_group_chat_id(message: Message) -> int | None:
@@ -510,7 +537,14 @@ async def _report_error(message: Message, error: Exception) -> None:
             "پس از پایان آن می‌توانید دوباره حمله کنید\\.",
             parse_mode=MARKDOWN_V2,
         )
-    elif isinstance(error, (ShieldAlreadyActive, TargetProtectedByShield)):
+    elif isinstance(error, TargetProtectedByShield):
+        if error.sticker:
+            with suppress(TelegramAPIError):
+                await _send_shield_sticker(message, error.sticker)
+        await message.answer(
+            f"🛡️ این بازیکن از سپر «{error.shield_name}» برخوردار است و فعلاً نمی‌توانید به او حمله کنید."
+        )
+    elif isinstance(error, ShieldAlreadyActive):
         await message.answer(
             "🛡 این بازیکن سپر فعال دارد و فعلاً نمی‌توان به او حمله کرد."
         )

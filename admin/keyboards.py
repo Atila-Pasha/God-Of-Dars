@@ -379,6 +379,7 @@ def shield_edit_fields(shield_id: int) -> InlineKeyboardMarkup:
         ("محدودیت روزانه", "daily_limit"),
         ("توضیح", "description"),
         ("اموجی", "emoji"),
+        ("استیکر", "sticker"),
     )
     rows = [
         [

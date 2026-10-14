@@ -1538,18 +1538,18 @@ class AttackService:
         castle = await self.castles.get_by_user(session, target_id)
         shield_service = self.castle_service.shield_service
         if await shield_service.has_free_shield(session, target_id):
-            raise TargetProtectedByShield
+            raise TargetProtectedByShield("سپر رایگان یک‌ساعته")
         if castle is not None and castle.strength == 0:
             return
-        protected = (
-            await shield_service.has_active_shield(session, target_id)
+        active_shield = (
+            await shield_service.active_shield(session, target_id)
             if teacher_names is None
-            else await shield_service.has_active_shield(
+            else await shield_service.active_shield(
                 session, target_id, teacher_names
             )
         )
-        if protected:
-            raise TargetProtectedByShield
+        if active_shield is not None:
+            raise TargetProtectedByShield(active_shield.name, active_shield.sticker)
 
     async def _raid_mine(
         self,

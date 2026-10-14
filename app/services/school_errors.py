@@ -127,6 +127,13 @@ class ShieldAlreadyActive(SchoolError):
 class TargetProtectedByShield(SchoolError):
     """The target cannot be attacked while their timed shield is active."""
 
+    def __init__(
+        self, shield_name: str = "سپر فعال", sticker: str | None = None
+    ) -> None:
+        super().__init__(shield_name)
+        self.shield_name = shield_name
+        self.sticker = sticker
+
 
 class MineNotFound(SchoolError):
     pass
