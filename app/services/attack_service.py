@@ -29,6 +29,7 @@ from app.services.school_errors import (
     AttackInProgress,
     AttackTargetNotRegistered,
     CannotAttackSelf,
+    CastleNotFound,
     InvalidTeacherState,
     RandomAttackSelectionExpired,
     RandomOpponentNotFound,
@@ -385,8 +386,10 @@ class AttackService:
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
 
-        target = await self._pick_random_target(session, attacker)
-        return await self._preview(session, attacker, target, teacher_name)
+        _, preview = await self._find_random_preview(
+            session, attacker, teacher_name=teacher_name
+        )
+        return preview
 
     async def prepare_random_preview(
         self,
@@ -415,23 +418,34 @@ class AttackService:
             selection = await self._selection_for_update(session, attacker.id)
         await self._ensure_no_active_attack(session, attacker.id)
         now = datetime.now(UTC)
+        recent_ids = self._selection_recent_ids(selection)
+        selection_is_live = selection is not None and selection.expires_at > now
         target = (
             await self.users.get_active_by_id(session, selection.target_id)
-            if selection is not None and selection.expires_at > now
+            if selection_is_live
             else None
         )
         if selection is not None and target is not None:
-            # A new command may change the attacking teacher, but never gets a
-            # free new opponent while this selection is still alive.
-            preview = await self._preview(session, attacker, target, teacher_name)
-            if selection.teacher_ids != preview.teacher_ids:
-                selection.teacher_ids = preview.teacher_ids
-                selection.version += 1
-                await session.flush()
-            return self._random_preview(selection, preview)
+            try:
+                # Keep a valid choice stable; replace it without a fee if it
+                # became protected or lost its castle after selection.
+                preview = await self._preview(session, attacker, target, teacher_name)
+            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+                pass
+            else:
+                if selection.teacher_ids != preview.teacher_ids:
+                    selection.teacher_ids = preview.teacher_ids
+                    selection.version += 1
+                    await session.flush()
+                return self._random_preview(selection, preview)
 
-        target = await self._pick_random_target(session, attacker)
-        preview = await self._preview(session, attacker, target, teacher_name)
+        target, preview = await self._find_random_preview(
+            session,
+            attacker,
+            teacher_name=teacher_name,
+            recent_target_ids=recent_ids,
+            exclude_target_ids={selection.target_id} if selection_is_live else set(),
+        )
         expires_at = now + timedelta(
             seconds=self.config.attack_rules.random_selection_ttl_seconds
         )
@@ -440,14 +454,19 @@ class AttackService:
                 attacker_id=attacker.id,
                 target_id=target.id,
                 teacher_ids=preview.teacher_ids,
+                recent_target_ids=self._remember_random_target(recent_ids, target.id),
                 expires_at=expires_at,
             )
             session.add(selection)
         else:
             selection.target_id = target.id
             selection.teacher_ids = preview.teacher_ids
+            selection.recent_target_ids = self._remember_random_target(
+                recent_ids, target.id
+            )
             selection.version += 1
-            selection.reroll_count = 0
+            if not selection_is_live:
+                selection.reroll_count = 0
             selection.expires_at = expires_at
         await session.flush()
         return self._random_preview(selection, preview)
@@ -479,24 +498,40 @@ class AttackService:
             or selection.version != version
         ):
             raise RandomAttackSelectionExpired
-        target = await self._pick_random_target(
-            session, attacker, exclude_target_id=selection.target_id
-        )
-        preview = await self._preview_by_teacher_ids(
-            session, attacker, target, selection.teacher_ids
-        )
-        await ResourceService.debit_coin(
+        current_target = await self.users.get_active_by_id(session, selection.target_id)
+        current_attackable = current_target is not None
+        if current_target is not None:
+            try:
+                await self._preview_by_teacher_ids(
+                    session, attacker, current_target, selection.teacher_ids
+                )
+            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+                current_attackable = False
+        recent_ids = self._selection_recent_ids(selection)
+        target, preview = await self._find_random_preview(
             session,
-            attacker.resources,
-            user_id=attacker.id,
-            amount=self.config.attack_rules.random_reroll_coin_cost,
-            reason="RANDOM_ATTACK_REROLL",
-            reference_type="RANDOM_ATTACK_SELECTION",
-            reference_id=attacker.id,
+            attacker,
+            teacher_ids=selection.teacher_ids,
+            recent_target_ids=recent_ids,
+            exclude_target_ids={selection.target_id},
         )
+        if current_attackable:
+            await ResourceService.debit_coin(
+                session,
+                attacker.resources,
+                user_id=attacker.id,
+                amount=self.config.attack_rules.random_reroll_coin_cost,
+                reason="RANDOM_ATTACK_REROLL",
+                reference_type="RANDOM_ATTACK_SELECTION",
+                reference_id=attacker.id,
+            )
         selection.target_id = target.id
+        selection.recent_target_ids = self._remember_random_target(
+            recent_ids, target.id
+        )
         selection.version += 1
-        selection.reroll_count += 1
+        if current_attackable:
+            selection.reroll_count += 1
         selection.expires_at = now + timedelta(
             seconds=self.config.attack_rules.random_selection_ttl_seconds
         )
@@ -532,7 +567,10 @@ class AttackService:
             teacher_ids=teacher_ids,
             source_chat_id=source_chat_id,
         )
-        await session.delete(selection)
+        # Retain the short opponent history for the next random attack. The
+        # expired selection still rejects every stale confirmation button.
+        selection.expires_at = datetime.now(UTC)
+        selection.version += 1
         return launch
 
     async def attack_by_ids(
@@ -952,20 +990,88 @@ class AttackService:
         session: AsyncSession,
         attacker,
         *,
-        exclude_target_id: int | None = None,
+        exclude_target_ids: set[int] | None = None,
+        recent_target_ids: tuple[int, ...] = (),
     ):
-        for level in await self.users.list_active_levels_by_proximity(
+        levels = await self.users.list_active_levels_by_proximity(
             session, level=attacker.level, exclude_user_id=attacker.id
+        )
+        hard_excluded = exclude_target_ids or set()
+        nearby = [level for level in levels if abs(level - attacker.level) <= 2]
+        distant = [level for level in levels if abs(level - attacker.level) > 2]
+        # Keep matchups close in level. Within that range, prefer fresh people;
+        # only widen the level gap when every nearby opponent is unavailable.
+        for candidate_levels, exclusions in (
+            (nearby, hard_excluded | set(recent_target_ids)),
+            (nearby, hard_excluded),
+            (distant, hard_excluded | set(recent_target_ids)),
+            (distant, hard_excluded),
         ):
-            target = await self.users.pick_random_active_at_level(
-                session,
-                level=level,
-                exclude_user_id=attacker.id,
-                exclude_target_id=exclude_target_id,
-            )
-            if target is not None:
-                return target
+            for level in candidate_levels:
+                target = await self.users.pick_random_active_at_level(
+                    session,
+                    level=level,
+                    exclude_user_id=attacker.id,
+                    exclude_target_ids=exclusions,
+                )
+                if target is not None:
+                    return target
         raise RandomOpponentNotFound
+
+    async def _find_random_preview(
+        self,
+        session: AsyncSession,
+        attacker,
+        *,
+        teacher_name: str | list[str] | None = None,
+        teacher_ids: str | None = None,
+        recent_target_ids: tuple[int, ...] = (),
+        exclude_target_ids: set[int] | None = None,
+    ):
+        excluded = set(exclude_target_ids or ())
+        for _ in range(5):
+            target = await self._pick_random_target(
+                session,
+                attacker,
+                exclude_target_ids=excluded,
+                recent_target_ids=recent_target_ids,
+            )
+            try:
+                preview = (
+                    await self._preview_by_teacher_ids(
+                        session, attacker, target, teacher_ids
+                    )
+                    if teacher_ids is not None
+                    else await self._preview(session, attacker, target, teacher_name)
+                )
+            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+                # A shield can activate after the candidate query. Try another
+                # eligible opponent before reporting that the pool is empty.
+                excluded.add(target.id)
+                continue
+            return target, preview
+        raise RandomOpponentNotFound
+
+    @staticmethod
+    def _selection_recent_ids(
+        selection: RandomAttackSelection | None,
+    ) -> tuple[int, ...]:
+        if selection is None:
+            return ()
+        ids = [
+            int(part)
+            for part in (selection.recent_target_ids or "").split(",")
+            if part.isdecimal()
+        ]
+        if selection.target_id not in ids:
+            ids.append(selection.target_id)
+        return tuple(ids[-8:])
+
+    @staticmethod
+    def _remember_random_target(recent_ids: tuple[int, ...], target_id: int) -> str:
+        ids = [item for item in recent_ids if item != target_id]
+        ids.append(target_id)
+        return ",".join(str(item) for item in ids[-8:])
 
     def _random_preview(
         self, selection: RandomAttackSelection, preview: AttackPreview

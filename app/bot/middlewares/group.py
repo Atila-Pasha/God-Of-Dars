@@ -66,6 +66,7 @@ def is_group_bot_command(message: Message) -> bool:
         return False
     if (
         text in GROUP_PROFILE_ALIASES
+        or text == "تعمیر دژ"
         or text == "گاد"
         or BUYABLE_TEACHERS_QUERY.fullmatch(text)
         or TEACHER_STATUS_QUERY.fullmatch(text)

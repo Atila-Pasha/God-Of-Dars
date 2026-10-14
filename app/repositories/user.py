@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from secrets import randbelow
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -103,7 +103,9 @@ class UserRepository:
             .where(
                 User.is_active.is_(True),
                 User.id != exclude_user_id,
+                or_(User.free_shield_until.is_(None), User.free_shield_until <= now),
                 ~active_shield,
+                select(Castle.id).where(Castle.user_id == User.id).exists(),
             )
             .group_by(User.level)
             .order_by(func.abs(User.level - level), User.level)
@@ -116,7 +118,7 @@ class UserRepository:
         *,
         level: int,
         exclude_user_id: int,
-        exclude_target_id: int | None = None,
+        exclude_target_ids: set[int] | frozenset[int] = frozenset(),
     ) -> User | None:
         """Pick an indexed, approximately uniform random user at one level.
 
@@ -124,20 +126,23 @@ class UserRepository:
         grows. Picking an id pivot keeps the query index-friendly; a possible
         id gap only causes a harmless small distribution bias.
         """
+        now = datetime.now(UTC)
         conditions = [
             User.is_active.is_(True),
             User.level == level,
             User.id != exclude_user_id,
+            or_(User.free_shield_until.is_(None), User.free_shield_until <= now),
+            select(Castle.id).where(Castle.user_id == User.id).exists(),
             ~select(UserShield.id)
             .where(
                 UserShield.user_id == User.id,
                 UserShield.active_until.is_not(None),
-                UserShield.active_until > datetime.now(UTC),
+                UserShield.active_until > now,
             )
             .exists(),
         ]
-        if exclude_target_id is not None:
-            conditions.append(User.id != exclude_target_id)
+        if exclude_target_ids:
+            conditions.append(User.id.not_in(exclude_target_ids))
         lower_id, upper_id = (
             await session.execute(
                 select(func.min(User.id), func.max(User.id)).where(*conditions)

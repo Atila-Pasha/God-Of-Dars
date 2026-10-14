@@ -752,6 +752,38 @@ async def school_handler(message: Message, session: AsyncSession) -> None:
         await message.answer("اطلاعات مدرسه در دسترس نیست. ابتدا /start را بزنید.")
 
 
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(r"^\s*تعمیر دژ\s*$"),
+)
+async def group_castle_repair(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+    try:
+        user = await _user(session, message.from_user.id)
+        castle = await castle_service.repository.get_by_user(session, user.id)
+        if castle is None:
+            raise SchoolError
+        quote = castle_service.repair_quote(castle)
+        if quote.missing_strength == 0:
+            await message.answer("دژت سالمه و نیازی به تعمیر نداره.")
+            return
+        await message.answer(
+            f"🔧 تعمیر دژ\n\n"
+            f"آسیب دژ: {_number(quote.missing_strength)} واحد\n"
+            f"هزینه: {_number(quote.diamond_cost)} الماس\n\n"
+            "تأیید می‌کنی تعمیرش کنم؟",
+            reply_markup=confirmation_keyboard(
+                action="castle_repair", target_id=message.from_user.id
+            ),
+            reply_to_message_id=message.message_id,
+        )
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.")
+    except SchoolError:
+        await message.answer("دژت پیدا نشد؛ اول /start را بزن.")
+
+
 @router.message(F.text == "بازگشت به منو اصلی")
 async def school_back_message(message: Message, state: FSMContext) -> None:
     await state.clear()
@@ -1057,6 +1089,17 @@ async def confirmation_callback_handler(
     if callback.from_user is None:
         await callback.answer()
         return
+    group_castle_repair_request = (
+        callback_data.action == "castle_repair"
+        and isinstance(callback.message, Message)
+        and callback.message.chat.type in {"group", "supergroup"}
+    )
+    if group_castle_repair_request and callback_data.target_id != callback.from_user.id:
+        await callback.answer(
+            "فقط کسی که درخواست تعمیر داده می‌تواند آن را تأیید کند.",
+            show_alert=True,
+        )
+        return
     purchase_source = (
         group_user_request(callback.message)
         if callback_data.action == "teacher_buy"
@@ -1076,6 +1119,10 @@ async def confirmation_callback_handler(
     try:
         user = await _user(session, callback.from_user.id)
         if callback_data.decision == "cancel":
+            if group_castle_repair_request:
+                await callback.message.edit_text("تعمیر دژ لغو شد.", reply_markup=None)
+                await callback.answer("تعمیر دژ لغو شد.")
+                return
             if (
                 callback_data.action == "teacher_buy"
                 and isinstance(callback.message, Message)
@@ -1107,7 +1154,21 @@ async def confirmation_callback_handler(
             await _castle_view(callback, session)
             notice = "دژ با موفقیت ارتقا پیدا کرد."
         elif callback_data.action == "castle_repair":
-            await castle_service.repair(session, user.id)
+            castle = await castle_service.repair(session, user.id)
+            if group_castle_repair_request:
+                await session.commit()
+                result_text = (
+                    f"✅ دژت تعمیر شد؛ سلامت دژ الان {_number(castle.strength)} است."
+                )
+                try:
+                    await callback.message.edit_text(result_text, reply_markup=None)
+                except TelegramAPIError:
+                    with suppress(TelegramAPIError):
+                        await callback.message.answer(
+                            result_text, disable_group_reply=True
+                        )
+                await callback.answer("دژ تعمیر شد.")
+                return
             await _castle_view(callback, session)
             notice = "دژ با موفقیت تعمیر شد."
         elif callback_data.action == "hospital_instant_recover":
