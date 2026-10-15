@@ -14,11 +14,14 @@ from app.bot.banners import (
     MARKDOWN_V2,
     attack_result_banner,
     attack_teacher_injury_banner,
+    castle_repair_reminder_banner,
+    rich_banner,
 )
 from app.core.config import settings
 from app.core.enums import AttackStatus
 from app.db.session import AsyncSessionLocal
 from app.models.attack import Attack
+from app.models.user import User
 from app.models.user_teacher import UserTeacher
 from app.repositories.user import UserRepository
 from app.services.attack_service import AttackService, TeacherInjury
@@ -34,6 +37,54 @@ notification_service = NotificationService()
 
 def _result_text(result, *, recipient: str = "attacker") -> str:
     return attack_result_banner(result, recipient=recipient)
+
+
+async def _enqueue_archer_stickers(
+    session,
+    result,
+    key: str,
+    *,
+    scope: str,
+    chat_id: int,
+    recipient_id: int,
+    after: str,
+) -> None:
+    for index, sticker in enumerate(result.archer_stickers):
+        await notification_service.enqueue(
+            session,
+            notification_type="ARCHER_STICKER",
+            recipient_user_id=recipient_id,
+            idempotency_key=f"ARCHER_STICKER:{key}:{scope}:{index}",
+            payload={
+                "operation": "send_sticker",
+                "chat_id": chat_id,
+                "sticker": sticker,
+                "depends_on_key": after,
+            },
+        )
+
+
+def _needs_repair_reminder(result) -> bool:
+    return (
+        not result.blocked_by_shield
+        and result.castle_strength_before > 0
+        and result.castle_damage * 2 > result.castle_strength_before
+    )
+
+
+async def _award_free_shield(session, result) -> bool:
+    """Count a completed attack command once while the target row is locked."""
+    if result.blocked_by_shield or result.castle_damage + result.raid_damage <= 0:
+        return False
+    defender = await session.get(User, result.attack.target_id, with_for_update=True)
+    if defender is None:
+        return False
+    defender.attacks_since_free_shield += 1
+    if defender.attacks_since_free_shield < 5:
+        return False
+    defender.attacks_since_free_shield = 0
+    defender.free_shield_until = datetime.now(UTC) + timedelta(hours=1)
+    return True
 
 
 async def _command_result(session, result):
@@ -94,13 +145,24 @@ async def _command_result(session, result):
         teacher_details=details,
         teacher_injuries=injuries,
         castle_damage=sum(row.result_damage or 0 for row in records),
+        raid_damage=sum(row.result_raid_damage or 0 for row in records),
         teacher_injury=sum(row.result_teacher_injury for row in records),
         loot_coin=sum(row.loot_coin for row in records),
         loot_diamond=sum(row.loot_diamond for row in records),
         loot_banana=sum(row.loot_banana for row in records),
-        castle_strength_before=records[0].target_castle_strength_snapshot,
+        bot_bonus_coin=sum(row.bot_bonus_coin for row in records),
+        mine_loot_coin=sum(row.mine_loot_coin for row in records),
+        mine_loot_diamond=sum(row.mine_loot_diamond for row in records),
+        castle_strength_before=min(
+            records[0].target_castle_strength_snapshot,
+            result.castle_strength_after
+            + sum(row.result_damage or 0 for row in records),
+        ),
         source_chat_id=records[0].source_chat_id,
-        blocked_by_shield=all((row.result_damage or 0) == 0 for row in records)
+        blocked_by_shield=all(
+            (row.result_damage or 0) + (row.result_raid_damage or 0) == 0
+            for row in records
+        )
         and result.blocked_by_shield,
         archer_hits=archer_hits,
         archer_stickers=tuple(
@@ -180,6 +242,11 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                     )
                     if result is not None:
                         result = await _command_result(session, result)
+                    shield_awarded = (
+                        await _award_free_shield(session, result)
+                        if result is not None
+                        else False
+                    )
                     can_upgrade = result is not None and await _can_upgrade_level(
                         session, result.attacker_telegram_id
                     )
@@ -209,19 +276,15 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "depends_on_key": f"ATTACK_RESULT:{key}:ATTACKER",
                             },
                         )
-                        for index, sticker in enumerate(result.archer_stickers):
-                            await notification_service.enqueue(
-                                session,
-                                notification_type="ARCHER_STICKER",
-                                recipient_user_id=result.attack.attacker_id,
-                                idempotency_key=f"ARCHER_STICKER:{key}:{index}",
-                                payload={
-                                    "operation": "send_sticker",
-                                    "chat_id": result.attacker_telegram_id,
-                                    "sticker": sticker,
-                                    "depends_on_key": f"ATTACK_TEACHER_INJURY:{key}:ATTACKER",
-                                },
-                            )
+                        await _enqueue_archer_stickers(
+                            session,
+                            result,
+                            key,
+                            scope="ATTACKER",
+                            chat_id=result.attacker_telegram_id,
+                            recipient_id=result.attack.attacker_id,
+                            after=f"ATTACK_TEACHER_INJURY:{key}:ATTACKER",
+                        )
                         await notification_service.enqueue(
                             session,
                             notification_type="ATTACK_RESULT",
@@ -233,16 +296,61 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "parse_mode": MARKDOWN_V2,
                             },
                         )
-                        for index, sticker in enumerate(result.archer_stickers):
+                        await _enqueue_archer_stickers(
+                            session,
+                            result,
+                            key,
+                            scope="TARGET",
+                            chat_id=result.target_telegram_id,
+                            recipient_id=result.attack.target_id,
+                            after=f"ATTACK_RESULT:{key}:TARGET",
+                        )
+                        if not result.blocked_by_shield:
                             await notification_service.enqueue(
                                 session,
-                                notification_type="ARCHER_STICKER",
+                                notification_type="ATTACK_REVENGE_PROMPT",
                                 recipient_user_id=result.attack.target_id,
-                                idempotency_key=f"ARCHER_STICKER:{key}:TARGET:{index}",
+                                idempotency_key=f"ATTACK_REVENGE_PROMPT:{key}:TARGET",
                                 payload={
-                                    "operation": "send_sticker",
                                     "chat_id": result.target_telegram_id,
-                                    "sticker": sticker,
+                                    "text": rich_banner(
+                                        "🗡️ می‌خوای تلافی کنی؟\n"
+                                        f"{result.attacker_name} به دژت حمله کرد. "
+                                        "اگه می‌خوای جوابش رو بدی، دبیرهات رو انتخاب کن."
+                                    ),
+                                    "parse_mode": MARKDOWN_V2,
+                                    "revenge_attack_id": result.attack.id,
+                                    "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",
+                                },
+                            )
+                        if shield_awarded:
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="FREE_SHIELD_GRANTED",
+                                recipient_user_id=result.attack.target_id,
+                                idempotency_key=f"FREE_SHIELD_GRANTED:{key}:TARGET",
+                                payload={
+                                    "chat_id": result.target_telegram_id,
+                                    "text": rich_banner(
+                                        "🛡 این پنجمین حمله‌ای بود که به دژت شد!\n"
+                                        "یک ساعت سپر رایگان روی دژت فعاله؛ "
+                                        "تا پایان این مدت کسی نمی‌تونه بهت حمله کنه."
+                                    ),
+                                    "parse_mode": MARKDOWN_V2,
+                                    "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",
+                                },
+                            )
+                        if _needs_repair_reminder(result):
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="CASTLE_REPAIR_REMINDER",
+                                recipient_user_id=result.attack.target_id,
+                                idempotency_key=f"CASTLE_REPAIR_REMINDER:{key}:TARGET",
+                                payload={
+                                    "chat_id": result.target_telegram_id,
+                                    "text": castle_repair_reminder_banner(),
+                                    "parse_mode": MARKDOWN_V2,
+                                    "castle_repair_reminder": True,
                                     "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",
                                 },
                             )
@@ -258,19 +366,15 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                     "parse_mode": MARKDOWN_V2,
                                 },
                             )
-                            for index, sticker in enumerate(result.archer_stickers):
-                                await notification_service.enqueue(
-                                    session,
-                                    notification_type="ARCHER_STICKER",
-                                    recipient_user_id=result.attack.attacker_id,
-                                    idempotency_key=f"ARCHER_STICKER:{key}:GROUP:{index}",
-                                    payload={
-                                        "operation": "send_sticker",
-                                        "chat_id": result.source_chat_id,
-                                        "sticker": sticker,
-                                        "depends_on_key": f"ATTACK_RESULT:{key}:GROUP",
-                                    },
-                                )
+                            await _enqueue_archer_stickers(
+                                session,
+                                result,
+                                key,
+                                scope="GROUP",
+                                chat_id=result.source_chat_id,
+                                recipient_id=result.attack.attacker_id,
+                                after=f"ATTACK_RESULT:{key}:GROUP",
+                            )
                         if (
                             result.attack.launch_chat_id is not None
                             and result.attack.launch_message_id is not None

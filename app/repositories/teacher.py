@@ -192,6 +192,21 @@ class TeacherRepository:
         self, session: AsyncSession, user_id: int, name: str
     ) -> UserTeacher | None:
         result = await session.execute(
+            self._owned_by_name_query(user_id, name).with_for_update(of=UserTeacher)
+        )
+        return result.scalars().unique().one_or_none()
+
+    async def get_owned_by_name(
+        self, session: AsyncSession, user_id: int, name: str
+    ) -> UserTeacher | None:
+        result = await session.execute(self._owned_by_name_query(user_id, name))
+        return result.scalars().unique().one_or_none()
+
+    @staticmethod
+    def _owned_by_name_query(user_id: int, name: str):
+        # Teacher is a shared catalog row. Even a mutating attack must only
+        # lock the attacker's owned copy, never the catalog for all players.
+        return (
             select(UserTeacher)
             .join(UserTeacher.teacher)
             .where(
@@ -202,6 +217,4 @@ class TeacherRepository:
                 selectinload(UserTeacher.teacher),
                 selectinload(UserTeacher.recoveries),
             )
-            .with_for_update()
         )
-        return result.scalars().unique().one_or_none()

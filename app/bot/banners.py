@@ -242,6 +242,13 @@ def attack_preview_banner(preview: AttackPreview) -> str:
     details = _teacher_lines(
         preview.teacher_details, preview.teacher_name, preview.teacher_emojis
     )
+    loot_source = (
+        "غنیمت احتمالی با پاداش بازی"
+        if preview.bot_bonus_coin
+        else "غنیمت احتمالی از معدن حریف"
+        if preview.mine_loot_coin or preview.mine_loot_diamond
+        else "غنیمت احتمالی از منابع حریف"
+    )
     return (
         f"{SWORD} {bold('قربان! به این موارد توجه کنید:')}\n\n"
         f"{TARGET} هدف: {bold(preview.target_name)}\n\n"
@@ -251,7 +258,7 @@ def attack_preview_banner(preview: AttackPreview) -> str:
         f"{INJURY} آسیب احتمالی دبیر:\n"
         f"> {escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
         f"🏹 سهم احتمالی تیر کماندار: {escape(preview.estimated_archer_injury)} HP\n\n"
-        f"{LOOT} {bold('غنیمت')} احتمالی از منابع حریف:\n"
+        f"{LOOT} {bold(loot_source)}:\n"
         f"{COIN} {bold('طلا')}: {escape(preview.loot_coin)}\n"
         f"{BANANA} {bold('موز')}: {escape(preview.loot_banana)}\n\n"
         f"{QUESTION} {bold('فرمان حمله رو صادر می‌کنی؟')}"
@@ -263,8 +270,15 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         result.castle_strength_after + result.castle_damage
     )
     percent = min(100, round(result.castle_damage * 100 / before)) if before > 0 else 0
+    weak_target = before == 0 and not result.blocked_by_shield
     if result.blocked_by_shield:
         outcome = "سپر دفاعی حمله را خنثی کرد؛ دژ سالم ماند."
+    elif weak_target:
+        outcome = (
+            "ضعیف کشی کردی؛ دژ دشمن از قبل کامل نابود شده بود."
+            if recipient != "defender"
+            else "دژت پیش از این حمله هم کامل نابود شده بود."
+        )
     elif percent >= 100:
         outcome = (
             "نیروها قلعهٔ دشمن را فتح کردند!"
@@ -310,6 +324,32 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         else f"“Keep going, commander\\.” {STAR}"
     )
     loot_label = "منابع ازدست‌رفته" if recipient == "defender" else "غنیمت‌های کسب‌شده"
+    destruction = (
+        "ضعیف کشی کردی" if weak_target and recipient != "defender" else f"{percent}%"
+    )
+    coin_amount = (
+        result.loot_coin - result.bot_bonus_coin
+        if recipient == "defender"
+        else result.loot_coin
+    )
+    banana_amount = 0 if recipient == "defender" else result.loot_banana
+    bonus_note = (
+        f"{COIN} حریف غنیمتی نداشت؛ {bold(f'{result.bot_bonus_coin} سکه')} "
+        "پاداش این حمله از طرف بازیه\\.\n\n"
+        if recipient != "defender" and result.bot_bonus_coin
+        else ""
+    )
+    mine_note = (
+        f"{LOOT} بخشی از محصول جمع‌نشدهٔ معدن حریف هم غارت شد\\.\n\n"
+        if result.mine_loot_coin or result.mine_loot_diamond
+        else ""
+    )
+    raid_note = (
+        f"{DAMAGE} فشار حمله پس از سقوط دژ:\n"
+        f"> {escape(result.raid_damage)} DMG {DAMAGE}\n\n"
+        if result.raid_damage > 0
+        else ""
+    )
     archer_lines = "".join(
         f"{emoji(archer_icon, '🏹') if archer_icon and archer_icon.isdigit() else escape(archer_icon or '🏹')} "
         f"کماندار {escape(archer_name)} با {escape(arrow_name)} به "
@@ -317,26 +357,38 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{escape(damage)} HP آسیب زد\\.\n"
         for teacher_name, teacher_icon_id, archer_name, arrow_name, archer_icon, damage in result.archer_hits
     )
+    archer_note = (
+        f"🏹 {bold('شلیک کماندارها:')}\n{archer_lines}\n" if archer_lines else ""
+    )
     return (
         f"{FINISH} {bold(headline)} {FINISH}\n\n"
         f"{REPORT} {bold('گزارش نتیجهٔ نبرد:')}\n"
         f"{escape(outcome)} {FORCES}\n"
-        f"● میزان تخریب: {bold(f'{percent}%')}\n\n"
+        f"● میزان تخریب: {bold(destruction)}\n\n"
         f"{TEACHERS} دبیرها:\n{teacher_lines}\n\n"
         f"{DAMAGE} تخریب واردشده به قلعه:\n"
         f"> {escape(result.castle_damage)} DMG {INJURY}\n\n"
+        f"{raid_note}"
         f"{CASTLE} قدرت باقی‌ماندهٔ دژ:\n"
         f"> {escape(result.castle_strength_after)} DMG {CASTLE}\n\n"
         f"{HEAL} آسیب واردشده به دبیر:\n"
         f"> {escape(result.teacher_injury)} HP {HEAL}\n\n"
-        + (f"🏹 {bold('شلیک کماندارها:')}\n{archer_lines}\n" if archer_lines else "")
-        + (
-            f"{LOOT} {loot_label}:\n"
-            f"{COIN} طلا: {escape(result.loot_coin)}\n"
-            f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
-            f"{BANANA} موز: {escape(result.loot_banana)}\n\n"
-            f"{closing}"
-        )
+        f"{archer_note}"
+        f"{LOOT} {loot_label}:\n"
+        f"{COIN} طلا: {escape(coin_amount)}\n"
+        f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
+        f"{BANANA} موز: {escape(banana_amount)}\n\n"
+        f"{bonus_note}"
+        f"{mine_note}"
+        f"{closing}"
+    )
+
+
+def castle_repair_reminder_banner() -> str:
+    return (
+        f"{CASTLE} {bold('فرمانده، دژت نیاز به تعمیر داره!')}\n\n"
+        f"{HEAL} بیش از نیمی از سلامت دژت در این حمله از بین رفت\\.\n"
+        f"{DIAMOND} دکمهٔ زیر رو بزن و هزینهٔ تعمیر رو ببین\\."
     )
 
 

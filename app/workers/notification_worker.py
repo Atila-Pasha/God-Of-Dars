@@ -9,6 +9,8 @@ from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select
 
 from app.bot.keyboards.profile import level_confirmation_keyboard
+from app.bot.keyboards.revenge import revenge_keyboard
+from app.bot.keyboards.school import castle_repair_reminder_keyboard
 from app.core.config import settings
 from app.core.enums import NotificationStatus
 from app.db.session import AsyncSessionLocal
@@ -96,6 +98,12 @@ async def _deliver_notification(
                     send_kwargs["parse_mode"] = payload["parse_mode"]
                 if payload.get("level_confirmation"):
                     send_kwargs["reply_markup"] = level_confirmation_keyboard()
+                if payload.get("castle_repair_reminder"):
+                    send_kwargs["reply_markup"] = castle_repair_reminder_keyboard()
+                if payload.get("revenge_attack_id"):
+                    send_kwargs["reply_markup"] = revenge_keyboard(
+                        payload["revenge_attack_id"]
+                    )
                 await bot.send_message(**send_kwargs)
     except Exception as exc:
         async with AsyncSessionLocal() as session, session.begin():

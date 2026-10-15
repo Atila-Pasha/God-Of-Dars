@@ -8,11 +8,27 @@ from app.bot.callbacks import HelpCallback
 from app.bot.handlers import start
 from app.bot.handlers.quick import SLOGANS
 from app.bot.keyboards.help import help_keyboard
+from app.bot.keyboards.main_menu import GAME_GROUP_URL
 from app.services.subscription_service import MembershipCheckError
 
 
 def telegram_user() -> TelegramUser:
     return TelegramUser(id=42, is_bot=False, first_name="Ali", username="ali")
+
+
+@pytest.mark.asyncio
+async def test_game_group_menu_sends_invitation_with_direct_link() -> None:
+    message = SimpleNamespace(answer=AsyncMock())
+
+    await start.game_group_handler(message)
+
+    text = message.answer.await_args.args[0]
+    kwargs = message.answer.await_args.kwargs
+    button = kwargs["reply_markup"].inline_keyboard[0][0]
+    assert "حریف پیدا کنی" in text
+    assert kwargs["parse_mode"] == "MarkdownV2"
+    assert button.url == GAME_GROUP_URL
+    assert button.icon_custom_emoji_id == "5453957997418004470"
 
 
 @pytest.mark.asyncio

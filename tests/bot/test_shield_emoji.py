@@ -83,6 +83,8 @@ async def test_admin_shield_create_stores_custom_emoji_id(monkeypatch) -> None:
     state = SimpleNamespace(
         get_data=AsyncMock(return_value=state_data),
         clear=AsyncMock(),
+        update_data=AsyncMock(),
+        set_state=AsyncMock(),
     )
     session = AsyncMock()
     create = AsyncMock(return_value=shield("5917839500750364054"))
@@ -95,9 +97,16 @@ async def test_admin_shield_create_stores_custom_emoji_id(monkeypatch) -> None:
         answer=AsyncMock(),
     )
 
-    await admin_handlers.s_emoji(message, state, session)
+    await admin_handlers.s_emoji(message, state)
+
+    state.update_data.assert_awaited_once_with(emoji="5917839500750364054")
+    state_data["emoji"] = "5917839500750364054"
+    await admin_handlers.s_sticker(
+        SimpleNamespace(text="-", sticker=None, answer=AsyncMock()), state, session
+    )
 
     assert create.await_args.kwargs["emoji"] == "5917839500750364054"
+    assert create.await_args.kwargs["sticker"] is None
     state.clear.assert_awaited_once()
 
 

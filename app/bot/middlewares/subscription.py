@@ -89,9 +89,9 @@ class SubscriptionMiddleware(BaseMiddleware):
             session = data.get("session")
             if session is not None:
                 await refresh_channels(session)
-            is_member = await subscription_service.is_member(
-                bot, telegram_user.id, force_refresh=True
-            )
+            # The explicit membership button forces a fresh check. Reusing
+            # the short cache here avoids one Bot API call per group command.
+            is_member = await subscription_service.is_member(bot, telegram_user.id)
         except Exception:  # noqa: BLE001 - membership failures are user-safe
             return await self._show_error(event)
 

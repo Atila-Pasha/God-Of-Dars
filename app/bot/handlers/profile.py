@@ -433,7 +433,11 @@ async def profile_handler(message: Message, session: AsyncSession) -> None:
                 "knowledge": "knowledge",
             }.get(command_name)
         if section is not None:
-            if message_text == PROFILE_LABEL:
+            if (
+                message_text == PROFILE_LABEL
+                and getattr(getattr(message, "chat", None), "type", "private")
+                == "private"
+            ):
                 await message.answer(
                     section_entry_banner("پروفایل"),
                     reply_markup=section_back_keyboard(),

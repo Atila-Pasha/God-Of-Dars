@@ -3,7 +3,12 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.game_logic import GameConfig, GameConfigurationError, game_config
+from app.core.game_logic import (
+    GameConfig,
+    GameConfigurationError,
+    ShieldMitigation,
+    game_config,
+)
 from app.models.castle import Castle
 from app.repositories.castle import CastleRepository
 from app.services.resource_service import ResourceService
@@ -185,7 +190,12 @@ class CastleService:
     async def battle_snapshot(
         self, session: AsyncSession, user_id: int
     ) -> CastleSnapshot:
-        return await self.snapshot(session, user_id)
+        castle = await self.snapshot(session, user_id)
+        return CastleSnapshot(
+            level=castle.level,
+            strength=castle.strength,
+            defense_power=castle.defense_power if castle.strength > 0 else 0,
+        )
 
     async def receive_attack_damage(
         self,
@@ -199,8 +209,13 @@ class CastleService:
         castle = await self.repository.get_by_user(session, user_id, for_update=True)
         if castle is None:
             raise CastleNotFound
-        mitigation = await self.shield_service.consume_for_attack(
-            session, user_id, incoming_damage, teacher_names=teacher_names
+        mitigation = (
+            ShieldMitigation(incoming_damage, 0, incoming_damage)
+            if castle.strength == 0
+            and not await self.shield_service.has_free_shield(session, user_id)
+            else await self.shield_service.consume_for_attack(
+                session, user_id, incoming_damage, teacher_names=teacher_names
+            )
         )
         before = castle.strength
         castle.strength = max(0, before - mitigation.remaining_damage)

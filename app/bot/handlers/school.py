@@ -52,7 +52,11 @@ from app.bot.keyboards.school import (
     teachers_keyboard,
 )
 from app.bot.progress import premium_capacity_bar, premium_progress_bar
-from app.bot.teacher_lookup import BUYABLE_TEACHERS_QUERY, matching_teachers
+from app.bot.teacher_lookup import (
+    BUYABLE_TEACHERS_QUERY,
+    TEACHER_STATUS_QUERY,
+    matching_teachers,
+)
 from app.bot.utils.telegram import (
     group_user_request,
     report_group_purchase_failure,
@@ -474,7 +478,9 @@ async def _hospital_view(
         f"{emoji('6039539366177541657', '⏳')} {bold('سرعت درمان بیمارستان')}",
         f"> {bold(f'{hospital.heal_hp_per_hour} HP در ساعت')}",
         "",
-        escape("زمان بستری جدید بر اساس جان ازدست‌رفتهٔ هر دبیر حساب می‌شود."),
+        escape(
+            "زمان بستری بر اساس جان ازدست‌رفته حساب می‌شود. پس از پایان درمان، تخت آزاد می‌شود؛ برای بازگشت دبیر به نبرد باید ترخیصش کنی."
+        ),
         "",
     ]
     if not patients:
@@ -632,6 +638,7 @@ async def group_recover_teacher(message: Message, session: AsyncSession) -> None
         if owned is None:
             return
         await hospital_service.begin_recovery(session, user.id, owned.id)
+        await session.commit()
         await message.answer(
             f"{emoji('5825570280243732195', '🏥')} "
             f"{bold(f'درمان دبیر «{owned.teacher.name}» آغاز شد.')}",
@@ -639,7 +646,14 @@ async def group_recover_teacher(message: Message, session: AsyncSession) -> None
         )
     except HospitalFull:
         await session.rollback()
-        await message.answer("تخت‌های بیمارستان پر هستند؛ دبیر آماده را ترخیص کن.")
+        await message.answer(
+            "همهٔ تخت‌ها در حال درمان‌اند؛ بعد از پایان درمان یک تخت آزاد می‌شود یا می‌توانی بیمارستان را ارتقا بدهی."
+        )
+    except AttackInProgress:
+        await session.rollback()
+        await message.answer(
+            "حملهٔ این دبیر هنوز تمام نشده؛ بعد از مشخص‌شدن نتیجه می‌تونی درمانش رو شروع کنی."
+        )
     except (TeacherNotOwned, SchoolError):
         await session.rollback()
         await message.answer(
@@ -647,6 +661,83 @@ async def group_recover_teacher(message: Message, session: AsyncSession) -> None
         )
     except UserInactiveError:
         await message.answer("حساب شما فعال نیست.")
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(r"^\s*ترخیص(?:\s+.*)?$"),
+)
+async def group_discharge_teacher(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None or not message.text:
+        return
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer("فرمت دستور: ترخیص {اسم دبیر}")
+        return
+    try:
+        user, owned = await _group_owned_teacher(message, session, parts[1].strip())
+        if owned is None:
+            return
+        discharged = await hospital_service.discharge(session, user.id, owned.id)
+        await session.commit()
+        await message.answer(
+            f"{emoji('5825709849500985213', '✅')} "
+            f"{bold(f'دبیر «{discharged.teacher.name}» ترخیص شد و دوباره آمادهٔ نبرد است.')}",
+            parse_mode=MARKDOWN_V2,
+        )
+    except SchoolUserNotFound:
+        await message.answer("اطلاعات مدرسه‌ات پیدا نشد؛ اول /start را بزن.")
+    except SchoolError:
+        await session.rollback()
+        await message.answer(
+            "این دبیر هنوز آمادهٔ ترخیص نیست؛ وضعیت درمانش را با «وضعیت دبیرها» ببین."
+        )
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.")
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(TEACHER_STATUS_QUERY.pattern),
+)
+async def group_teacher_status(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+    try:
+        user = await _user(session, message.from_user.id)
+        teachers = await teacher_service.owned(session, user.id)
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.")
+        return
+    except SchoolError:
+        await message.answer("اطلاعات مدرسه‌ات پیدا نشد؛ اول /start را بزن.")
+        return
+    if not teachers:
+        await message.answer("هنوز دبیری توی تیم‌ات نداری.")
+        return
+
+    heading = f"{emoji('5825625629487276345', '👨‍🏫')} {bold('وضعیت دبیرهای من')}\n\n"
+    response = heading
+    for owned in teachers:
+        entry = (
+            f"{teacher_icon(owned.teacher.emoji)} {bold(owned.teacher.name)} "
+            f"{escape(f'(سطح {owned.level})')}\n"
+            f"{emoji('5213455977919039650', '❤️')} "
+            f"جان: {escape(owned.current_hp)} / {escape(owned.teacher.max_hp)}\n"
+            f"{rich_plain(_status_icon(owned))} وضعیت: {escape(_status(owned))}"
+        )
+        if owned.status is TeacherStatus.RECOVERING:
+            recovery_text = (
+                f"برای فعال‌سازی بنویس: ترخیص {owned.teacher.name}"
+                if hospital_service.ready_for_discharge(owned)
+                else _recovery_text(owned)
+            )
+            entry += f"\n{emoji('6039539366177541657', '⏳')} " + escape(recovery_text)
+        if len(response) + len(entry) + 2 > 3500 and response != heading:
+            await message.answer(response, parse_mode=MARKDOWN_V2)
+            response = heading
+        response += ("\n\n" if response != heading else "") + entry
+    await message.answer(response, parse_mode=MARKDOWN_V2)
 
 
 @router.message(F.text == SCHOOL_LABEL)
@@ -659,6 +750,38 @@ async def school_handler(message: Message, session: AsyncSession) -> None:
         await message.answer("حساب شما مسدود شده است.")
     except SchoolError:
         await message.answer("اطلاعات مدرسه در دسترس نیست. ابتدا /start را بزنید.")
+
+
+@router.message(
+    F.chat.type.in_({"group", "supergroup"}),
+    F.text.regexp(r"^\s*تعمیر دژ\s*$"),
+)
+async def group_castle_repair(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+    try:
+        user = await _user(session, message.from_user.id)
+        castle = await castle_service.repository.get_by_user(session, user.id)
+        if castle is None:
+            raise SchoolError
+        quote = castle_service.repair_quote(castle)
+        if quote.missing_strength == 0:
+            await message.answer("دژت سالمه و نیازی به تعمیر نداره.")
+            return
+        await message.answer(
+            f"🔧 تعمیر دژ\n\n"
+            f"آسیب دژ: {_number(quote.missing_strength)} واحد\n"
+            f"هزینه: {_number(quote.diamond_cost)} الماس\n\n"
+            "تأیید می‌کنی تعمیرش کنم؟",
+            reply_markup=confirmation_keyboard(
+                action="castle_repair", target_id=message.from_user.id
+            ),
+            reply_to_message_id=message.message_id,
+        )
+    except UserInactiveError:
+        await message.answer("حساب شما فعال نیست.")
+    except SchoolError:
+        await message.answer("دژت پیدا نشد؛ اول /start را بزن.")
 
 
 @router.message(F.text == "بازگشت به منو اصلی")
@@ -936,11 +1059,19 @@ async def teacher_callback_handler(
             await hospital_service.send_to_hospital(
                 session, user.id, callback_data.teacher_id
             )
+            await session.commit()
             await _teacher_view(callback, session, callback_data.teacher_id)
             await callback.answer("دبیر به بیمارستان فرستاده شد.")
-    except HospitalFull:
+    except AttackInProgress:
+        await session.rollback()
         await callback.answer(
-            "تخت‌های بیمارستان پر هستند. دبیر درمان‌شده را ترخیص کن یا بیمارستان را ارتقا بده.",
+            "حملهٔ این دبیر هنوز تمام نشده؛ بعد از نتیجهٔ حمله دوباره برای درمان اقدام کن.",
+            show_alert=True,
+        )
+    except HospitalFull:
+        await session.rollback()
+        await callback.answer(
+            "همهٔ تخت‌ها در حال درمان‌اند؛ بعد از پایان درمان تخت آزاد می‌شود یا بیمارستان را ارتقا بده.",
             show_alert=True,
         )
     except InsufficientDiamonds:
@@ -957,6 +1088,17 @@ async def confirmation_callback_handler(
 ) -> None:
     if callback.from_user is None:
         await callback.answer()
+        return
+    group_castle_repair_request = (
+        callback_data.action == "castle_repair"
+        and isinstance(callback.message, Message)
+        and callback.message.chat.type in {"group", "supergroup"}
+    )
+    if group_castle_repair_request and callback_data.target_id != callback.from_user.id:
+        await callback.answer(
+            "فقط کسی که درخواست تعمیر داده می‌تواند آن را تأیید کند.",
+            show_alert=True,
+        )
         return
     purchase_source = (
         group_user_request(callback.message)
@@ -977,6 +1119,10 @@ async def confirmation_callback_handler(
     try:
         user = await _user(session, callback.from_user.id)
         if callback_data.decision == "cancel":
+            if group_castle_repair_request:
+                await callback.message.edit_text("تعمیر دژ لغو شد.", reply_markup=None)
+                await callback.answer("تعمیر دژ لغو شد.")
+                return
             if (
                 callback_data.action == "teacher_buy"
                 and isinstance(callback.message, Message)
@@ -1008,17 +1154,33 @@ async def confirmation_callback_handler(
             await _castle_view(callback, session)
             notice = "دژ با موفقیت ارتقا پیدا کرد."
         elif callback_data.action == "castle_repair":
-            await castle_service.repair(session, user.id)
+            castle = await castle_service.repair(session, user.id)
+            if group_castle_repair_request:
+                await session.commit()
+                result_text = (
+                    f"✅ دژت تعمیر شد؛ سلامت دژ الان {_number(castle.strength)} است."
+                )
+                try:
+                    await callback.message.edit_text(result_text, reply_markup=None)
+                except TelegramAPIError:
+                    with suppress(TelegramAPIError):
+                        await callback.message.answer(
+                            result_text, disable_group_reply=True
+                        )
+                await callback.answer("دژ تعمیر شد.")
+                return
             await _castle_view(callback, session)
             notice = "دژ با موفقیت تعمیر شد."
         elif callback_data.action == "hospital_instant_recover":
             await hospital_service.instant_recover(
                 session, user.id, callback_data.target_id
             )
+            await session.commit()
             await _hospital_view(callback, session)
             notice = "دبیر با پرداخت الماس فوراً درمان شد."
         elif callback_data.action == "hospital_upgrade":
             await hospital_service.upgrade(session, user.id)
+            await session.commit()
             await _hospital_view(callback, session)
             notice = "بیمارستان ارتقا پیدا کرد؛ بستری‌های جدید سریع‌تر درمان می‌شوند."
         elif callback_data.action == "teacher_buy":
@@ -1212,12 +1374,21 @@ async def hospital_callback_handler(
             return
         else:
             notice = None
+        await session.commit()
         await _hospital_view(callback, session)
         await callback.answer(notice)
-    except HospitalFull:
+    except AttackInProgress:
+        await session.rollback()
         await callback.answer(
-            "تخت‌های بیمارستان پر هستند. دبیر درمان‌شده را ترخیص کن یا بیمارستان را ارتقا بده.",
+            "حملهٔ این دبیر هنوز تمام نشده؛ بعد از نتیجهٔ حمله دوباره برای درمان اقدام کن.",
+            show_alert=True,
+        )
+    except HospitalFull:
+        await session.rollback()
+        await callback.answer(
+            "همهٔ تخت‌ها در حال درمان‌اند؛ بعد از پایان درمان تخت آزاد می‌شود یا بیمارستان را ارتقا بده.",
             show_alert=True,
         )
     except SchoolError:
+        await session.rollback()
         await callback.answer("این عملیات در حال حاضر امکان‌پذیر نیست.", show_alert=True)

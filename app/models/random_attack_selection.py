@@ -41,6 +41,9 @@ class RandomAttackSelection(Base):
     # Owned UserTeacher ids are immutable enough for a short-lived preview and
     # prevent a forged callback from selecting a different teacher.
     teacher_ids: Mapped[str] = mapped_column(String(128), nullable=False)
+    recent_target_ids: Mapped[str] = mapped_column(
+        String(256), nullable=False, default="", server_default=""
+    )
     version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )

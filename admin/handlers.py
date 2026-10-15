@@ -357,6 +357,7 @@ SHIELD_EDIT_PROMPTS = {
     "daily_limit": "محدودیت استفاده در روز را بفرستید؛ برای نامحدود، - بفرستید:",
     "description": "توضیح جدید را بفرستید؛ برای حذف، - بفرستید:",
     "emoji": "اموجی سفارشی تلگرام یا آیدی آن را بفرستید؛ برای حذف، - بفرستید:",
+    "sticker": "استیکر سپر یا آیدی فایل آن را بفرستید؛ برای حذف، - بفرستید:",
 }
 
 
@@ -466,6 +467,17 @@ def _sticker_value(message: Message) -> str | None:
     if message.text and message.text.strip():
         return message.text.strip()
     raise ValueError("یک استیکر بفرستید یا برای بدون استیکر - بفرستید.")
+
+
+def _shield_sticker_value(message: Message) -> str | None:
+    if message.sticker is not None:
+        sticker = message.sticker
+        if not sticker.set_name:
+            raise ValueError(
+                "استیکر باید عضو یک بسته باشد؛ یا شناسهٔ آن را از ربات بازی بفرستید."
+            )
+        return f"set:{sticker.set_name}:{sticker.file_unique_id}"
+    return _sticker_value(message)
 
 
 def _custom_emoji_value(message: Message) -> str | None:
@@ -2292,7 +2304,8 @@ async def shields(message: Message, state: FSMContext, session: AsyncSession) ->
             f"محدودیت روزانه: {escape(shield.daily_limit if shield.daily_limit is not None else 'نامحدود')}\n"
             f"وضعیت: {escape('فعال' if shield.is_active else 'غیرفعال')}\n"
             f"توضیح: {escape(shield.description or '—')}\n"
-            f"اموجی: {escape(shield.emoji or '—')}",
+            f"اموجی: {escape(shield.emoji or '—')}\n"
+            f"استیکر: {escape('ثبت شده' if shield.sticker else '—')}",
             reply_markup=keyboards.shield_actions(shield.id),
             parse_mode=MARKDOWN_V2,
         )
@@ -2456,7 +2469,7 @@ async def s_description(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ShieldStates.emoji)
-async def s_emoji(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def s_emoji(message: Message, state: FSMContext) -> None:
     if not allowed(message):
         return
     try:
@@ -2464,8 +2477,22 @@ async def s_emoji(message: Message, state: FSMContext, session: AsyncSession) ->
     except ValueError as exc:
         await message.answer(str(exc))
         return
+    await state.update_data(emoji=emoji_value)
+    await state.set_state(ShieldStates.sticker)
+    await message.answer("استیکر سپر را بفرستید؛ برای خالی بودن - بفرستید:")
+
+
+@router.message(ShieldStates.sticker)
+async def s_sticker(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not allowed(message):
+        return
+    try:
+        sticker_value = _shield_sticker_value(message)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
     data = await state.get_data()
-    data["emoji"] = emoji_value
+    data["sticker"] = sticker_value
     data.setdefault("reduction_percent", 0)
     data.setdefault("flat_absorption", 0)
     data.setdefault("purchase_resource", ResourceType.COIN)
@@ -2565,7 +2592,7 @@ async def shield_callback(
 async def shield_edit_value(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
-    if not allowed(message) or not message.text:
+    if not allowed(message) or (not message.text and message.sticker is None):
         return
     data = await state.get_data()
     field = data.get("edit_field")
@@ -2576,7 +2603,7 @@ async def shield_edit_value(
             "فلو ویرایش منقضی شد.", reply_markup=keyboards.content_menu()
         )
         return
-    raw_value = message.text.strip()
+    raw_value = message.text.strip() if message.text else ""
     try:
         edit_value: object
         if field == "name":
@@ -2587,6 +2614,8 @@ async def shield_edit_value(
             edit_value = None if raw_value == "-" else raw_value
         elif field == "emoji":
             edit_value = _custom_emoji_value(message)
+        elif field == "sticker":
+            edit_value = _shield_sticker_value(message)
         elif field == "daily_limit":
             edit_value = (
                 None if raw_value == "-" else number(raw_value, field, minimum=1)

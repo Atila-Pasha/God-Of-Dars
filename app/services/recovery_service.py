@@ -11,6 +11,7 @@ from app.models.user_teacher import UserTeacher
 from app.repositories.teacher import TeacherRepository
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
+    AttackInProgress,
     HospitalFull,
     HospitalUpgradeUnavailable,
     InsufficientDiamonds,
@@ -56,11 +57,19 @@ class HospitalService:
 
     @staticmethod
     async def _occupied(session: AsyncSession, user_id: int) -> int:
+        # Finishing treatment releases the bed. Discharge remains a separate
+        # action before the teacher can fight again.
+        now = datetime.now(UTC)
         return int(
             await session.scalar(
                 select(func.count(Recovery.id))
                 .join(UserTeacher, Recovery.user_teacher_id == UserTeacher.id)
-                .where(UserTeacher.user_id == user_id, Recovery.completed_at.is_(None))
+                .where(
+                    UserTeacher.user_id == user_id,
+                    UserTeacher.status == TeacherStatus.RECOVERING,
+                    Recovery.completed_at.is_(None),
+                    Recovery.recovery_end_at > now,
+                )
             )
             or 0
         )
@@ -254,8 +263,20 @@ class HospitalService:
         missing_hp = teacher.teacher.max_hp - teacher.current_hp
         if missing_hp <= 0:
             raise InvalidTeacherState
-        if any(recovery.completed_at is None for recovery in teacher.recoveries):
-            raise InvalidTeacherState
+        # An attack launched before admission can still resolve later and
+        # change this teacher back to INJURED. Never admit a teacher while its
+        # attack is in flight, and retire such stale recovery rows on retry.
+        if await self.repository.has_active_attack(session, user_id, teacher.id):
+            raise AttackInProgress
+        stale_recoveries = [
+            recovery for recovery in teacher.recoveries if recovery.completed_at is None
+        ]
+        if stale_recoveries:
+            now = datetime.now(UTC)
+            for recovery in stale_recoveries:
+                recovery.completed_at = now
+            # Release the partial unique index before inserting a new row.
+            await session.flush()
         if (
             await self._occupied(session, user_id)
             >= self.config.hospital_level(user.hospital_level).capacity

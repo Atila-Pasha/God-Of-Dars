@@ -64,6 +64,7 @@ class AttackRules:
     counter_damage_ratio: float = 0.25
     loot_percent: int = 10
     banana_reward: int = 20
+    empty_target_bonus_coin: int = 10
     loot_coin_per_power: float = 10.0
     loot_diamond_per_power: float = 0.1
     minimum_coin_loot_cap: int = 10
@@ -76,6 +77,8 @@ class AttackRules:
             raise ValueError("attack ratios cannot be negative")
         if not 0 <= self.loot_percent <= 100 or self.banana_reward < 0:
             raise ValueError("loot_percent must be between 0 and 100")
+        if self.empty_target_bonus_coin < 0:
+            raise ValueError("empty target bonus cannot be negative")
         if min(self.loot_coin_per_power, self.loot_diamond_per_power) < 0:
             raise ValueError("loot per power cannot be negative")
         if min(self.minimum_coin_loot_cap, self.minimum_diamond_loot_cap) < 0:
@@ -959,6 +962,9 @@ class GameConfig:
                 ),
                 loot_percent=int(attack_data.get("loot_percent", 10)),
                 banana_reward=int(attack_data.get("banana_reward", 20)),
+                empty_target_bonus_coin=int(
+                    attack_data.get("empty_target_bonus_coin", 10)
+                ),
                 loot_coin_per_power=float(attack_data.get("loot_coin_per_power", 10.0)),
                 loot_diamond_per_power=float(
                     attack_data.get("loot_diamond_per_power", 0.1)

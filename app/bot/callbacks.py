@@ -99,6 +99,11 @@ class AttackMenuCallback(CallbackData, prefix="attack_menu"):
     attacker_id: int = 0
 
 
+class RevengeCallback(CallbackData, prefix="revenge"):
+    action: Literal["no", "attack"]
+    attack_id: int
+
+
 class AttackCountdownCallback(CallbackData, prefix="attack_timer"):
     command_id: str
 

@@ -7,7 +7,11 @@ import logging
 from datetime import UTC, datetime
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramBadRequest,
+    TelegramForbiddenError,
+)
 from sqlalchemy import func, or_, select
 
 from app.core.config import settings
@@ -33,6 +37,13 @@ async def delete_game_message(bot: Bot, chat_id: int, message_id: int) -> bool:
             return True
         logger.warning("Could not delete game message %s: %s", message_id, exc)
         return False
+    except TelegramForbiddenError as exc:
+        # The bot has left this chat (or lost access); retrying the same
+        # deletion forever cannot succeed and overloads Telegram/logging.
+        logger.warning(
+            "No access to chat %s while deleting %s: %s", chat_id, message_id, exc
+        )
+        return True
     except TelegramAPIError:
         logger.exception("Could not delete game message %s", message_id)
         return False

@@ -17,13 +17,14 @@ async def test_castle_damage_never_exceeds_remaining_strength() -> None:
     service = CastleService()
     service.repository = SimpleNamespace(get_by_user=AsyncMock(return_value=castle))
     service.shield_service = SimpleNamespace(
+        has_free_shield=AsyncMock(return_value=False),
         consume_for_attack=AsyncMock(
             return_value=SimpleNamespace(
                 incoming_damage=100,
                 blocked_damage=0,
                 remaining_damage=100,
             )
-        )
+        ),
     )
     session = SimpleNamespace(flush=AsyncMock())
 
@@ -32,6 +33,19 @@ async def test_castle_damage_never_exceeds_remaining_strength() -> None:
 
     assert (first.applied_damage, first.castle_strength_after) == (20, 0)
     assert (second.applied_damage, second.castle_strength_after) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_destroyed_castle_has_no_battle_defense() -> None:
+    service = CastleService()
+    service.snapshot = AsyncMock(
+        return_value=SimpleNamespace(level=3, strength=0, defense_power=60)
+    )
+
+    battle = await service.battle_snapshot(SimpleNamespace(), 1)
+
+    assert battle.defense_power == 0
+    assert AttackRules().resolve(20, battle.defense_power, 100) == (20, 0)
 
 
 @pytest.mark.parametrize(
@@ -114,11 +128,13 @@ async def test_tampered_confirmation_cannot_schedule_self_attack():
 @pytest.mark.asyncio
 async def test_attack_preview_rejects_a_target_with_an_active_shield():
     service = AttackService()
+    service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=100))
     service.castle_service.shield_service = SimpleNamespace(
-        has_active_shield=AsyncMock(return_value=True)
+        has_free_shield=AsyncMock(return_value=False),
+        active_shield=AsyncMock(return_value=SimpleNamespace(name="سپر آبی", sticker="file-id")),
     )
 
-    with pytest.raises(TargetProtectedByShield):
+    with pytest.raises(TargetProtectedByShield) as error:
         await service._preview_with_teachers(
             SimpleNamespace(),
             SimpleNamespace(id=1),
@@ -126,7 +142,8 @@ async def test_attack_preview_rejects_a_target_with_an_active_shield():
             [],
         )
 
-    service.castle_service.shield_service.has_active_shield.assert_awaited_once_with(
+    assert (error.value.shield_name, error.value.sticker) == ("سپر آبی", "file-id")
+    service.castle_service.shield_service.active_shield.assert_awaited_once_with(
         ANY, 2
     )
 
@@ -160,6 +177,65 @@ def test_loot_is_capped_by_teacher_power_not_target_wealth():
 
     assert modest_loot["loot_coin"] == rich_loot["loot_coin"] == 100
     assert modest_loot["loot_diamond"] == rich_loot["loot_diamond"] == 1
+
+
+def test_destroyed_castle_still_yields_bounded_wallet_loot():
+    service = AttackService()
+    target = SimpleNamespace(resources=SimpleNamespace(coin=1000, diamond=20))
+
+    loot = service._loot(target, castle_damage=20, castle_strength=0, attack_power=20)
+
+    assert loot["loot_coin"] > 0
+    assert loot["loot_diamond"] > 0
+    assert loot["loot_coin"] <= service.config.attack_rules.loot_cap(
+        20, ResourceType.COIN
+    )
+
+
+@pytest.mark.asyncio
+async def test_destroyed_castle_ignores_equipped_shield():
+    service = AttackService()
+    service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=0))
+    service.castle_service.shield_service.active_shield = AsyncMock()
+    service.castle_service.shield_service.has_free_shield = AsyncMock(
+        return_value=False
+    )
+
+    await service._ensure_target_attackable(SimpleNamespace(), 7)
+
+    service.castle_service.shield_service.active_shield.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("coin", "diamond", "damage", "expected"),
+    [
+        (0, 0, 20, 10),
+        (1, 0, 20, 0),
+        (0, 1, 20, 0),
+        (0, 0, 0, 0),
+    ],
+)
+def test_empty_target_bonus_requires_damage_and_no_lootable_resources(
+    coin, diamond, damage, expected
+) -> None:
+    target = SimpleNamespace(resources=SimpleNamespace(coin=coin, diamond=diamond))
+
+    assert AttackService()._empty_target_bonus(target, damage) == expected
+
+
+def test_empty_target_bonus_credits_attacker_without_debiting_target() -> None:
+    attacker = SimpleNamespace(id=1, resources=SimpleNamespace(coin=3))
+    target = SimpleNamespace(resources=SimpleNamespace(coin=0, diamond=0))
+    session = SimpleNamespace(add=lambda transaction: ledger.append(transaction))
+    ledger = []
+
+    AttackService._award_empty_target_bonus(session, attacker, 10, attack_id=7)
+
+    assert attacker.resources.coin == 13
+    assert target.resources.coin == 0
+    assert len(ledger) == 1
+    assert ledger[0].reason == "ATTACK_EMPTY_TARGET_BONUS"
+    assert ledger[0].reference_id == 7
 
 
 def test_stronger_teacher_has_a_larger_but_still_bounded_loot_capacity():

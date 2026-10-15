@@ -32,6 +32,7 @@ from app.bot.callbacks import (
     AttackCountdownCallback,
     AttackMenuCallback,
     RandomAttackCallback,
+    RevengeCallback,
 )
 from app.bot.custom_emojis import reset_persist_group_message, set_persist_group_message
 from app.bot.keyboards.main_menu import section_back_keyboard
@@ -66,6 +67,33 @@ from app.services.school_errors import (
 router = Router(name="battle")
 attack_service = AttackService()
 MAX_ATTACK_TEACHERS = attack_service.config.max_attack_teachers
+_shield_sticker_ids: dict[str, str] = {}
+
+
+async def _send_shield_sticker(message: Message, value: str) -> None:
+    sticker_id = value
+    if value.startswith("set:"):
+        bot = message.bot
+        if bot is None:
+            return
+        sticker_id = _shield_sticker_ids.get(value, "")
+        if not sticker_id:
+            if ":" not in value[4:]:
+                return
+            set_name, unique_id = value[4:].rsplit(":", 1)
+            sticker_set = await bot.get_sticker_set(set_name)
+            sticker_id = next(
+                (
+                    sticker.file_id
+                    for sticker in sticker_set.stickers
+                    if sticker.file_unique_id == unique_id
+                ),
+                "",
+            )
+            if not sticker_id:
+                return
+            _shield_sticker_ids[value] = sticker_id
+    await message.answer_sticker(sticker_id)
 
 
 def _source_group_chat_id(message: Message) -> int | None:
@@ -439,6 +467,45 @@ async def _show_teacher_selection(
         )
 
 
+@router.callback_query(RevengeCallback.filter())
+async def revenge_callback_handler(
+    callback: CallbackQuery,
+    callback_data: RevengeCallback,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or callback.message.chat.type != "private"
+    ):
+        await callback.answer()
+        return
+    attack = await session.get(Attack, callback_data.attack_id)
+    defender = (
+        await session.get(User, attack.target_id)
+        if attack is not None and attack.status is AttackStatus.RESOLVED
+        else None
+    )
+    if defender is None or defender.telegram_user_id != callback.from_user.id:
+        await callback.answer("این پیام برای شما نیست.", show_alert=True)
+        return
+    if callback_data.action == "no":
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("باشه، فعلاً بی‌خیالش شدی.")
+        return
+    attacker = await session.get(User, attack.attacker_id)
+    if attacker is None or not attacker.is_active:
+        await callback.answer(
+            "این بازیکن فعلاً برای حمله در دسترس نیست.", show_alert=True
+        )
+        return
+    await state.clear()
+    await state.update_data(mode="id", target_id=attacker.id, selected_teacher_ids=[])
+    await callback.answer()
+    await _show_teacher_selection(callback, session, state, mode="id")
+
+
 async def _send_result(message: Message, result: AttackResult) -> None:
     await message.answer(_attack_text(result), parse_mode=MARKDOWN_V2)
     bot = message.bot
@@ -470,7 +537,14 @@ async def _report_error(message: Message, error: Exception) -> None:
             "پس از پایان آن می‌توانید دوباره حمله کنید\\.",
             parse_mode=MARKDOWN_V2,
         )
-    elif isinstance(error, (ShieldAlreadyActive, TargetProtectedByShield)):
+    elif isinstance(error, TargetProtectedByShield):
+        if error.sticker:
+            with suppress(TelegramAPIError):
+                await _send_shield_sticker(message, error.sticker)
+        await message.answer(
+            f"🛡️ این بازیکن از سپر «{error.shield_name}» برخوردار است و فعلاً نمی‌توانید به او حمله کنید."
+        )
+    elif isinstance(error, ShieldAlreadyActive):
         await message.answer(
             "🛡 این بازیکن سپر فعال دارد و فعلاً نمی‌توان به او حمله کرد."
         )
@@ -712,6 +786,8 @@ async def attack_menu_callback_handler(
     except SchoolError as error:
         await _report_error(callback.message, error)
         return
+    # Random selection writes and user locks must be released before Telegram I/O.
+    await session.commit()
     await state.clear()
     with suppress(TelegramAPIError):
         await callback.message.delete()
@@ -821,6 +897,8 @@ async def attack_message(
     except SchoolError as error:
         await _report_error(message, error)
         return
+    # Sending a group reply can be rate-limited; do not hold preview locks.
+    await session.commit()
     if random_selection is not None:
         text = _random_attack_preview_content(random_selection)
         keyboard = _random_attack_confirmation_keyboard(

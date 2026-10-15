@@ -396,6 +396,346 @@ async def _attack_fixture() -> tuple[int, int, int, int]:
 
 
 @pytest.mark.asyncio
+async def test_attack_previews_do_not_lock_owned_or_shared_teacher_rows() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    try:
+        async with AsyncSessionLocal() as session:
+            attacker_telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == attacker_id)
+            )
+            target_telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == target_id)
+            )
+            teacher_name = await session.scalar(
+                select(Teacher.name).where(Teacher.id == teacher_id)
+            )
+            service = AttackService()
+            await service.preview_by_teacher_ids(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_id=target_id,
+                teacher_ids=[owned_id],
+            )
+            await service.preview_by_telegram_id(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_telegram_id=target_telegram_id,
+                teacher_name=teacher_name,
+            )
+            # Keep the preview transaction open, as a slow Telegram reply would.
+            async with AsyncSessionLocal() as concurrent:
+                assert (
+                    await concurrent.scalar(
+                        select(UserTeacher.id)
+                        .where(UserTeacher.id == owned_id)
+                        .with_for_update(nowait=True)
+                    )
+                    == owned_id
+                )
+                assert (
+                    await concurrent.scalar(
+                        select(Teacher.id)
+                        .where(Teacher.id == teacher_id)
+                        .with_for_update(nowait=True)
+                    )
+                    == teacher_id
+                )
+                await concurrent.rollback()
+            await session.rollback()
+
+            # Real attacks still lock the owned copy, never the shared catalog.
+            owned = await service.teachers.get_owned_by_name_for_update(
+                session, attacker_id, teacher_name
+            )
+            assert owned.id == owned_id
+            async with AsyncSessionLocal() as concurrent:
+                assert (
+                    await concurrent.scalar(
+                        select(Teacher.id)
+                        .where(Teacher.id == teacher_id)
+                        .with_for_update(nowait=True)
+                    )
+                    == teacher_id
+                )
+    finally:
+        await _cleanup([attacker_id, target_id])
+
+
+@pytest.mark.asyncio
+async def test_destroyed_castle_direct_attack_raids_uncollected_mine_cargo() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            resources = await session.scalar(
+                select(Resource).where(Resource.user_id == target_id)
+            )
+            castle = await session.scalar(
+                select(Castle).where(Castle.user_id == target_id)
+            )
+            resources.coin = 0
+            castle.strength = 0
+            session.add(
+                Mine(
+                    user_id=target_id,
+                    today_coin=100,
+                    today_diamond=10,
+                    last_collected_at=datetime.now(UTC),
+                )
+            )
+            await session.flush()
+
+        async with AsyncSessionLocal() as session, session.begin():
+            attacker_telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == attacker_id)
+            )
+            preview = await AttackService().preview_by_teacher_ids(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_id=target_id,
+                teacher_ids=[owned_id],
+            )
+            assert preview.estimated_castle_damage == 0
+            assert preview.estimated_teacher_injury == 0
+            assert preview.mine_loot_coin > 0
+            result = await AttackService().attack_by_ids(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_id=target_id,
+                teacher_id=owned_id,
+            )
+            assert result.castle_damage == 0
+            assert result.raid_damage > 0
+            assert result.teacher_injury == 0
+            assert result.mine_loot_coin > 0
+            assert result.mine_loot_diamond > 0
+            assert result.bot_bonus_coin == 0
+
+        async with AsyncSessionLocal() as session:
+            mine = await session.scalar(select(Mine).where(Mine.user_id == target_id))
+            row = await session.get(Attack, result.attack.id)
+            assert row.is_successful
+            assert mine.today_coin == 100 - row.mine_loot_coin
+            assert mine.today_diamond == 10 - row.mine_loot_diamond
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == attacker_id)
+                )
+                == row.mine_loot_coin
+            )
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == target_id)
+                )
+                == 0
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(Transaction.id)).where(
+                        Transaction.reference_type == "ATTACK",
+                        Transaction.reference_id == row.id,
+                        Transaction.reason == "ATTACK_MINE_LOOT",
+                    )
+                )
+                == 2
+            )
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                delete(Attack).where(Attack.attacker_id == attacker_id)
+            )
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target_coin,expected_bonus", [(100, 0), (0, 10)])
+async def test_destroyed_castle_pending_attack_still_loots_wallet(
+    target_coin: int, expected_bonus: int
+) -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            castle = await session.scalar(
+                select(Castle).where(Castle.user_id == target_id)
+            )
+            castle.strength = 0
+            resources = await session.scalar(
+                select(Resource).where(Resource.user_id == target_id)
+            )
+            resources.coin = target_coin
+            attack = Attack(
+                attacker_id=attacker_id,
+                target_id=target_id,
+                teacher_id=owned_id,
+                status=AttackStatus.PENDING,
+                resolve_at=datetime.now(UTC),
+                teacher_damage_snapshot=10,
+                target_castle_strength_snapshot=0,
+                target_defense_power_snapshot=0,
+            )
+            session.add(attack)
+            await session.flush()
+            attack_id = attack.id
+
+        async with AsyncSessionLocal() as session, session.begin():
+            result = await AttackService().resolve_pending_attack(session, attack_id)
+            assert result is not None
+            assert result.castle_damage == 0
+            assert result.raid_damage == 10
+            assert result.teacher_injury == 0
+            assert result.loot_coin > 0
+            assert result.bot_bonus_coin == expected_bonus
+
+        async with AsyncSessionLocal() as session:
+            row = await session.get(Attack, attack_id)
+            assert row.is_successful
+            assert await session.scalar(
+                select(Resource.coin).where(Resource.user_id == target_id)
+            ) == target_coin - (row.loot_coin - expected_bonus)
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == attacker_id)
+                )
+                == row.loot_coin
+            )
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                delete(Attack).where(Attack.attacker_id == attacker_id)
+            )
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
+async def test_preview_drops_defense_for_teachers_after_castle_falls() -> None:
+    attacker_id, target_id, first_owned_id, first_teacher_id = await _attack_fixture()
+    second_teacher_id = None
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            castle = await session.scalar(
+                select(Castle).where(Castle.user_id == target_id)
+            )
+            castle.strength = 5
+            defense = await session.scalar(
+                select(Defense).where(Defense.castle_id == castle.id)
+            )
+            defense.defense_power = 5
+            teacher = Teacher(
+                name=f"raid-preview-{uuid4().hex[:8]}",
+                damage=10,
+                max_hp=100,
+                purchase_price=1,
+                upgrade_price=1,
+            )
+            owned = UserTeacher(
+                user_id=attacker_id,
+                teacher=teacher,
+                current_hp=100,
+                status=TeacherStatus.ACTIVE,
+            )
+            session.add(owned)
+            await session.flush()
+            second_owned_id, second_teacher_id = owned.id, teacher.id
+            attacker_telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == attacker_id)
+            )
+
+        async with AsyncSessionLocal() as session, session.begin():
+            service = AttackService()
+            preview = await service.preview_by_teacher_ids(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_id=target_id,
+                teacher_ids=[first_owned_id, second_owned_id],
+            )
+            assert preview.estimated_castle_damage == 5
+            assert preview.estimated_raid_damage == 10
+            result = await service.attack_by_ids(
+                session,
+                attacker_telegram_id=attacker_telegram_id,
+                target_id=target_id,
+                teacher_id=first_owned_id,
+                teacher_ids=[first_owned_id, second_owned_id],
+            )
+            assert (result.castle_damage, result.raid_damage) == (5, 10)
+            assert preview.loot_coin == result.loot_coin
+            assert preview.loot_diamond == result.loot_diamond
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                delete(Attack).where(Attack.attacker_id == attacker_id)
+            )
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                delete(Teacher).where(
+                    Teacher.id.in_([first_teacher_id, second_teacher_id])
+                )
+            )
+
+
+@pytest.mark.asyncio
+async def test_mine_collection_and_raid_cannot_duplicate_cargo() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            resources = await session.scalar(
+                select(Resource).where(Resource.user_id == target_id)
+            )
+            castle = await session.scalar(
+                select(Castle).where(Castle.user_id == target_id)
+            )
+            resources.coin = 0
+            castle.strength = 0
+            session.add(
+                Mine(
+                    user_id=target_id,
+                    today_coin=100,
+                    last_collected_at=datetime.now(UTC),
+                )
+            )
+            attacker_telegram_id = await session.scalar(
+                select(User.telegram_user_id).where(User.id == attacker_id)
+            )
+
+        async def raid() -> None:
+            async with AsyncSessionLocal() as session, session.begin():
+                await AttackService().attack_by_ids(
+                    session,
+                    attacker_telegram_id=attacker_telegram_id,
+                    target_id=target_id,
+                    teacher_id=owned_id,
+                )
+
+        async def collect() -> None:
+            async with AsyncSessionLocal() as session, session.begin():
+                await MineService().collect(session, target_id)
+
+        await asyncio.gather(raid(), collect())
+        async with AsyncSessionLocal() as session:
+            mine = await session.scalar(select(Mine).where(Mine.user_id == target_id))
+            attacker_coin = await session.scalar(
+                select(Resource.coin).where(Resource.user_id == attacker_id)
+            )
+            target_coin = await session.scalar(
+                select(Resource.coin).where(Resource.user_id == target_id)
+            )
+            assert attacker_coin + target_coin + mine.today_coin == 100
+            assert attacker_coin > 0
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(
+                delete(Attack).where(Attack.attacker_id == attacker_id)
+            )
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
 async def test_injured_teacher_with_remaining_hp_can_launch_attack() -> None:
     attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
     try:
@@ -837,9 +1177,15 @@ async def test_postgres_serialization_failure_is_transient() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stale_processing_attack_recovers_without_duplicate_ledger() -> None:
+@pytest.mark.parametrize(
+    ("target_coin", "expected_bonus", "expected_transactions"),
+    [(10, 0, 3), (0, 10, 2)],
+)
+async def test_stale_processing_attack_recovers_without_duplicate_ledger(
+    target_coin: int, expected_bonus: int, expected_transactions: int
+) -> None:
     attacker_id = await _user()
-    target_id = await _user(coin=10)
+    target_id = await _user(coin=target_coin)
     attack_id = None
     teacher_id = None
     async with AsyncSessionLocal() as session, session.begin():
@@ -882,6 +1228,17 @@ async def test_stale_processing_attack_recovers_without_duplicate_ledger() -> No
         async with AsyncSessionLocal() as session:
             row = await session.get(Attack, attack_id)
             assert row.status is AttackStatus.RESOLVED
+            assert row.bot_bonus_coin == expected_bonus
+            assert row.loot_coin == (10 if target_coin == 0 else 1)
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == attacker_id)
+                )
+                == row.loot_coin
+            )
+            assert await session.scalar(
+                select(Resource.coin).where(Resource.user_id == target_id)
+            ) == target_coin - (row.loot_coin - row.bot_bonus_coin)
             assert (
                 await session.scalar(
                     select(func.count(Transaction.id)).where(
@@ -889,7 +1246,7 @@ async def test_stale_processing_attack_recovers_without_duplicate_ledger() -> No
                         Transaction.reference_id == attack_id,
                     )
                 )
-                == 3
+                == expected_transactions
             )
             assert (
                 await session.scalar(
@@ -923,6 +1280,83 @@ async def test_stale_processing_attack_recovers_without_duplicate_ledger() -> No
                     delete(User).where(User.id.in_([attacker_id, target_id]))
                 )
                 await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
+async def test_empty_target_bonus_is_awarded_once_for_multiple_teachers() -> None:
+    attacker_id = await _user()
+    target_id = await _user()
+    attack_ids: list[int] = []
+    teacher_ids: list[int] = []
+    async with AsyncSessionLocal() as session, session.begin():
+        attacker = await session.get(User, attacker_id)
+        target = await session.get(User, target_id)
+        attacker.castle = Castle(strength=100, defense=Defense(defense_power=0))
+        target.castle = Castle(strength=100, defense=Defense(defense_power=0))
+        command_id = str(uuid4())
+        for _ in range(2):
+            teacher = Teacher(
+                name=f"empty-target-{uuid4().hex[:8]}",
+                damage=10,
+                max_hp=100,
+                purchase_price=1,
+                upgrade_price=1,
+            )
+            owned = UserTeacher(
+                user_id=attacker_id,
+                teacher=teacher,
+                current_hp=100,
+                status=TeacherStatus.ACTIVE,
+            )
+            session.add(owned)
+            await session.flush()
+            attack = Attack(
+                attacker_id=attacker_id,
+                target_id=target_id,
+                teacher_id=owned.id,
+                status=AttackStatus.PENDING,
+                resolve_at=datetime.now(UTC),
+                attack_command_id=command_id,
+                teacher_damage_snapshot=10,
+                target_castle_strength_snapshot=100,
+                target_defense_power_snapshot=0,
+            )
+            session.add(attack)
+            await session.flush()
+            attack_ids.append(attack.id)
+            teacher_ids.append(teacher.id)
+
+    try:
+        service = AttackService()
+        for attack_id in attack_ids:
+            async with AsyncSessionLocal() as session, session.begin():
+                await service.resolve_pending_attack(session, attack_id)
+        async with AsyncSessionLocal() as session:
+            rows = list(
+                await session.scalars(select(Attack).where(Attack.id.in_(attack_ids)))
+            )
+            assert sum(row.bot_bonus_coin for row in rows) == 10
+            assert (
+                await session.scalar(
+                    select(Resource.coin).where(Resource.user_id == attacker_id)
+                )
+                == 10
+            )
+            assert (
+                await session.scalar(
+                    select(func.count(Transaction.id)).where(
+                        Transaction.user_id == attacker_id,
+                        Transaction.reason == "ATTACK_EMPTY_TARGET_BONUS",
+                    )
+                )
+                == 1
+            )
+    finally:
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Attack).where(Attack.id.in_(attack_ids)))
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id.in_(teacher_ids)))
 
 
 @pytest.mark.asyncio

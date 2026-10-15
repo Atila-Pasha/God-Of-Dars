@@ -90,6 +90,23 @@ async def test_profile_aliases_open_same_section(monkeypatch, alias) -> None:
 
 
 @pytest.mark.asyncio
+async def test_group_profile_skips_private_entry_banner(monkeypatch) -> None:
+    show_section = AsyncMock()
+    monkeypatch.setattr(profile, "_show_profile_section", show_section)
+    message = SimpleNamespace(
+        text=profile.PROFILE_LABEL,
+        chat=SimpleNamespace(type="supergroup"),
+        answer=AsyncMock(),
+    )
+    session = AsyncMock()
+
+    await profile.profile_handler(message, session)
+
+    show_section.assert_awaited_once_with(message, session, "profile")
+    message.answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_level_up_shows_compact_profile_details(monkeypatch) -> None:
     message = SimpleNamespace(answer=AsyncMock())
     callback = SimpleNamespace(

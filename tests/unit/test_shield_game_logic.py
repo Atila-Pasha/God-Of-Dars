@@ -67,9 +67,10 @@ async def test_active_timed_shield_blocks_the_entire_attack() -> None:
         shield=shield,
     )
     session = SimpleNamespace(
+        scalar=AsyncMock(return_value=None),
         execute=AsyncMock(
             return_value=SimpleNamespace(scalar_one_or_none=lambda: active)
-        )
+        ),
     )
 
     result = await ShieldService(
@@ -78,3 +79,16 @@ async def test_active_timed_shield_blocks_the_entire_attack() -> None:
 
     assert result.blocked_damage == 100
     assert result.remaining_damage == 0
+
+
+@pytest.mark.asyncio
+async def test_active_shield_returns_its_sticker_unless_bypassed() -> None:
+    shield = SimpleNamespace(name="سپر کاظمی", sticker="sticker-file-id")
+    active = SimpleNamespace(shield=shield)
+    session = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: active))
+    )
+    service = ShieldService()
+
+    assert await service.active_shield(session, 2, ("دبیر عادی",)) is shield
+    assert await service.active_shield(session, 2, ("دبیر موسوی",)) is None

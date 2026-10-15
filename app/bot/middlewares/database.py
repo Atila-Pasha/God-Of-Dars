@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -5,6 +6,7 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 
+from app.core.config import settings
 from app.core.metrics import increment, timer
 from app.db.session import AsyncSessionLocal
 
@@ -29,7 +31,17 @@ class DatabaseSessionMiddleware(BaseMiddleware):
         async with AsyncSessionLocal() as session:
             data["session"] = session
             try:
-                result = await handler(event, data)
+                async with asyncio.timeout(settings.UPDATE_HANDLER_TIMEOUT_SECONDS):
+                    result = await handler(event, data)
+            except TimeoutError:
+                increment("update_timeouts")
+                logger.error(
+                    "Update handler timed out after %s seconds; user=%s",
+                    settings.UPDATE_HANDLER_TIMEOUT_SECONDS,
+                    getattr(getattr(event, "from_user", None), "id", None),
+                )
+                await session.rollback()
+                raise
             except Exception:
                 increment("update_errors")
                 await session.rollback()

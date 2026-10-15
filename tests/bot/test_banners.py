@@ -1,7 +1,14 @@
 from types import SimpleNamespace
 
-from app.bot.banners import attack_preview_banner, attack_result_banner, purchase_banner
+from app.bot.banners import (
+    attack_preview_banner,
+    attack_result_banner,
+    castle_repair_reminder_banner,
+    purchase_banner,
+)
+from app.bot.callbacks import CastleCallback
 from app.bot.handlers.library import _teacher_detail_content
+from app.bot.keyboards.school import castle_repair_reminder_keyboard
 from app.services.attack_service import AttackPreview, AttackResult
 from app.services.teacher_service import TeacherCapacity
 
@@ -120,7 +127,77 @@ def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
     for banner in (attacker, defender):
         assert "tg://emoji?id=5825699971076202989) طلا: 10" in banner
         assert "tg://emoji?id=5825753314570018832) الماس: 2" in banner
-        assert "tg://emoji?id=5902520589356113908) موز: 1" in banner
+    assert "tg://emoji?id=5902520589356113908) موز: 1" in attacker
+    assert "tg://emoji?id=5902520589356113908) موز: 0" in defender
+
+
+def test_empty_target_bonus_is_visible_only_to_attacker_and_not_a_defender_loss() -> (
+    None
+):
+    result = AttackResult(
+        attack=SimpleNamespace(id=1),
+        attacker_telegram_id=1,
+        attacker_name="آرش",
+        target_name="نگار",
+        target_telegram_id=2,
+        teacher_name="قضاتی",
+        ability_text=None,
+        castle_damage=20,
+        teacher_injury=0,
+        castle_strength_after=80,
+        loot_coin=10,
+        loot_diamond=0,
+        loot_banana=20,
+        bot_bonus_coin=10,
+        castle_strength_before=100,
+    )
+
+    attacker = attack_result_banner(result)
+    defender = attack_result_banner(result, recipient="defender")
+
+    assert "حریف غنیمتی نداشت" in attacker
+    assert "*10 سکه*" in attacker
+    assert "طلا: 10" in attacker
+    assert "طلا: 0" in defender
+    assert "موز: 0" in defender
+    assert "پاداش این حمله" not in defender
+
+
+def test_destroyed_castle_report_calls_out_weak_attack() -> None:
+    result = AttackResult(
+        attack=SimpleNamespace(id=1),
+        attacker_telegram_id=1,
+        attacker_name="آرش",
+        target_name="نگار",
+        target_telegram_id=2,
+        teacher_name="قضاتی",
+        ability_text=None,
+        castle_damage=0,
+        teacher_injury=0,
+        castle_strength_after=0,
+        loot_coin=0,
+        loot_diamond=0,
+        loot_banana=0,
+        castle_strength_before=0,
+    )
+
+    attacker = attack_result_banner(result)
+    defender = attack_result_banner(result, recipient="defender")
+
+    assert "میزان تخریب: *ضعیف کشی کردی*" in attacker
+    assert "میزان تخریب: *0%*" not in attacker
+    assert "از قبل کامل نابود شده بود" in attacker
+    assert "دژت پیش از این حمله هم کامل نابود شده بود" in defender
+
+
+def test_repair_reminder_has_premium_icon_and_repair_callback() -> None:
+    banner = castle_repair_reminder_banner()
+    button = castle_repair_reminder_keyboard().inline_keyboard[0][0]
+
+    assert "tg://emoji?id=" in banner
+    assert "فرمانده، دژت نیاز به تعمیر داره" in banner
+    assert button.icon_custom_emoji_id == "5341715473882955310"
+    assert CastleCallback.unpack(button.callback_data).action == "repair"
 
 
 def test_teacher_introduction_uses_custom_icons_and_quoted_description() -> None:

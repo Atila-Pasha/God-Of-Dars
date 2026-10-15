@@ -54,7 +54,7 @@ async def test_member_is_allowed_to_reach_feature_handler(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_membership_is_rechecked_for_every_action(monkeypatch):
+async def test_membership_gate_uses_short_cache_for_regular_actions(monkeypatch):
     event = SimpleNamespace(from_user=SimpleNamespace(id=42), bot=SimpleNamespace())
     check = AsyncMock(side_effect=[True, False])
     monkeypatch.setattr(subscription.subscription_service, "is_member", check)
@@ -67,7 +67,7 @@ async def test_membership_is_rechecked_for_every_action(monkeypatch):
     await middleware(handler, event, {})
     await middleware(handler, event, {})
     assert handler.await_count == 1
-    assert all(call.kwargs == {"force_refresh": True} for call in check.await_args_list)
+    assert all(call.kwargs == {} for call in check.await_args_list)
 
 
 @pytest.mark.asyncio

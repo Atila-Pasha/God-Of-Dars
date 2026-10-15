@@ -16,6 +16,7 @@ from app.bot.keyboards.main_menu import (
     MENU_SECTION_BY_LABEL,
     MENU_SECTION_KEYS,
     NON_SCHOOL_MENU_SECTION_LABELS,
+    game_group_keyboard,
     main_menu_keyboard,
 )
 from app.bot.keyboards.start import first_login_guide_keyboard, join_channel_keyboard
@@ -75,6 +76,12 @@ FIRST_LOGIN_GUIDE = rich_banner(
     "هر وقت خواستی، راهنمای هر بخش همین پایین در دسترسه. آماده‌ای؟"
 )
 UNAVAILABLE_MESSAGE = "این بخش به‌زودی فعال می‌شود."
+GAME_GROUP_MESSAGE = rich_banner(
+    "👥 جمعمون توی گپ بازیه!\n\n"
+    "اگه دلت یه حریف واقعی می‌خواد، بیا تو گروه. اونجا می‌تونی با بقیه کل‌کل کنی، "
+    "تیمت رو به رخ بکشی و برای نبرد بعدی حریف پیدا کنی.\n\n"
+    "منتظرتیم؛ دکمهٔ پایین رو بزن و بیا پیشمون 👇"
+)
 HELP_MENU_TEXT = rich_banner(
     "📖 راهنمای بازی\n\n"
     "راهنمای کدام بخش رو می‌خوای؟ اگر تازه شروع کردی، «راهنمای کامل بازی» مسیر رو از اولین سکه تا اولین نبرد نشونت می‌ده. 👇"
@@ -115,7 +122,7 @@ HELP_TEXTS = {
         "🏰 دژ\n"
         "دژ از منابعت دفاع می‌کنه. بعد از نبرد آسیبش رو تعمیر کن و برای دفاع قوی‌تر ارتقاش بده.\n\n"
         "🏥 بیمارستان\n"
-        "دبیر مصدوم رو بستری کن یا در گروه «درمان فراهانی» بنویس. پس از شروع درمان، درمان فوری هم در دسترس است. زمان باقی‌ماندهٔ درمان رو همین‌جا می‌بینی؛ وقتی تمام شد، «ترخیص» رو بزن تا دوباره آمادهٔ نبرد بشه."
+        "دبیر مصدوم رو بستری کن یا در گروه «درمان فراهانی» بنویس. پس از شروع درمان، درمان فوری هم در دسترس است. زمان باقی‌ماندهٔ درمان رو همین‌جا می‌بینی؛ وقتی تمام شد، «ترخیص» رو بزن یا در گروه «ترخیص فراهانی» بنویس. برای دیدن تیم خودت در گروه هم «وضعیت دبیرها» رو بفرست."
     ),
     "buffet": (
         "🍽 راهنمای بوفه\n\n"
@@ -464,6 +471,15 @@ async def main_menu_back_handler(message: Message) -> None:
     await message.answer(
         "به منوی اصلی برگشتید.",
         reply_markup=main_menu_keyboard(),
+    )
+
+
+@router.message(F.chat.type == "private", F.text == "گروه بازی")
+async def game_group_handler(message: Message) -> None:
+    await message.answer(
+        GAME_GROUP_MESSAGE,
+        reply_markup=game_group_keyboard(),
+        parse_mode=MARKDOWN_V2,
     )
 
 

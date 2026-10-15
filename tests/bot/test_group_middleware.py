@@ -19,6 +19,7 @@ def test_group_policy_allows_profile_aliases_and_god() -> None:
     )
     for text in (
         "پروفایل",
+        "تعمیر دژ",
         "اطلاعات پروفایل",
         "کاربر",
         "اطلاعات کاربر",
@@ -32,6 +33,9 @@ def test_group_policy_allows_profile_aliases_and_god() -> None:
     for text in (
         "فروش فراهانی",
         "درمان فراهانی",
+        "ترخیص فراهانی",
+        "وضعیت دبیر ها",
+        "وضعیت دبیرها",
         "دبیر های مجاز",
         "دبیرهای مجاز",
         "چه دبیر هایی رو میتونم بخرم؟",

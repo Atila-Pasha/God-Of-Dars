@@ -44,6 +44,10 @@ class User(Base):
         CheckConstraint("level >= 1", name="ck_users_level_positive"),
         CheckConstraint("hospital_level >= 1", name="ck_users_hospital_level_positive"),
         CheckConstraint(
+            "attacks_since_free_shield BETWEEN 0 AND 4",
+            name="ck_users_free_shield_attack_count",
+        ),
+        CheckConstraint(
             "referrer_id IS NULL OR referrer_id <> id",
             name="ck_users_cannot_refer_self",
         ),
@@ -59,6 +63,12 @@ class User(Base):
     )
     hospital_level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
+    )
+    attacks_since_free_shield: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    free_shield_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     last_slogan_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

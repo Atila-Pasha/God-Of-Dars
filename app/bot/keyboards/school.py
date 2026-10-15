@@ -88,6 +88,20 @@ def castle_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
 
+def castle_repair_reminder_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="تعمیر دژ",
+                    icon_custom_emoji_id="5341715473882955310",
+                    callback_data=CastleCallback(action="repair").pack(),
+                )
+            ]
+        ]
+    )
+
+
 ConfirmationAction = Literal[
     "castle_upgrade",
     "castle_repair",

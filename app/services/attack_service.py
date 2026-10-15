@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import ceil
+from types import SimpleNamespace
 from uuid import uuid4
 
 from sqlalchemy import func, select, update
@@ -12,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.enums import AttackStatus, ResourceType, TeacherStatus
 from app.core.game_logic import GameConfig, game_config
 from app.models.attack import Attack
+from app.models.mine import Mine
 from app.models.random_attack_selection import RandomAttackSelection
 from app.models.transaction import Transaction
 from app.models.user_teacher import UserTeacher
@@ -22,12 +24,14 @@ from app.services.archer_service import ArcherService
 from app.services.castle_service import CastleService
 from app.services.daily_quest_service import DailyQuestService
 from app.services.lock_order import lock_attack_dependencies, lock_users_ordered
+from app.services.mine_service import MineService
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
     AttackerNotRegistered,
     AttackInProgress,
     AttackTargetNotRegistered,
     CannotAttackSelf,
+    CastleNotFound,
     InvalidTeacherState,
     RandomAttackSelectionExpired,
     RandomOpponentNotFound,
@@ -68,6 +72,10 @@ class AttackResult:
     teacher_injuries: tuple[TeacherInjury, ...] = ()
     castle_strength_before: int = 0
     source_chat_id: int | None = None
+    bot_bonus_coin: int = 0
+    raid_damage: int = 0
+    mine_loot_coin: int = 0
+    mine_loot_diamond: int = 0
     archer_hits: tuple[tuple[str, str | None, str, str, str | None, int], ...] = ()
     archer_stickers: tuple[str, ...] = ()
 
@@ -91,6 +99,10 @@ class AttackPreview:
     teacher_ids: str = ""
     teacher_emojis: tuple[str | None, ...] = ()
     teacher_details: tuple[tuple[str, str | None, str | None], ...] = ()
+    bot_bonus_coin: int = 0
+    estimated_raid_damage: int = 0
+    mine_loot_coin: int = 0
+    mine_loot_diamond: int = 0
     estimated_archer_injury: int = 0
 
 
@@ -129,8 +141,9 @@ class AttackService:
         self.teachers = TeacherRepository()
         self.castles = CastleRepository()
         self.teacher_service = TeacherService(self.teachers, config=self.config)
-        self.archer_service = ArcherService()
         self.castle_service = CastleService(self.castles, config=self.config)
+        self.mine_service = MineService(config=self.config)
+        self.archer_service = ArcherService()
 
     @staticmethod
     async def _ensure_no_active_attack(session: AsyncSession, attacker_id: int) -> None:
@@ -379,8 +392,10 @@ class AttackService:
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
 
-        target = await self._pick_random_target(session, attacker)
-        return await self._preview(session, attacker, target, teacher_name)
+        _, preview = await self._find_random_preview(
+            session, attacker, teacher_name=teacher_name
+        )
+        return preview
 
     async def prepare_random_preview(
         self,
@@ -409,23 +424,34 @@ class AttackService:
             selection = await self._selection_for_update(session, attacker.id)
         await self._ensure_no_active_attack(session, attacker.id)
         now = datetime.now(UTC)
+        recent_ids = self._selection_recent_ids(selection)
+        selection_is_live = selection is not None and selection.expires_at > now
         target = (
             await self.users.get_active_by_id(session, selection.target_id)
-            if selection is not None and selection.expires_at > now
+            if selection_is_live
             else None
         )
         if selection is not None and target is not None:
-            # A new command may change the attacking teacher, but never gets a
-            # free new opponent while this selection is still alive.
-            preview = await self._preview(session, attacker, target, teacher_name)
-            if selection.teacher_ids != preview.teacher_ids:
-                selection.teacher_ids = preview.teacher_ids
-                selection.version += 1
-                await session.flush()
-            return self._random_preview(selection, preview)
+            try:
+                # Keep a valid choice stable; replace it without a fee if it
+                # became protected or lost its castle after selection.
+                preview = await self._preview(session, attacker, target, teacher_name)
+            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+                pass
+            else:
+                if selection.teacher_ids != preview.teacher_ids:
+                    selection.teacher_ids = preview.teacher_ids
+                    selection.version += 1
+                    await session.flush()
+                return self._random_preview(selection, preview)
 
-        target = await self._pick_random_target(session, attacker)
-        preview = await self._preview(session, attacker, target, teacher_name)
+        target, preview = await self._find_random_preview(
+            session,
+            attacker,
+            teacher_name=teacher_name,
+            recent_target_ids=recent_ids,
+            exclude_target_ids={selection.target_id} if selection_is_live else set(),
+        )
         expires_at = now + timedelta(
             seconds=self.config.attack_rules.random_selection_ttl_seconds
         )
@@ -434,14 +460,19 @@ class AttackService:
                 attacker_id=attacker.id,
                 target_id=target.id,
                 teacher_ids=preview.teacher_ids,
+                recent_target_ids=self._remember_random_target(recent_ids, target.id),
                 expires_at=expires_at,
             )
             session.add(selection)
         else:
             selection.target_id = target.id
             selection.teacher_ids = preview.teacher_ids
+            selection.recent_target_ids = self._remember_random_target(
+                recent_ids, target.id
+            )
             selection.version += 1
-            selection.reroll_count = 0
+            if not selection_is_live:
+                selection.reroll_count = 0
             selection.expires_at = expires_at
         await session.flush()
         return self._random_preview(selection, preview)
@@ -473,24 +504,40 @@ class AttackService:
             or selection.version != version
         ):
             raise RandomAttackSelectionExpired
-        target = await self._pick_random_target(
-            session, attacker, exclude_target_id=selection.target_id
-        )
-        preview = await self._preview_by_teacher_ids(
-            session, attacker, target, selection.teacher_ids
-        )
-        await ResourceService.debit_coin(
+        current_target = await self.users.get_active_by_id(session, selection.target_id)
+        current_attackable = current_target is not None
+        if current_target is not None:
+            try:
+                await self._preview_by_teacher_ids(
+                    session, attacker, current_target, selection.teacher_ids
+                )
+            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+                current_attackable = False
+        recent_ids = self._selection_recent_ids(selection)
+        target, preview = await self._find_random_preview(
             session,
-            attacker.resources,
-            user_id=attacker.id,
-            amount=self.config.attack_rules.random_reroll_coin_cost,
-            reason="RANDOM_ATTACK_REROLL",
-            reference_type="RANDOM_ATTACK_SELECTION",
-            reference_id=attacker.id,
+            attacker,
+            teacher_ids=selection.teacher_ids,
+            recent_target_ids=recent_ids,
+            exclude_target_ids={selection.target_id},
         )
+        if current_attackable:
+            await ResourceService.debit_coin(
+                session,
+                attacker.resources,
+                user_id=attacker.id,
+                amount=self.config.attack_rules.random_reroll_coin_cost,
+                reason="RANDOM_ATTACK_REROLL",
+                reference_type="RANDOM_ATTACK_SELECTION",
+                reference_id=attacker.id,
+            )
         selection.target_id = target.id
+        selection.recent_target_ids = self._remember_random_target(
+            recent_ids, target.id
+        )
         selection.version += 1
-        selection.reroll_count += 1
+        if current_attackable:
+            selection.reroll_count += 1
         selection.expires_at = now + timedelta(
             seconds=self.config.attack_rules.random_selection_ttl_seconds
         )
@@ -526,7 +573,10 @@ class AttackService:
             teacher_ids=teacher_ids,
             source_chat_id=source_chat_id,
         )
-        await session.delete(selection)
+        # Retain the short opponent history for the next random attack. The
+        # expired selection still rejects every stale confirmation button.
+        selection.expires_at = datetime.now(UTC)
+        selection.version += 1
         return launch
 
     async def attack_by_ids(
@@ -695,7 +745,12 @@ class AttackService:
             users[user_id] = await self.users.get_by_id_for_update(session, user_id)
         attacker = users[attack.attacker_id]
         target = users[attack.target_id]
-        if attacker is None or target is None or not attacker.is_active:
+        if (
+            attacker is None
+            or target is None
+            or not attacker.is_active
+            or not target.is_active
+        ):
             attack.status = AttackStatus.RESOLVED
             attack.resolved_at = datetime.now(UTC)
             attack.result_damage = 0
@@ -740,8 +795,13 @@ class AttackService:
                 )
             )
             command_names = tuple(name for name in names if name) or command_names
-        if await self.castle_service.shield_service.has_active_shield(
-            session, target.id, command_names
+        if await self.castle_service.shield_service.has_free_shield(
+            session, target.id
+        ) or (
+            target_castle.strength > 0
+            and await self.castle_service.shield_service.has_active_shield(
+                session, target.id, command_names
+            )
         ):
             now = datetime.now(UTC)
             attack.status = AttackStatus.RESOLVED
@@ -772,7 +832,15 @@ class AttackService:
             )
         castle_damage, injury = self.config.attack_rules.resolve(
             attack.teacher_damage_snapshot,
-            attack.target_defense_power_snapshot,
+            (
+                target_castle.defense.defense_power
+                if attack.target_castle_strength_snapshot == 0
+                and target_castle.strength > 0
+                and target_castle.defense is not None
+                else attack.target_defense_power_snapshot
+            )
+            if target_castle.strength > 0
+            else 0,
             teacher.current_hp if teacher is not None else 0,
         )
         castle_result = await self.castle_service.receive_attack_damage(
@@ -798,15 +866,46 @@ class AttackService:
         )
         archer_injury = archer_hit.damage if archer_hit else 0
         injury += archer_injury
+        raid_damage = max(
+            0,
+            castle_result.incoming_damage
+            - castle_result.blocked_damage
+            - castle_result.applied_damage,
+        )
+        loot_damage = castle_result.applied_damage or raid_damage
         loot = self._loot(
             target,
-            castle_result.applied_damage,
+            loot_damage,
             castle_result.castle_strength_before,
             attack.teacher_damage_snapshot,
         )
+        mine_loot = await self._raid_mine(
+            session,
+            target,
+            loot_damage=loot_damage,
+            castle_strength=castle_result.castle_strength_before,
+            attack_power=attack.teacher_damage_snapshot,
+            breached=castle_result.castle_strength_after == 0
+            and loot["loot_coin"] == 0
+            and loot["loot_diamond"] == 0,
+        )
+        empty_target_bonus = (
+            self._empty_target_bonus(target, loot_damage)
+            if not any((loot["loot_coin"], loot["loot_diamond"], *mine_loot))
+            else 0
+        )
         loot["loot_banana"] = 0
         self._transfer_loot(session, attacker, target, loot, attack_id=attack.id)
+        self._credit_mine_loot(session, attacker, mine_loot, attack_id=attack.id)
         if teacher is not None and injury:
+            # Legacy in-flight attacks can resolve after hospital admission.
+            # Their injury interrupts that treatment; never leave an open
+            # recovery attached to a teacher that is INJURED again.
+            if teacher.status is TeacherStatus.RECOVERING:
+                interrupted_at = datetime.now(UTC)
+                for recovery in teacher.recoveries:
+                    if recovery.completed_at is None:
+                        recovery.completed_at = interrupted_at
             teacher.current_hp = max(0, teacher.current_hp - injury)
             if teacher.current_hp == 0:
                 await session.delete(teacher)
@@ -817,6 +916,7 @@ class AttackService:
         attack.status = AttackStatus.RESOLVED
         attack.resolved_at = now
         attack.result_damage = castle_result.applied_damage
+        attack.result_raid_damage = raid_damage
         attack.result_teacher_injury = injury
         attack.result_archer_injury = archer_injury
         if archer_hit:
@@ -824,10 +924,12 @@ class AttackService:
             attack.archer_emoji_snapshot = archer_hit.emoji
             attack.archer_sticker_snapshot = archer_hit.sticker
             attack.arrow_name_snapshot = archer_hit.arrow_name
-        attack.loot_coin = loot["loot_coin"]
-        attack.loot_diamond = loot["loot_diamond"]
+        attack.loot_coin = loot["loot_coin"] + mine_loot[0]
+        attack.loot_diamond = loot["loot_diamond"] + mine_loot[1]
+        attack.mine_loot_coin = mine_loot[0]
+        attack.mine_loot_diamond = mine_loot[1]
         attack.loot_banana = 0
-        attack.is_successful = castle_result.applied_damage > 0
+        attack.is_successful = loot_damage > 0
         quest_service = DailyQuestService()
         await quest_service.record_event(
             session,
@@ -845,7 +947,7 @@ class AttackService:
                 attack_command_id=attack.attack_command_id,
                 attack_id=attack.id,
             )
-            if castle_result.applied_damage > 0
+            if loot_damage > 0
             else False
         )
         if xp_awarded:
@@ -857,6 +959,12 @@ class AttackService:
                 {"loot_coin": 0, "loot_diamond": 0, "loot_banana": attack.loot_banana},
                 attack_id=attack.id,
             )
+            if empty_target_bonus:
+                awarded_bonus = self._award_empty_target_bonus(
+                    session, attacker, empty_target_bonus, attack_id=attack.id
+                )
+                attack.bot_bonus_coin = awarded_bonus
+                attack.loot_coin = (attack.loot_coin or 0) + awarded_bonus
         await session.flush()
         command_records = (
             await session.scalars(
@@ -894,6 +1002,10 @@ class AttackService:
             teacher_details=((teacher_name, teacher_ability, teacher_icon),),
             castle_strength_before=castle_result.castle_strength_before,
             source_chat_id=attack.source_chat_id,
+            bot_bonus_coin=attack.bot_bonus_coin,
+            raid_damage=raid_damage,
+            mine_loot_coin=mine_loot[0],
+            mine_loot_diamond=mine_loot[1],
             archer_hits=(
                 (
                     teacher_name,
@@ -925,20 +1037,88 @@ class AttackService:
         session: AsyncSession,
         attacker,
         *,
-        exclude_target_id: int | None = None,
+        exclude_target_ids: set[int] | None = None,
+        recent_target_ids: tuple[int, ...] = (),
     ):
-        for level in await self.users.list_active_levels_by_proximity(
+        levels = await self.users.list_active_levels_by_proximity(
             session, level=attacker.level, exclude_user_id=attacker.id
+        )
+        hard_excluded = exclude_target_ids or set()
+        nearby = [level for level in levels if abs(level - attacker.level) <= 2]
+        distant = [level for level in levels if abs(level - attacker.level) > 2]
+        # Keep matchups close in level. Within that range, prefer fresh people;
+        # only widen the level gap when every nearby opponent is unavailable.
+        for candidate_levels, exclusions in (
+            (nearby, hard_excluded | set(recent_target_ids)),
+            (nearby, hard_excluded),
+            (distant, hard_excluded | set(recent_target_ids)),
+            (distant, hard_excluded),
         ):
-            target = await self.users.pick_random_active_at_level(
-                session,
-                level=level,
-                exclude_user_id=attacker.id,
-                exclude_target_id=exclude_target_id,
-            )
-            if target is not None:
-                return target
+            for level in candidate_levels:
+                target = await self.users.pick_random_active_at_level(
+                    session,
+                    level=level,
+                    exclude_user_id=attacker.id,
+                    exclude_target_ids=exclusions,
+                )
+                if target is not None:
+                    return target
         raise RandomOpponentNotFound
+
+    async def _find_random_preview(
+        self,
+        session: AsyncSession,
+        attacker,
+        *,
+        teacher_name: str | list[str] | None = None,
+        teacher_ids: str | None = None,
+        recent_target_ids: tuple[int, ...] = (),
+        exclude_target_ids: set[int] | None = None,
+    ):
+        excluded = set(exclude_target_ids or ())
+        for _ in range(5):
+            target = await self._pick_random_target(
+                session,
+                attacker,
+                exclude_target_ids=excluded,
+                recent_target_ids=recent_target_ids,
+            )
+            try:
+                preview = (
+                    await self._preview_by_teacher_ids(
+                        session, attacker, target, teacher_ids
+                    )
+                    if teacher_ids is not None
+                    else await self._preview(session, attacker, target, teacher_name)
+                )
+            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+                # A shield can activate after the candidate query. Try another
+                # eligible opponent before reporting that the pool is empty.
+                excluded.add(target.id)
+                continue
+            return target, preview
+        raise RandomOpponentNotFound
+
+    @staticmethod
+    def _selection_recent_ids(
+        selection: RandomAttackSelection | None,
+    ) -> tuple[int, ...]:
+        if selection is None:
+            return ()
+        ids = [
+            int(part)
+            for part in (selection.recent_target_ids or "").split(",")
+            if part.isdecimal()
+        ]
+        if selection.target_id not in ids:
+            ids.append(selection.target_id)
+        return tuple(ids[-8:])
+
+    @staticmethod
+    def _remember_random_target(recent_ids: tuple[int, ...], target_id: int) -> str:
+        ids = [item for item in recent_ids if item != target_id]
+        ids.append(target_id)
+        return ",".join(str(item) for item in ids[-8:])
 
     def _random_preview(
         self, selection: RandomAttackSelection, preview: AttackPreview
@@ -972,13 +1152,10 @@ class AttackService:
             raise TeacherNotOwned
         teachers = []
         for name in names:
-            teacher = await self.teachers.get_owned_by_name_for_update(
-                session, attacker.id, name
-            )
+            teacher = await self.teachers.get_owned_by_name(session, attacker.id, name)
             if teacher is None:
                 raise TeacherNotOwned
             if teacher.current_hp <= 0:
-                await session.delete(teacher)
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
@@ -994,13 +1171,10 @@ class AttackService:
             raise CannotAttackSelf
         teachers = []
         for teacher_id in self._parse_teacher_ids(teacher_ids):
-            teacher = await self.teachers.get_owned_for_update(
-                session, attacker.id, teacher_id
-            )
+            teacher = await self.teachers.get_owned(session, attacker.id, teacher_id)
             if teacher is None:
                 raise TeacherNotOwned
             if teacher.current_hp <= 0:
-                await session.delete(teacher)
                 raise InvalidTeacherState
             if teacher.status is TeacherStatus.RECOVERING:
                 raise TeacherInHospital
@@ -1018,47 +1192,94 @@ class AttackService:
         else:
             await self._ensure_target_attackable(session, target.id)
         castle = await self.castle_service.battle_snapshot(session, target.id)
-        resolved = [
-            self.config.attack_rules.resolve(
-                self.teacher_service.damage(teacher),
-                castle.defense_power,
-                teacher.current_hp,
-            )
-            for teacher in teachers
-        ]
-        mitigated_damages = [
-            (
-                await self.castle_service.shield_service.mitigate_attack(
-                    session, target.id, raw_damage, teacher_names=names
-                )
-            ).remaining_damage
-            for raw_damage, _injury in resolved
-        ]
-        damage = min(castle.strength, sum(mitigated_damages))
-        injury = sum(item[1] for item in resolved)
         archers = await self.archer_service.owned(session, target.id)
         stocks = await self.archer_service.ammunition(session, target.id)
         equipped = next((item for item in stocks if item.is_equipped), None)
         archer_injury = 0
-        if archers and equipped:
-            for index, (teacher, (_damage, counter)) in enumerate(
-                zip(teachers, resolved, strict=True)
-            ):
-                if index >= equipped.quantity:
-                    break
-                remaining = max(0, teacher.current_hp - counter)
-                archer = archers[index % len(archers)]
-                archer_injury += min(
-                    remaining,
+        remaining_strength = castle.strength
+        raid_damage = 0
+        injury = 0
+        wallet_coin = target.resources.coin if target.resources is not None else 0
+        wallet_diamond = target.resources.diamond if target.resources is not None else 0
+        loot = {"loot_coin": 0, "loot_diamond": 0, "loot_banana": 0}
+        mine_loot_coin = mine_loot_diamond = 0
+        mine_cargo = None
+        for shot_index, teacher in enumerate(teachers):
+            teacher_power = self.teacher_service.damage(teacher)
+            strength_before = remaining_strength
+            raw_damage, teacher_injury = self.config.attack_rules.resolve(
+                teacher_power,
+                castle.defense_power if remaining_strength > 0 else 0,
+                teacher.current_hp,
+            )
+            injury += teacher_injury
+            if archers and equipped and shot_index < equipped.quantity:
+                archer = archers[shot_index % len(archers)]
+                arrow_damage = min(
+                    max(0, teacher.current_hp - teacher_injury),
                     self.archer_service.power(archer) + equipped.pack.power,
                     max(1, ceil(teacher.teacher.max_hp * 0.3)),
                 )
-        injury += archer_injury
-        loot = self._loot(
-            target,
-            damage,
-            castle.strength,
-            sum(self.teacher_service.damage(teacher) for teacher in teachers),
+                archer_injury += arrow_damage
+                injury += arrow_damage
+            unblocked_damage = (
+                (
+                    await self.castle_service.shield_service.mitigate_attack(
+                        session, target.id, raw_damage, teacher_names=names
+                    )
+                ).remaining_damage
+                if remaining_strength > 0
+                else raw_damage
+            )
+            applied_damage = min(remaining_strength, unblocked_damage)
+            remaining_strength -= applied_damage
+            raid_damage += unblocked_damage - applied_damage
+            loot_damage = applied_damage or (unblocked_damage - applied_damage)
+            wallet_loot = self._loot(
+                target,
+                loot_damage,
+                strength_before,
+                teacher_power,
+                coin_balance=wallet_coin,
+                diamond_balance=wallet_diamond,
+            )
+            wallet_coin -= wallet_loot["loot_coin"]
+            wallet_diamond -= wallet_loot["loot_diamond"]
+            loot["loot_coin"] += wallet_loot["loot_coin"]
+            loot["loot_diamond"] += wallet_loot["loot_diamond"]
+            if (
+                remaining_strength == 0
+                and loot_damage > 0
+                and wallet_loot["loot_coin"] == 0
+                and wallet_loot["loot_diamond"] == 0
+            ):
+                if mine_cargo is None:
+                    mine_cargo = await self._preview_mine_cargo(session, target.id)
+                if mine_cargo is not None:
+                    cargo_loot = self._loot(
+                        target,
+                        loot_damage,
+                        strength_before,
+                        teacher_power,
+                        coin_balance=mine_cargo.today_coin,
+                        diamond_balance=mine_cargo.today_diamond,
+                    )
+                    mine_cargo.today_coin -= cargo_loot["loot_coin"]
+                    mine_cargo.today_diamond -= cargo_loot["loot_diamond"]
+                    mine_loot_coin += cargo_loot["loot_coin"]
+                    mine_loot_diamond += cargo_loot["loot_diamond"]
+                    loot["loot_coin"] += cargo_loot["loot_coin"]
+                    loot["loot_diamond"] += cargo_loot["loot_diamond"]
+        damage = castle.strength - remaining_strength
+        loot_damage = damage or raid_damage
+        empty_target_bonus = (
+            self._empty_target_bonus(target, loot_damage)
+            if loot["loot_coin"] == 0 and loot["loot_diamond"] == 0
+            else 0
+        )
+        loot["loot_coin"] += empty_target_bonus
+        loot["loot_banana"] = (
+            self.config.attack_rules.banana_reward if loot_damage > 0 else 0
         )
         return AttackPreview(
             # The confirmation callback is clicked by Telegram and therefore
@@ -1092,6 +1313,10 @@ class AttackService:
                 )
                 for teacher in teachers
             ),
+            bot_bonus_coin=empty_target_bonus,
+            estimated_raid_damage=raid_damage,
+            mine_loot_coin=mine_loot_coin,
+            mine_loot_diamond=mine_loot_diamond,
             **loot,
         )
 
@@ -1195,15 +1420,21 @@ class AttackService:
             )
             await session.flush()
         total_damage = 0
+        total_raid_damage = 0
         total_injury = 0
         teacher_results = []
         archer_hits = []
         attack_command_id = str(uuid4())
+        total_mine_coin = 0
+        total_mine_diamond = 0
+        target_started_empty = not self._target_has_lootable_resources(target)
         for shot_index, teacher in enumerate(teachers):
             teacher_damage = self.teacher_service.damage(teacher)
             damage, injury = self.config.attack_rules.resolve(
                 teacher_damage,
-                target_castle.defense.defense_power,
+                target_castle.defense.defense_power
+                if target_castle.strength > 0
+                else 0,
                 teacher.current_hp,
             )
             castle_damage_result = await self.castle_service.receive_attack_damage(
@@ -1230,6 +1461,13 @@ class AttackService:
                         archer_hit.damage,
                     )
                 )
+            raid_damage = max(
+                0,
+                castle_damage_result.incoming_damage
+                - castle_damage_result.blocked_damage
+                - applied_damage,
+            )
+            loot_damage = applied_damage or raid_damage
             if injury:
                 teacher.current_hp = max(0, teacher.current_hp - injury)
                 if teacher.current_hp == 0:
@@ -1238,9 +1476,19 @@ class AttackService:
                     teacher.status = TeacherStatus.INJURED
             loot = self._loot(
                 target,
-                applied_damage,
+                loot_damage,
                 castle_damage_result.castle_strength_before,
                 teacher_damage,
+            )
+            mine_loot = await self._raid_mine(
+                session,
+                target,
+                loot_damage=loot_damage,
+                castle_strength=castle_damage_result.castle_strength_before,
+                attack_power=teacher_damage,
+                breached=castle_damage_result.castle_strength_after == 0
+                and loot["loot_coin"] == 0
+                and loot["loot_diamond"] == 0,
             )
             # XP is awarded once per attack command, not once per selected
             # teacher. Resource loot remains per actual castle damage.
@@ -1256,12 +1504,19 @@ class AttackService:
                 attack_command_id=attack_command_id,
                 teacher_damage_snapshot=teacher_damage,
                 target_castle_strength_snapshot=castle_damage_result.castle_strength_before,
-                target_defense_power_snapshot=target_castle.defense.defense_power,
+                target_defense_power_snapshot=(
+                    target_castle.defense.defense_power
+                    if castle_damage_result.castle_strength_before > 0
+                    else 0
+                ),
                 result_damage=applied_damage,
-                loot_coin=loot["loot_coin"],
-                loot_diamond=loot["loot_diamond"],
+                result_raid_damage=raid_damage,
+                loot_coin=loot["loot_coin"] + mine_loot[0],
+                loot_diamond=loot["loot_diamond"] + mine_loot[1],
                 loot_banana=loot["loot_banana"],
-                is_successful=applied_damage > 0,
+                mine_loot_coin=mine_loot[0],
+                mine_loot_diamond=mine_loot[1],
+                is_successful=loot_damage > 0,
                 result_teacher_injury=injury,
                 result_archer_injury=archer_injury,
                 archer_name_snapshot=archer_hit.name if archer_hit else None,
@@ -1272,10 +1527,14 @@ class AttackService:
             session.add(attack)
             await session.flush()
             self._transfer_loot(session, attacker, target, loot, attack_id=attack.id)
+            self._credit_mine_loot(session, attacker, mine_loot, attack_id=attack.id)
             teacher_results.append(
                 (attack, applied_damage, injury, loot, castle_damage_result)
             )
             total_damage += applied_damage
+            total_raid_damage += raid_damage
+            total_mine_coin += mine_loot[0]
+            total_mine_diamond += mine_loot[1]
             total_injury += injury
         await session.flush()
         last_attack, _, _, _, last_castle = teacher_results[-1]
@@ -1283,13 +1542,15 @@ class AttackService:
             key: sum(item[3][key] for item in teacher_results)
             for key in ("loot_coin", "loot_diamond", "loot_banana")
         }
+        total_loot["loot_coin"] += total_mine_coin
+        total_loot["loot_diamond"] += total_mine_diamond
         xp_awarded = (
             await self._claim_attack_xp(
                 session,
                 attack_command_id=attack_command_id,
                 attack_id=last_attack.id,
             )
-            if total_damage > 0
+            if total_damage + total_raid_damage > 0
             else False
         )
         total_loot["loot_banana"] = (
@@ -1307,6 +1568,19 @@ class AttackService:
                 },
                 attack_id=last_attack.id,
             )
+            if (
+                target_started_empty
+                and total_loot["loot_coin"] == 0
+                and total_loot["loot_diamond"] == 0
+                and self.config.attack_rules.empty_target_bonus_coin
+            ):
+                bonus = self.config.attack_rules.empty_target_bonus_coin
+                awarded_bonus = self._award_empty_target_bonus(
+                    session, attacker, bonus, attack_id=last_attack.id
+                )
+                last_attack.bot_bonus_coin = awarded_bonus
+                last_attack.loot_coin = (last_attack.loot_coin or 0) + awarded_bonus
+                total_loot["loot_coin"] += awarded_bonus
         return AttackResult(
             attack=last_attack,
             attacker_telegram_id=attacker.telegram_user_id,
@@ -1337,6 +1611,10 @@ class AttackService:
             castle_strength_before=teacher_results[0][
                 0
             ].target_castle_strength_snapshot,
+            bot_bonus_coin=last_attack.bot_bonus_coin,
+            raid_damage=total_raid_damage,
+            mine_loot_coin=total_mine_coin,
+            mine_loot_diamond=total_mine_diamond,
             archer_hits=tuple(archer_hits),
             archer_stickers=tuple(
                 dict.fromkeys(
@@ -1353,16 +1631,98 @@ class AttackService:
         target_id: int,
         teacher_names: tuple[str, ...] | None = None,
     ) -> None:
+        castle = await self.castles.get_by_user(session, target_id)
         shield_service = self.castle_service.shield_service
-        protected = (
-            await shield_service.has_active_shield(session, target_id)
+        if await shield_service.has_free_shield(session, target_id):
+            raise TargetProtectedByShield("سپر رایگان یک‌ساعته")
+        if castle is not None and castle.strength == 0:
+            return
+        active_shield = (
+            await shield_service.active_shield(session, target_id)
             if teacher_names is None
-            else await shield_service.has_active_shield(
-                session, target_id, teacher_names
-            )
+            else await shield_service.active_shield(session, target_id, teacher_names)
         )
-        if protected:
-            raise TargetProtectedByShield
+        if active_shield is not None:
+            raise TargetProtectedByShield(active_shield.name, active_shield.sticker)
+
+    async def _raid_mine(
+        self,
+        session: AsyncSession,
+        target,
+        *,
+        loot_damage: int,
+        castle_strength: int,
+        attack_power: int,
+        breached: bool,
+    ) -> tuple[int, int]:
+        """Take uncollected mine cargo only after the castle has fallen."""
+        if not breached or loot_damage <= 0:
+            return (0, 0)
+        mine = await session.scalar(
+            select(Mine).where(Mine.user_id == target.id).with_for_update()
+        )
+        if mine is None:
+            return (0, 0)
+        self.mine_service._accrue(mine)
+        loot = self._loot(
+            target,
+            loot_damage,
+            castle_strength,
+            attack_power,
+            coin_balance=mine.today_coin,
+            diamond_balance=mine.today_diamond,
+        )
+        coin, diamond = loot["loot_coin"], loot["loot_diamond"]
+        mine.today_coin -= coin
+        mine.today_diamond -= diamond
+        return coin, diamond
+
+    async def _preview_mine_cargo(self, session: AsyncSession, target_id: int):
+        mine = await session.scalar(select(Mine).where(Mine.user_id == target_id))
+        if mine is None:
+            return None
+        cargo = SimpleNamespace(
+            level=mine.level,
+            last_collected_at=mine.last_collected_at,
+            today=mine.today,
+            daily_produced_minutes=mine.daily_produced_minutes,
+            today_coin=mine.today_coin,
+            today_diamond=mine.today_diamond,
+            today_banana=mine.today_banana,
+        )
+        self.mine_service._accrue(cargo)
+        return cargo
+
+    @staticmethod
+    def _credit_mine_loot(
+        session: AsyncSession,
+        attacker,
+        loot: tuple[int, int],
+        *,
+        attack_id: int,
+    ) -> None:
+        if attacker.resources is None:
+            return
+        for resource_type, amount in zip(
+            (ResourceType.COIN, ResourceType.DIAMOND), loot, strict=True
+        ):
+            if amount <= 0:
+                continue
+            field = resource_type.value.lower()
+            before = getattr(attacker.resources, field)
+            setattr(attacker.resources, field, before + amount)
+            session.add(
+                Transaction(
+                    user_id=attacker.id,
+                    resource_type=resource_type,
+                    amount=amount,
+                    balance_before=before,
+                    balance_after=before + amount,
+                    reason="ATTACK_MINE_LOOT",
+                    reference_type="ATTACK",
+                    reference_id=attack_id,
+                )
+            )
 
     def _loot(
         self,
@@ -1370,8 +1730,14 @@ class AttackService:
         castle_damage: int,
         castle_strength: int,
         attack_power: int,
+        *,
+        coin_balance: int | None = None,
+        diamond_balance: int | None = None,
     ) -> dict[str, int]:
-        if castle_damage <= 0 or target.resources is None:
+        if castle_damage <= 0 or (
+            target.resources is None
+            and (coin_balance is None or diamond_balance is None)
+        ):
             return {
                 "loot_coin": 0,
                 "loot_diamond": 0,
@@ -1399,10 +1765,50 @@ class AttackService:
             return min(balance, percentage_amount, power_cap)
 
         return {
-            "loot_coin": amount(target.resources.coin, ResourceType.COIN),
-            "loot_diamond": amount(target.resources.diamond, ResourceType.DIAMOND),
+            "loot_coin": amount(
+                target.resources.coin if coin_balance is None else coin_balance,
+                ResourceType.COIN,
+            ),
+            "loot_diamond": amount(
+                target.resources.diamond
+                if diamond_balance is None
+                else diamond_balance,
+                ResourceType.DIAMOND,
+            ),
             "loot_banana": self.config.attack_rules.banana_reward,
         }
+
+    @staticmethod
+    def _target_has_lootable_resources(target) -> bool:
+        resources = target.resources
+        return resources is not None and (resources.coin > 0 or resources.diamond > 0)
+
+    def _empty_target_bonus(self, target, castle_damage: int) -> int:
+        if castle_damage <= 0 or self._target_has_lootable_resources(target):
+            return 0
+        return self.config.attack_rules.empty_target_bonus_coin
+
+    @staticmethod
+    def _award_empty_target_bonus(
+        session, attacker, amount: int, *, attack_id: int
+    ) -> int:
+        if amount <= 0 or attacker.resources is None:
+            return 0
+        before = attacker.resources.coin
+        attacker.resources.coin = before + amount
+        session.add(
+            Transaction(
+                user_id=attacker.id,
+                resource_type=ResourceType.COIN,
+                amount=amount,
+                balance_before=before,
+                balance_after=before + amount,
+                reason="ATTACK_EMPTY_TARGET_BONUS",
+                reference_type="ATTACK",
+                reference_id=attack_id,
+            )
+        )
+        return amount
 
     @staticmethod
     def _transfer_loot(

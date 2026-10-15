@@ -18,7 +18,7 @@ async def test_admin_can_set_or_clear_shield_daily_limit(monkeypatch) -> None:
         get_data=AsyncMock(return_value={"edit_field": "daily_limit", "edit_id": 7}),
         clear=AsyncMock(),
     )
-    message = SimpleNamespace(text="3", answer=AsyncMock())
+    message = SimpleNamespace(text="3", sticker=None, answer=AsyncMock())
     session = AsyncMock()
 
     await handlers.shield_edit_value(message, state, session)
@@ -45,3 +45,33 @@ def test_admin_rejects_zero_daily_limit() -> None:
     values["purchase_resource"] = ResourceType.COIN
     with pytest.raises(ValueError, match="daily_limit"):
         ShieldAdminService._validate(values)
+
+
+@pytest.mark.asyncio
+async def test_admin_can_register_and_clear_shield_sticker(monkeypatch) -> None:
+    monkeypatch.setattr(handlers, "allowed", lambda message: True)
+    update = AsyncMock(return_value=SimpleNamespace(id=7, name="سپر زنگ تفریح"))
+    monkeypatch.setattr(handlers.shield_service, "update_shield", update)
+    state = SimpleNamespace(
+        get_data=AsyncMock(return_value={"edit_field": "sticker", "edit_id": 7}),
+        clear=AsyncMock(),
+    )
+    session = AsyncMock()
+    message = SimpleNamespace(
+        text=None,
+        sticker=SimpleNamespace(
+            file_id="admin-bot-id", file_unique_id="shared-id", set_name="ShieldPack"
+        ),
+        answer=AsyncMock(),
+    )
+
+    await handlers.shield_edit_value(message, state, session)
+    update.assert_awaited_with(session, 7, sticker="set:ShieldPack:shared-id")
+
+    message.text = "-"
+    message.sticker = None
+    await handlers.shield_edit_value(message, state, session)
+    update.assert_awaited_with(session, 7, sticker=None)
+    assert "استیکر" in [
+        row[0].text for row in keyboards.shield_edit_fields(7).inline_keyboard
+    ]
