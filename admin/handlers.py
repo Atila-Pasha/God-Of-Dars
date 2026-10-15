@@ -78,6 +78,19 @@ logger = logging.getLogger(__name__)
 group_question_publisher = GroupQuestionPublisher()
 
 
+def button_labels(*values: str) -> set[str]:
+    """Accept both source labels and Telegram's premium-icon button text."""
+    return {
+        label
+        for value in values
+        for label in (
+            value,
+            strip_custom_emoji_fallbacks(value),
+            value.removeprefix("🏠").strip(),
+        )
+    }
+
+
 ARCHER_FIELDS = (
     ("name", "نام کماندار"),
     ("power", "قدرت پایه کماندار"),
@@ -125,10 +138,13 @@ def _catalog_value(field: str, value: str) -> object:
     return value
 
 
-@router.message(F.text.in_({"🏹 کماندارها", "🎯 پک‌های تیر"}))
-async def archer_admin_list(message: Message, session: AsyncSession) -> None:
+@router.message(F.text.in_(button_labels("🏹 کماندارها", "🎯 پک‌های تیر")))
+async def archer_admin_list(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
     if not allowed(message):
         return
+    await state.clear()
     if "تیر" in (message.text or ""):
         rows = list(await session.scalars(select(ArrowPack).order_by(ArrowPack.id)))
         lines = [
@@ -153,7 +169,7 @@ async def archer_admin_list(message: Message, session: AsyncSession) -> None:
         )
 
 
-@router.message(F.text.in_({"➕ کماندار جدید", "➕ پک تیر جدید"}))
+@router.message(F.text.in_(button_labels("➕ کماندار جدید", "➕ پک تیر جدید")))
 async def archer_admin_start(message: Message, state: FSMContext) -> None:
     if not allowed(message):
         return
@@ -241,19 +257,6 @@ async def archer_admin_edit(message: Message, session: AsyncSession) -> None:
         await message.answer(f"✅ {item.name} به‌روزرسانی شد.")
     except (IndexError, ValueError) as exc:
         await message.answer(f"خطا: {exc}")
-
-
-def button_labels(*values: str) -> set[str]:
-    """Accept both source labels and Telegram's premium-icon button text."""
-    return {
-        label
-        for value in values
-        for label in (
-            value,
-            strip_custom_emoji_fallbacks(value),
-            value.removeprefix("🏠").strip(),
-        )
-    }
 
 
 @router.message(Command("daily_quests"))
