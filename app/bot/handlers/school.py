@@ -371,8 +371,9 @@ async def _archers_view(target: CallbackQuery, session: AsyncSession) -> None:
     arrows = await archer_service.ammunition(session, user.id)
     if owned:
         archer = owned[0]
+        archer_icon = getattr(archer.archer, "emoji", None)
         archer_text = (
-            f"● کماندار: {bold(archer.archer.name)}\n"
+            f"● کماندار: {emoji(archer_icon, '🏹') if archer_icon and archer_icon.isdigit() else emoji('5314526780416092636', '🏹')} {bold(archer.archer.name)}\n"
             f"● سطح: {escape(archer.level)}\n"
             f"● قدرت: {escape(archer_service.power(archer))}"
         )
@@ -385,15 +386,22 @@ async def _archers_view(target: CallbackQuery, session: AsyncSession) -> None:
     ]
     arrow_text = "\n".join(arrow_lines) if arrow_lines else "تیری در انبار نیست\\."
     text = (
-        f"{emoji('5402133431670816471', '🏹')} {bold('کماندار دژ')}\n\n"
+        f"{emoji('5314526780416092636', '🏹')} {bold('کماندار دژ')}\n\n"
         f"{archer_text}\n\n"
         f"{emoji('5314526780416092636', '🎯')} {bold('موجودی تیر')}\n"
         f"{arrow_text}\n\n"
         "هر دبیر مهاجم تا یک تیر از نوع انتخاب‌شده می‌خورد\\. "
-        "خرید کماندار و پک تیر، انتخاب تیر، ارتقا و فروش در بوفه انجام می‌شود\\."
+        "ارتقا، فروش و انتخاب تیر از همین بخش انجام می‌شود\\. "
+        "برای خرید کماندار و پک تیر به بوفه برو\\."
     )
     await _send_or_edit(
-        target, text, reply_markup=school_archers_keyboard(), parse_mode=MARKDOWN_V2
+        target,
+        text,
+        reply_markup=school_archers_keyboard(
+            getattr(owned[0], "id", None) if owned else None,
+            has_arrows=bool(arrows),
+        ),
+        parse_mode=MARKDOWN_V2,
     )
 
 

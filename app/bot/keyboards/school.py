@@ -8,6 +8,7 @@ from aiogram.types import (
 )
 
 from app.bot.callbacks import (
+    ArcherCallback,
     CastleCallback,
     ConfirmationCallback,
     HospitalCallback,
@@ -51,18 +52,49 @@ def school_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def school_archers_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+def school_archers_keyboard(
+    owned_id: int | None = None, *, has_arrows: bool = False
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if owned_id is not None:
+        rows.append(
             [
                 InlineKeyboardButton(
-                    text="بازگشت به مدرسه من",
-                    icon_custom_emoji_id="5235864325540815679",
-                    callback_data=SchoolCallback(action="school").pack(),
+                    text="ارتقای کماندار",
+                    icon_custom_emoji_id="5823677853228605366",
+                    callback_data=ArcherCallback(
+                        action="upgrade", item_id=owned_id
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="فروش کماندار",
+                    icon_custom_emoji_id="5825656871079387950",
+                    callback_data=ArcherCallback(
+                        action="sell", item_id=owned_id
+                    ).pack(),
+                ),
+            ]
+        )
+    if has_arrows:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="انتخاب تیر دفاعی",
+                    icon_custom_emoji_id="5314526780416092636",
+                    callback_data=ArcherCallback(action="equip").pack(),
                 )
             ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="بازگشت به مدرسه من",
+                icon_custom_emoji_id="5235864325540815679",
+                callback_data=SchoolCallback(action="school").pack(),
+            )
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def school_navigation_keyboard() -> ReplyKeyboardMarkup:

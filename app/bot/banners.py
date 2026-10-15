@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.services.teacher_service import TeacherCapacity
 
 MARKDOWN_V2 = "MarkdownV2"
+ARCHER_EMOJI_ID = "5314526780416092636"
 _SPECIAL = re.compile(r"([\\_*\[\]()~`>#+\-=|{}.!])")
 
 
@@ -257,7 +258,7 @@ def attack_preview_banner(preview: AttackPreview) -> str:
         f"> {escape(preview.defense_power)} DMG {DEFENSE}\n\n"
         f"{INJURY} آسیب احتمالی دبیر:\n"
         f"> {escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
-        f"🏹 سهم احتمالی تیر کماندار: {escape(preview.estimated_archer_injury)} HP\n\n"
+        f"{emoji(ARCHER_EMOJI_ID, '🏹')} سهم احتمالی تیر کماندار: {escape(preview.estimated_archer_injury)} HP\n\n"
         f"{LOOT} {bold(loot_source)}:\n"
         f"{COIN} {bold('طلا')}: {escape(preview.loot_coin)}\n"
         f"{BANANA} {bold('موز')}: {escape(preview.loot_banana)}\n\n"
@@ -351,14 +352,16 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         else ""
     )
     archer_lines = "".join(
-        f"{emoji(archer_icon, '🏹') if archer_icon and archer_icon.isdigit() else escape(archer_icon or '🏹')} "
+        f"{emoji(archer_icon, '🏹') if archer_icon and archer_icon.isdigit() else emoji(ARCHER_EMOJI_ID, '🏹')} "
         f"کماندار {escape(archer_name)} با {escape(arrow_name)} به "
         f"{teacher_icon(teacher_icon_id)} {escape(teacher_name)} "
         f"{escape(damage)} HP آسیب زد\\.\n"
         for teacher_name, teacher_icon_id, archer_name, arrow_name, archer_icon, damage in result.archer_hits
     )
     archer_note = (
-        f"🏹 {bold('شلیک کماندارها:')}\n{archer_lines}\n" if archer_lines else ""
+        f"{emoji(ARCHER_EMOJI_ID, '🏹')} {bold('شلیک کماندارها:')}\n{archer_lines}\n"
+        if archer_lines
+        else ""
     )
     return (
         f"{FINISH} {bold(headline)} {FINISH}\n\n"

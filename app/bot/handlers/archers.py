@@ -1,4 +1,4 @@
-"""Private buffet shop for archers and consumable arrow packs."""
+"""Buffet purchases and school management for archers and arrow packs."""
 
 from math import ceil
 
@@ -11,7 +11,8 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import ArcherCallback
+from app.bot.banners import MARKDOWN_V2, rich_plain
+from app.bot.callbacks import ArcherCallback, SchoolCallback
 from app.bot.keyboards.main_menu import main_menu_keyboard
 from app.core.enums import ResourceType
 from app.services.archer_service import ArcherError, ArcherService
@@ -27,6 +28,30 @@ service = ArcherService()
 users = UserService()
 ARCHER_ICON = "5402133431670816471"
 ARROW_ICON = "5314526780416092636"
+UPGRADE_ICON = "5823677853228605366"
+SELL_ICON = "5825656871079387950"
+
+
+def school_back() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="بازگشت به کماندارهای مدرسه",
+                    icon_custom_emoji_id=ARCHER_ICON,
+                    callback_data=SchoolCallback(action="archers").pack(),
+                )
+            ]
+        ]
+    )
+
+
+async def banner(
+    message: Message, text: str, *, reply_markup: InlineKeyboardMarkup
+) -> None:
+    await message.answer(
+        rich_plain(text), reply_markup=reply_markup, parse_mode=MARKDOWN_V2
+    )
 
 
 def button(
@@ -44,31 +69,16 @@ def keyboard(rows: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
 
 
 async def show_menu(message: Message, session: AsyncSession, user_id: int) -> None:
-    archers = await service.owned(session, user_id)
-    arrows = await service.ammunition(session, user_id)
-    lines = [
-        "🏹 کماندارهای دژ",
-        "",
-        "کماندارها هنگام حمله به دژ، با تیرهای موجود به دبیرها آسیب می‌زنند.",
-        "فقط یک کماندار می‌توانید داشته باشید؛ برای تعویض باید کماندار فعلی را بفروشید.",
-    ]
-    lines += [
-        f"{item.archer.name} — سطح {item.level}، قدرت {service.power(item)}"
-        for item in archers
-    ] or ["هنوز کمانداری ندارید."]
-    lines += ["", "موجودی تیر:"]
-    lines += [
-        f"{item.pack.name}: {item.quantity} تیر، قدرت {item.pack.power}{' (انتخاب‌شده)' if item.is_equipped else ''}"
-        for item in arrows
-    ] or ["تیر موجود نیست."]
-    await message.answer(
-        "\n".join(lines),
+    await banner(
+        message,
+        "🏹 خرید کماندار و تیر\n\n"
+        "کماندار از دژ دفاع می‌کند و با تیر به دبیرهای مهاجم آسیب می‌زند. "
+        "هر فرمانده فقط یک کماندار می‌تواند داشته باشد.\n\n"
+        "ارتقا، فروش و انتخاب تیر در «مدرسه من ← کماندارها» انجام می‌شود.",
         reply_markup=keyboard(
             [
                 [button("خرید کماندار", "archers", icon=ARCHER_ICON)],
                 [button("پک تیر کماندار", "packs", icon=ARROW_ICON)],
-                [button("انتخاب تیر دفاعی", "equip", icon=ARROW_ICON)],
-                [button("کماندارهای من و ارتقا", "owned", icon=ARCHER_ICON)],
             ]
         ),
     )
@@ -113,7 +123,8 @@ async def callback(
                 for item in catalog
             ]
             rows.append([button("بازگشت", "menu")])
-            await callback.message.answer(
+            await banner(
+                callback.message,
                 "🏹 خرید کماندار؛ هر فرمانده فقط یک کماندار دارد.",
                 reply_markup=keyboard(rows),
             )
@@ -131,7 +142,8 @@ async def callback(
                 for item in catalog
             ]
             rows.append([button("بازگشت", "menu")])
-            await callback.message.answer(
+            await banner(
+                callback.message,
                 "🎯 پک‌های تیر؛ هر دبیر مهاجم حداکثر یک تیر می‌خورد.",
                 reply_markup=keyboard(rows),
             )
@@ -159,9 +171,9 @@ async def callback(
                 ]
                 for item in owned
             ]
-            rows.append([button("بازگشت", "menu")])
-            await callback.message.answer(
-                "کماندارهای شما:", reply_markup=keyboard(rows)
+            rows.append(school_back().inline_keyboard[0])
+            await banner(
+                callback.message, "🏹 کماندارهای شما:", reply_markup=keyboard(rows)
             )
         elif action == "equip":
             if callback_data.item_id == 0:
@@ -177,16 +189,19 @@ async def callback(
                     ]
                     for item in stocks
                 ]
-                rows.append([button("بازگشت", "menu")])
-                await callback.message.answer(
+                rows.append(school_back().inline_keyboard[0])
+                await banner(
+                    callback.message,
                     "تیر انتخاب‌شده برای هر دبیر مهاجم یک‌بار مصرف می‌شود. وقتی تمام شد، نوع دیگری را انتخاب کنید.",
                     reply_markup=keyboard(rows),
                 )
             else:
                 item = await service.equip_pack(session, user.id, callback_data.item_id)
                 await session.commit()
-                await callback.message.answer(
-                    f"🎯 تیر {item.pack.name} برای دفاع انتخاب شد."
+                await banner(
+                    callback.message,
+                    f"🎯 تیر {item.pack.name} برای دفاع انتخاب شد.",
+                    reply_markup=school_back(),
                 )
         elif action == "buy_archer":
             item = next(
@@ -199,7 +214,8 @@ async def callback(
             )
             if item is None:
                 raise ArcherError("کماندار در دسترس نیست.")
-            await callback.message.answer(
+            await banner(
+                callback.message,
                 f"🏹 خرید {item.name}\nقدرت پایه: {item.power}\nسطح بازشدن: {item.unlock_level}\nقیمت: {item.purchase_price} {'الماس' if item.purchase_resource is ResourceType.DIAMOND else 'طلا'}\n\nخرید را تأیید می‌کنید؟",
                 reply_markup=keyboard(
                     [
@@ -221,7 +237,8 @@ async def callback(
             )
             if item is None:
                 raise ArcherError("پک تیر در دسترس نیست.")
-            await callback.message.answer(
+            await banner(
+                callback.message,
                 f"🎯 خرید {item.name}\nتعداد: {item.quantity} تیر\nقدرت هر تیر: {item.power}\nسطح بازشدن: {item.unlock_level}\nقیمت: {item.purchase_price} {'الماس' if item.purchase_resource is ResourceType.DIAMOND else 'طلا'}\n\nخرید را تأیید می‌کنید؟",
                 reply_markup=keyboard(
                     [
@@ -235,14 +252,18 @@ async def callback(
         elif action == "confirm_archer":
             item = await service.buy_archer(session, user.id, callback_data.item_id)
             await session.commit()
-            await callback.message.answer(
-                f"🏹 کماندار {item.archer.name} خریداری شد. قدرت: {service.power(item)}"
+            await banner(
+                callback.message,
+                f"🏹 کماندار {item.archer.name} خریداری شد. قدرت: {service.power(item)}",
+                reply_markup=school_back(),
             )
         elif action == "confirm_pack":
             item = await service.buy_pack(session, user.id, callback_data.item_id)
             await session.commit()
-            await callback.message.answer(
-                f"🎯 پک {item.pack.name} خریداری شد. موجودی: {item.quantity} تیر"
+            await banner(
+                callback.message,
+                f"🎯 پک {item.pack.name} خریداری شد. موجودی: {item.quantity} تیر",
+                reply_markup=keyboard([[button("بازگشت به بوفه", "menu")]]),
             )
         elif action == "upgrade":
             item = next(
@@ -255,13 +276,16 @@ async def callback(
             )
             if item is None:
                 raise ArcherError("کماندار پیدا نشد.")
-            await callback.message.answer(
+            await banner(
+                callback.message,
                 f"🏹 ارتقای {item.archer.name} به سطح {item.level + 1}\nقدرت جدید: {item.archer.power + item.level * max(1, ceil(item.archer.power * 0.08))}\nهزینه: {service.upgrade_cost(item)} الماس\n\nارتقا را تأیید می‌کنید؟",
                 reply_markup=keyboard(
                     [
                         [
-                            button("✅ تأیید ارتقا", "confirm_upgrade", item.id),
-                            button("❌ لغو", "owned"),
+                            button(
+                                "تأیید ارتقا", "confirm_upgrade", item.id, UPGRADE_ICON
+                            ),
+                            school_back().inline_keyboard[0][0],
                         ]
                     ]
                 ),
@@ -269,8 +293,10 @@ async def callback(
         elif action == "confirm_upgrade":
             item = await service.upgrade(session, user.id, callback_data.item_id)
             await session.commit()
-            await callback.message.answer(
-                f"🏹 {item.archer.name} به سطح {item.level} رسید. قدرت جدید: {service.power(item)}"
+            await banner(
+                callback.message,
+                f"🛠️ {item.archer.name} به سطح {item.level} رسید. قدرت جدید: {service.power(item)}",
+                reply_markup=school_back(),
             )
         elif action == "sell":
             item = next(
@@ -283,13 +309,14 @@ async def callback(
             )
             if item is None:
                 raise ArcherError("کماندار پیدا نشد.")
-            await callback.message.answer(
+            await banner(
+                callback.message,
                 f"فروش کماندار {item.archer.name}؟\n{item.archer.purchase_price // 2} {'الماس' if item.archer.purchase_resource is ResourceType.DIAMOND else 'طلا'} بازمی‌گردد. هزینهٔ ارتقا بازپرداخت نمی‌شود.",
                 reply_markup=keyboard(
                     [
                         [
-                            button("✅ تأیید فروش", "confirm_sell", item.id),
-                            button("❌ لغو", "owned"),
+                            button("تأیید فروش", "confirm_sell", item.id, SELL_ICON),
+                            school_back().inline_keyboard[0][0],
                         ]
                     ]
                 ),
@@ -299,8 +326,10 @@ async def callback(
                 session, user.id, callback_data.item_id
             )
             await session.commit()
-            await callback.message.answer(
-                f"🏹 کماندار {name} فروخته شد. {refund} {'الماس' if currency is ResourceType.DIAMOND else 'طلا'} بازگشت."
+            await banner(
+                callback.message,
+                f"🏹 کماندار {name} فروخته شد. {refund} {'الماس' if currency is ResourceType.DIAMOND else 'طلا'} بازگشت.",
+                reply_markup=school_back(),
             )
         await callback.answer()
     except (ArcherError, InsufficientCoins, InsufficientDiamonds) as exc:

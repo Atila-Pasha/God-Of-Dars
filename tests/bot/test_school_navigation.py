@@ -83,6 +83,7 @@ async def test_school_archers_shows_owned_archer_and_selected_ammo(monkeypatch) 
     target = callback()
     monkeypatch.setattr(school, "_user", AsyncMock(return_value=SimpleNamespace(id=10)))
     owned = SimpleNamespace(
+        id=17,
         level=2,
         archer=SimpleNamespace(name="محسنی", power=4),
     )
@@ -106,7 +107,12 @@ async def test_school_archers_shows_owned_archer_and_selected_ammo(monkeypatch) 
     assert "محسنی" in banner
     assert "تیر ساده" in banner
     assert "انتخاب‌شده" in banner
-    assert "5402133431670816471" in banner
+    assert "5314526780416092636" in banner
+    assert "بوفه" in banner
+    buttons = send.await_args.kwargs["reply_markup"].inline_keyboard
+    assert buttons[0][0].callback_data == "archer_shop:upgrade:17"
+    assert buttons[0][1].callback_data == "archer_shop:sell:17"
+    assert buttons[1][0].callback_data == "archer_shop:equip:0"
     target.answer.assert_awaited_once_with()
 
 
