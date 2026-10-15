@@ -113,6 +113,7 @@ async def test_school_archers_shows_owned_archer_and_selected_ammo(monkeypatch) 
     assert buttons[0][0].callback_data == "archer_shop:upgrade:17"
     assert buttons[0][1].callback_data == "archer_shop:sell:17"
     assert buttons[1][0].callback_data == "archer_shop:equip:0"
+    assert buttons[-1][0].text == "بازگشت"
     target.answer.assert_awaited_once_with()
 
 

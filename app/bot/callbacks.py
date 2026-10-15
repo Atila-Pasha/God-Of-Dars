@@ -180,6 +180,7 @@ class ShieldPurchaseCallback(CallbackData, prefix="shield_purchase"):
 class ArcherCallback(CallbackData, prefix="archer_shop"):
     action: Literal[
         "menu",
+        "back_buffet",
         "archers",
         "packs",
         "buy_archer",

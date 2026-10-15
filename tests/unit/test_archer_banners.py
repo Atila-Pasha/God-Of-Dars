@@ -26,7 +26,6 @@ def test_school_banner_uses_requested_icons_and_blockquotes() -> None:
     requested = (
         banners.BOW,
         banners.ARCHER,
-        banners.LEVEL,
         banners.TARGET,
         banners.RABBIT,
         banners.DEFENSE,
@@ -51,11 +50,14 @@ def test_sale_upgrade_and_shop_banners_use_requested_icons() -> None:
     bought = banners.archer_bought(owned, 4)
 
     assert sale.startswith(f"![🚫](tg://emoji?id={banners.FORBIDDEN})")
-    assert f"![🥇](tg://emoji?id={banners.GOLD})" in sale
+    assert f"![🥇](tg://emoji?id={banners.GOLD})" not in sale
+    assert ">40 طلا" in sale
+    assert f"![🥇](tg://emoji?id={banners.GOLD})" not in banners.sell_done(
+        owned.archer.name, 40, ResourceType.COIN
+    )
     assert ">هزینهٔ ارتقا بازپرداخت نمی‌شود" in sale
     for icon in (
         banners.UPGRADE,
-        banners.LEVEL,
         banners.TARGET,
         banners.COST,
         banners.DIAMOND,

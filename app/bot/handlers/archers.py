@@ -30,6 +30,7 @@ ARCHER_ICON = "5402133431670816471"
 ARROW_ICON = "5314526780416092636"
 UPGRADE_ICON = "5823677853228605366"
 SELL_ICON = "5825656871079387950"
+BACK_ICON = "5235864325540815679"
 
 
 def school_back() -> InlineKeyboardMarkup:
@@ -37,8 +38,8 @@ def school_back() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="بازگشت به کماندارهای مدرسه",
-                    icon_custom_emoji_id=ARCHER_ICON,
+                    text="بازگشت",
+                    icon_custom_emoji_id=BACK_ICON,
                     callback_data=SchoolCallback(action="archers").pack(),
                 )
             ]
@@ -76,6 +77,10 @@ def keyboard(rows: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def back(action: str, item_id: int = 0) -> InlineKeyboardButton:
+    return button("بازگشت", action, item_id, BACK_ICON)
+
+
 async def show_menu(
     message: Message, session: AsyncSession, user_id: int, *, edit: bool = False
 ) -> None:
@@ -86,6 +91,7 @@ async def show_menu(
             [
                 [button("خرید کماندار", "archers", icon=ARCHER_ICON)],
                 [button("پک تیر کماندار", "packs", icon=ARROW_ICON)],
+                [back("back_buffet")],
             ]
         ),
         edit=edit,
@@ -117,6 +123,15 @@ async def callback(
         action = callback_data.action
         if action == "menu":
             await show_menu(callback.message, session, user.id, edit=True)
+        elif action == "back_buffet":
+            from app.bot.handlers.buffet import _buffet_menu_banner
+
+            await safe_edit_text(
+                callback.message,
+                _buffet_menu_banner(),
+                reply_markup=None,
+                parse_mode=MARKDOWN_V2,
+            )
         elif action == "archers":
             catalog = await service.catalog(session)
             rows = [
@@ -130,7 +145,7 @@ async def callback(
                 ]
                 for item in catalog
             ]
-            rows.append([button("بازگشت", "menu")])
+            rows.append([back("menu")])
             await banner(
                 callback.message,
                 ab.archer_catalog(),
@@ -149,7 +164,7 @@ async def callback(
                 ]
                 for item in catalog
             ]
-            rows.append([button("بازگشت", "menu")])
+            rows.append([back("menu")])
             await banner(
                 callback.message,
                 ab.pack_catalog(),
@@ -211,7 +226,7 @@ async def callback(
                 await banner(
                     callback.message,
                     ab.ammo_equipped(item.pack.name),
-                    reply_markup=school_back(),
+                    reply_markup=keyboard([[back("equip")]]),
                 )
         elif action == "buy_archer":
             item = next(
@@ -231,7 +246,7 @@ async def callback(
                     [
                         [
                             button("✅ تأیید خرید", "confirm_archer", item.id),
-                            button("❌ لغو", "archers"),
+                            back("archers"),
                         ]
                     ]
                 ),
@@ -254,7 +269,7 @@ async def callback(
                     [
                         [
                             button("✅ تأیید خرید", "confirm_pack", item.id),
-                            button("❌ لغو", "packs"),
+                            back("packs"),
                         ]
                     ]
                 ),
@@ -265,7 +280,7 @@ async def callback(
             await banner(
                 callback.message,
                 ab.archer_bought(item, service.power(item)),
-                reply_markup=school_back(),
+                reply_markup=keyboard([[back("archers")]]),
             )
         elif action == "confirm_pack":
             item = await service.buy_pack(session, user.id, callback_data.item_id)
@@ -273,7 +288,7 @@ async def callback(
             await banner(
                 callback.message,
                 ab.pack_bought(item),
-                reply_markup=keyboard([[button("بازگشت به بوفه", "menu")]]),
+                reply_markup=keyboard([[back("packs")]]),
             )
         elif action == "upgrade":
             item = next(

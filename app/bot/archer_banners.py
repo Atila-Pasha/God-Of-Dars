@@ -8,7 +8,6 @@ from app.models.archer import Archer, ArrowPack, UserArcher, UserArrow
 
 BOW = "5314526780416092636"
 ARCHER = "6034940654499400541"
-LEVEL = "5904257791958196160"
 TARGET = "5924618767324681321"
 RABBIT = "5395457261491470895"
 DEFENSE = "5230967066390980139"
@@ -44,13 +43,18 @@ def price(amount: int, currency: ResourceType) -> str:
     return f"{escape(amount)} طلا {emoji(GOLD, '🥇')}"
 
 
+def plain_price(amount: int, currency: ResourceType) -> str:
+    unit = "الماس" if currency is ResourceType.DIAMOND else "طلا"
+    return f"{escape(amount)} {unit}"
+
+
 def school_overview(
     owned: UserArcher | None, arrows: list[UserArrow], power: int
 ) -> str:
     if owned:
         archer_section = (
             f"{emoji(ARCHER, '🏹')} کماندار: {archer_name(owned.archer.name, owned.archer.emoji)}\n\n"
-            f"● {emoji(LEVEL, '☺️')} سطح: {escape(owned.level)}\n"
+            f"● سطح: {escape(owned.level)}\n"
             f"● قدرت:\n{quote(f'{escape(power)} DMG {emoji(TARGET, "🎯")}')}"
         )
     else:
@@ -152,7 +156,7 @@ def upgrade_preview(item: UserArcher, cost: int) -> str:
     next_power = item.archer.power + item.level * max(1, ceil(item.archer.power * 0.08))
     return (
         f"{emoji(UPGRADE, '⬆️')} {escape('ارتقای')} {archer_name(item.archer.name, item.archer.emoji, quoted=True)} {escape('به سطح')} {escape(item.level + 1)}\n\n"
-        f"● {emoji(LEVEL, '☺️')} {escape('قدرت جدید:')}\n"
+        f"● {escape('قدرت جدید:')}\n"
         + quote(f"{escape(next_power)} DMG {emoji(TARGET, '🎯')}")
         + f"\n\n{emoji(COST, '💰')} {escape('هزینه:')} {price(cost, ResourceType.DIAMOND)}\n\n"
         + escape("آیا ارتقا را تأیید می‌کنید؟")
@@ -170,7 +174,7 @@ def sell_preview(item: UserArcher) -> str:
     return (
         f"{emoji(FORBIDDEN, '🚫')} {escape('آیا از فروش کماندار')} {archer_name(item.archer.name, item.archer.emoji, quoted=True)} {escape('اطمینان دارید؟')}\n\n"
         + quote(
-            f"{price(item.archer.purchase_price // 2, item.archer.purchase_resource)} {escape('باز می‌گردد.')}",
+            f"{plain_price(item.archer.purchase_price // 2, item.archer.purchase_resource)} {escape('باز می‌گردد.')}",
             escape("هزینهٔ ارتقا بازپرداخت نمی‌شود."),
         )
     )
@@ -179,7 +183,7 @@ def sell_preview(item: UserArcher) -> str:
 def sell_done(name: str, refund: int, currency: ResourceType) -> str:
     return (
         f"{emoji(CHECK, '✔️')} {escape('کماندار')} « {bold(name)} » {escape('فروخته شد.')}\n"
-        + quote(f"{price(refund, currency)} {escape('بازگشت.')}")
+        + quote(f"{plain_price(refund, currency)} {escape('بازگشت.')}")
     )
 
 

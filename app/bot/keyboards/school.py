@@ -88,7 +88,7 @@ def school_archers_keyboard(
     rows.append(
         [
             InlineKeyboardButton(
-                text="بازگشت به مدرسه من",
+                text="بازگشت",
                 icon_custom_emoji_id="5235864325540815679",
                 callback_data=SchoolCallback(action="school").pack(),
             )
