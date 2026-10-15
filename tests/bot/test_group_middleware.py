@@ -75,6 +75,18 @@ def test_group_policy_allows_membership_check_callback() -> None:
     assert GroupAccessMiddleware._callback_is_allowed(SimpleNamespace(data="slogan:42"))
 
 
+def test_group_callback_replies_to_original_user_command() -> None:
+    prompt = SimpleNamespace(
+        message_id=200,
+        reply_to_message=SimpleNamespace(
+            message_id=100, from_user=SimpleNamespace(is_bot=False)
+        ),
+    )
+    assert GroupAccessMiddleware._callback_reply_target(prompt) == (100, 200)
+    prompt.reply_to_message.from_user.is_bot = True
+    assert GroupAccessMiddleware._callback_reply_target(prompt) == (200, None)
+
+
 def test_group_policy_runs_before_subscription_middleware() -> None:
     dispatcher = create_dispatcher()
 

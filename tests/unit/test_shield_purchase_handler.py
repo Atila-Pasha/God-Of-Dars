@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 
-from app.bot.custom_emojis import _send_message_with_reply_fallback
+from app.bot.custom_emojis import (
+    _send_message_with_reply_fallback,
+    reset_group_reply_context,
+    set_group_reply_context,
+)
 from app.bot.handlers import buffet
 from app.bot.handlers.buffet import invalid_shield_purchase_message
 
@@ -38,6 +42,30 @@ async def test_stale_group_reply_is_retried_without_reply_target() -> None:
     assert result == "sent"
     assert "reply_to_message_id" not in kwargs
     assert sender.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stale_group_user_reply_falls_back_to_bot_prompt() -> None:
+    sender = AsyncMock(
+        side_effect=[
+            TelegramBadRequest(
+                method=SimpleNamespace(),
+                message="Bad Request: message to be replied not found",
+            ),
+            "sent",
+        ]
+    )
+    kwargs = {"chat_id": -100, "text": "پاسخ", "reply_to_message_id": 42}
+    token = set_group_reply_context(-100, 42, fallback_message_id=55)
+    try:
+        result = await _send_message_with_reply_fallback(
+            sender, SimpleNamespace(), (), kwargs
+        )
+    finally:
+        reset_group_reply_context(token)
+
+    assert result == "sent"
+    assert kwargs["reply_to_message_id"] == 55
 
 
 @pytest.mark.asyncio

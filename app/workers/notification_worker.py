@@ -86,9 +86,15 @@ async def _deliver_notification(
                     if "message to delete not found" not in str(exc).lower():
                         raise
             elif payload.get("operation") == "send_sticker":
-                await bot.send_sticker(
-                    chat_id=payload["chat_id"], sticker=payload["sticker"]
-                )
+                sticker_kwargs = {
+                    "chat_id": payload["chat_id"],
+                    "sticker": payload["sticker"],
+                }
+                if payload.get("reply_to_message_id"):
+                    sticker_kwargs["reply_to_message_id"] = payload[
+                        "reply_to_message_id"
+                    ]
+                await bot.send_sticker(**sticker_kwargs)
             else:
                 send_kwargs = {
                     "chat_id": payload["chat_id"],
@@ -96,6 +102,8 @@ async def _deliver_notification(
                 }
                 if payload.get("parse_mode"):
                     send_kwargs["parse_mode"] = payload["parse_mode"]
+                if payload.get("reply_to_message_id"):
+                    send_kwargs["reply_to_message_id"] = payload["reply_to_message_id"]
                 if payload.get("level_confirmation"):
                     send_kwargs["reply_markup"] = level_confirmation_keyboard()
                 if payload.get("castle_repair_reminder"):

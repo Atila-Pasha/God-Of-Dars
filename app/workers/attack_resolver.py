@@ -40,24 +40,27 @@ def _result_text(result, *, recipient: str = "attacker") -> str:
     return attack_result_banner(result, recipient=recipient)
 
 
-async def resolve_due_archer_shots(*, batch_size: int = 100) -> int:
+async def resolve_due_archer_shots(
+    *, batch_size: int = 100, only_attack_id: int | None = None
+) -> int:
     """Fire midway through pending attacks and queue sticker before damage text."""
     now = datetime.now(UTC)
     async with AsyncSessionLocal() as session:
-        attack_ids = list(
-            await session.scalars(
-                select(Attack.id)
-                .where(
-                    Attack.status == AttackStatus.PENDING,
-                    Attack.archer_processed_at.is_(None),
-                    Attack.created_at <= now - timedelta(minutes=1),
-                    Attack.resolve_at <= now + timedelta(minutes=1),
-                    Attack.resolve_at > now,
-                )
-                .order_by(Attack.created_at, Attack.id)
-                .limit(batch_size)
+        statement = (
+            select(Attack.id)
+            .where(
+                Attack.status == AttackStatus.PENDING,
+                Attack.archer_processed_at.is_(None),
+                Attack.created_at <= now - timedelta(minutes=1),
+                Attack.resolve_at <= now + timedelta(minutes=1),
+                Attack.resolve_at > now,
             )
+            .order_by(Attack.created_at, Attack.id)
+            .limit(batch_size)
         )
+        if only_attack_id is not None:
+            statement = statement.where(Attack.id == only_attack_id)
+        attack_ids = list(await session.scalars(statement))
         await session.rollback()
         for attack_id in attack_ids:
             async with session.begin():
@@ -131,8 +134,25 @@ async def resolve_due_archer_shots(*, batch_size: int = 100) -> int:
                 attacker = await session.get(User, attack.attacker_id)
                 if attacker is None:
                     continue
+                group_attack = attack.source_chat_id is not None
+                chat_id = (
+                    attack.source_chat_id if group_attack else attacker.telegram_user_id
+                )
+                timer_message_id = (
+                    attack.launch_message_id
+                    if attack.launch_chat_id == chat_id
+                    else None
+                )
+                if timer_message_id is None:
+                    logger.warning(
+                        "Attack %s has no countdown message for archer reply",
+                        attack.id,
+                    )
+                    continue
+                reply = {"reply_to_message_id": timer_message_id}
                 sticker_key = f"ARCHER_MID_STICKER:{attack.id}"
-                if hit.sticker:
+                send_sticker = bool(hit.sticker and not group_attack)
+                if send_sticker:
                     await notification_service.enqueue(
                         session,
                         notification_type="ARCHER_MID_STICKER",
@@ -140,8 +160,9 @@ async def resolve_due_archer_shots(*, batch_size: int = 100) -> int:
                         idempotency_key=sticker_key,
                         payload={
                             "operation": "send_sticker",
-                            "chat_id": attacker.telegram_user_id,
+                            "chat_id": chat_id,
                             "sticker": hit.sticker,
+                            **reply,
                         },
                     )
                 await notification_service.enqueue(
@@ -150,7 +171,7 @@ async def resolve_due_archer_shots(*, batch_size: int = 100) -> int:
                     recipient_user_id=attack.attacker_id,
                     idempotency_key=f"ARCHER_MID_DAMAGE:{attack.id}",
                     payload={
-                        "chat_id": attacker.telegram_user_id,
+                        "chat_id": chat_id,
                         "text": archer_midway_banner(
                             attack.id,
                             attack.teacher_name_snapshot or teacher.teacher.name,
@@ -161,7 +182,8 @@ async def resolve_due_archer_shots(*, batch_size: int = 100) -> int:
                             hit.damage,
                         ),
                         "parse_mode": MARKDOWN_V2,
-                        **({"depends_on_key": sticker_key} if hit.sticker else {}),
+                        **reply,
+                        **({"depends_on_key": sticker_key} if send_sticker else {}),
                     },
                 )
     return len(attack_ids)

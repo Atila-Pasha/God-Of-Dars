@@ -17,8 +17,10 @@ from app.workers.attack_resolver import resolve_due_archer_shots
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sticker_id", ["fake-sticker", None])
+@pytest.mark.parametrize("in_group", [False, True])
 async def test_midway_shot_spends_one_arrow_and_queues_sticker_before_text(
     sticker_id: str | None,
+    in_group: bool,
 ) -> None:
     token = uuid4().hex[:10]
     now = datetime.now(UTC)
@@ -76,6 +78,9 @@ async def test_midway_shot_spends_one_arrow_and_queues_sticker_before_text(
             created_at=now - timedelta(seconds=61),
             resolve_at=now + timedelta(seconds=59),
             attack_command_id=str(uuid4()),
+            source_chat_id=-100987654321 if in_group else None,
+            launch_chat_id=(-100987654321 if in_group else attacker.telegram_user_id),
+            launch_message_id=777,
             teacher_name_snapshot=teacher.name,
             teacher_damage_snapshot=10,
             target_castle_strength_snapshot=100,
@@ -87,8 +92,8 @@ async def test_midway_shot_spends_one_arrow_and_queues_sticker_before_text(
         teacher_id, archer_id, pack_id = teacher.id, archer.id, pack.id
 
     try:
-        assert await resolve_due_archer_shots() >= 1
-        assert await resolve_due_archer_shots() == 0
+        assert await resolve_due_archer_shots(only_attack_id=attack_id) == 1
+        assert await resolve_due_archer_shots(only_attack_id=attack_id) == 0
         async with AsyncSessionLocal() as session:
             shot = await session.get(Attack, attack_id)
             owned_teacher = await session.scalar(
@@ -113,13 +118,20 @@ async def test_midway_shot_spends_one_arrow_and_queues_sticker_before_text(
             assert shot.result_archer_injury == 6
             assert owned_teacher.current_hp == 24
             assert stock.quantity == 1
-            assert len(notifications) == (2 if sticker_id else 1)
+            assert len(notifications) == (2 if sticker_id and not in_group else 1)
+            expected_chat_id = -100987654321 if in_group else attacker.telegram_user_id
+            assert all(
+                row.payload["chat_id"] == expected_chat_id for row in notifications
+            )
+            assert all(
+                row.payload["reply_to_message_id"] == 777 for row in notifications
+            )
             damage = next(
                 row
                 for row in notifications
                 if row.notification_type == "ARCHER_MID_DAMAGE"
             )
-            if sticker_id:
+            if sticker_id and not in_group:
                 sticker = next(
                     row
                     for row in notifications
@@ -129,6 +141,8 @@ async def test_midway_shot_spends_one_arrow_and_queues_sticker_before_text(
             else:
                 assert "depends_on_key" not in damage.payload
             assert "6 HP" in damage.payload["text"]
+            if in_group:
+                assert "tg://emoji?id=" in damage.payload["text"]
     finally:
         async with AsyncSessionLocal() as session, session.begin():
             await session.execute(

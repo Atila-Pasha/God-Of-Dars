@@ -135,8 +135,13 @@ class GroupAccessMiddleware(BaseMiddleware):
                 return None
             if event.message is None:
                 return None
+            reply_message_id, fallback_message_id = self._callback_reply_target(
+                event.message
+            )
             token = set_group_reply_context(
-                event.message.chat.id, event.message.message_id
+                event.message.chat.id,
+                reply_message_id,
+                fallback_message_id=fallback_message_id,
             )
             try:
                 return await handler(event, data)
@@ -155,6 +160,17 @@ class GroupAccessMiddleware(BaseMiddleware):
             if session is not None and session.in_transaction():
                 await session.commit()
         return await handler(event, data)
+
+    @staticmethod
+    def _callback_reply_target(message: Message) -> tuple[int, int | None]:
+        replied = getattr(message, "reply_to_message", None)
+        if (
+            replied is not None
+            and getattr(replied, "from_user", None) is not None
+            and not replied.from_user.is_bot
+        ):
+            return replied.message_id, message.message_id
+        return message.message_id, None
 
     async def _register_group(
         self, message: Message, session: AsyncSession | None

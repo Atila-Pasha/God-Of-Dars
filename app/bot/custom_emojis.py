@@ -111,7 +111,7 @@ CUSTOM_EMOJI_IDS: dict[str, str] = {
 # Set by the group middleware while a group update is being handled. This
 # lets every outgoing response in that handler reply to the triggering message
 # without changing every individual handler call site.
-_group_reply_context: ContextVar[tuple[int, int] | None] = ContextVar(
+_group_reply_context: ContextVar[tuple[int, int, int | None] | None] = ContextVar(
     "godofdars_group_reply_context", default=None
 )
 _persist_group_message: ContextVar[bool] = ContextVar(
@@ -127,8 +127,10 @@ def _telegram_semaphore() -> asyncio.Semaphore:
     return _telegram_api_semaphore
 
 
-def set_group_reply_context(chat_id: int, message_id: int):
-    return _group_reply_context.set((chat_id, message_id))
+def set_group_reply_context(
+    chat_id: int, message_id: int, *, fallback_message_id: int | None = None
+):
+    return _group_reply_context.set((chat_id, message_id, fallback_message_id))
 
 
 def reset_group_reply_context(token) -> None:
@@ -352,7 +354,16 @@ async def _send_message_with_reply_fallback(
     except TelegramBadRequest as exc:
         if "message to be replied not found" not in str(exc).lower():
             raise
-        kwargs.pop("reply_to_message_id", None)
+        context = _group_reply_context.get()
+        fallback = (
+            context[2]
+            if context is not None and kwargs.get("chat_id") == context[0]
+            else None
+        )
+        if fallback is None or fallback == kwargs.get("reply_to_message_id"):
+            kwargs.pop("reply_to_message_id", None)
+        else:
+            kwargs["reply_to_message_id"] = fallback
         return await sender(bot, *args, **kwargs)
 
 
@@ -458,7 +469,16 @@ def install() -> None:
                     # Group replies can target a prompt that was just deleted
                     # after a purchase. Retry the same message without a
                     # stale reply target instead of failing the update.
-                    method.reply_to_message_id = None
+                    context = _group_reply_context.get()
+                    fallback = (
+                        context[2]
+                        if context is not None
+                        and getattr(method, "chat_id", None) == context[0]
+                        else None
+                    )
+                    method.reply_to_message_id = (
+                        fallback if fallback != method.reply_to_message_id else None
+                    )
                     reply_fallback_used = True
                     continue
                 # Callback queries expire quickly. A late acknowledgement must
