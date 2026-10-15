@@ -12,13 +12,14 @@ from sqlalchemy.orm import selectinload
 
 from app.bot.banners import (
     MARKDOWN_V2,
+    archer_midway_banner,
     attack_result_banner,
     attack_teacher_injury_banner,
     castle_repair_reminder_banner,
     rich_banner,
 )
 from app.core.config import settings
-from app.core.enums import AttackStatus
+from app.core.enums import AttackStatus, TeacherStatus
 from app.db.session import AsyncSessionLocal
 from app.models.attack import Attack
 from app.models.user import User
@@ -39,29 +40,131 @@ def _result_text(result, *, recipient: str = "attacker") -> str:
     return attack_result_banner(result, recipient=recipient)
 
 
-async def _enqueue_archer_stickers(
-    session,
-    result,
-    key: str,
-    *,
-    scope: str,
-    chat_id: int,
-    recipient_id: int,
-    after: str,
-) -> None:
-    for index, sticker in enumerate(result.archer_stickers):
-        await notification_service.enqueue(
-            session,
-            notification_type="ARCHER_STICKER",
-            recipient_user_id=recipient_id,
-            idempotency_key=f"ARCHER_STICKER:{key}:{scope}:{index}",
-            payload={
-                "operation": "send_sticker",
-                "chat_id": chat_id,
-                "sticker": sticker,
-                "depends_on_key": after,
-            },
+async def resolve_due_archer_shots(*, batch_size: int = 100) -> int:
+    """Fire midway through pending attacks and queue sticker before damage text."""
+    now = datetime.now(UTC)
+    async with AsyncSessionLocal() as session:
+        attack_ids = list(
+            await session.scalars(
+                select(Attack.id)
+                .where(
+                    Attack.status == AttackStatus.PENDING,
+                    Attack.archer_processed_at.is_(None),
+                    Attack.created_at <= now - timedelta(minutes=1),
+                    Attack.resolve_at <= now + timedelta(minutes=1),
+                    Attack.resolve_at > now,
+                )
+                .order_by(Attack.created_at, Attack.id)
+                .limit(batch_size)
+            )
         )
+        await session.rollback()
+        for attack_id in attack_ids:
+            async with session.begin():
+                command_id = await session.scalar(
+                    select(Attack.attack_command_id).where(Attack.id == attack_id)
+                )
+                if command_id is not None:
+                    await session.execute(
+                        select(func.pg_advisory_xact_lock(func.hashtext(command_id)))
+                    )
+                attack = await session.scalar(
+                    select(Attack).where(Attack.id == attack_id).with_for_update()
+                )
+                shot_at = datetime.now(UTC)
+                if (
+                    attack is None
+                    or attack.status is not AttackStatus.PENDING
+                    or attack.archer_processed_at is not None
+                    or attack.resolve_at <= shot_at
+                    or attack.resolve_at > shot_at + timedelta(minutes=1)
+                    or attack.created_at > shot_at - timedelta(minutes=1)
+                ):
+                    continue
+                attack.archer_processed_at = shot_at
+                service = AttackService()
+                teacher = (
+                    await service.teachers.get_owned_for_update(
+                        session, attack.attacker_id, attack.teacher_id
+                    )
+                    if attack.teacher_id is not None
+                    else None
+                )
+                if teacher is None or teacher.current_hp <= 0:
+                    continue
+                shot_index = (
+                    (
+                        await session.scalar(
+                            select(func.count(Attack.id)).where(
+                                Attack.attack_command_id == attack.attack_command_id,
+                                Attack.id < attack.id,
+                            )
+                        )
+                        or 0
+                    )
+                    if attack.attack_command_id
+                    else 0
+                )
+                hit = await service.archer_service.fire(
+                    session,
+                    attack.target_id,
+                    teacher.current_hp,
+                    teacher.teacher.max_hp,
+                    shot_index,
+                )
+                if hit is None:
+                    continue
+                attack.result_archer_injury = hit.damage
+                attack.archer_name_snapshot = hit.name
+                attack.archer_emoji_snapshot = hit.emoji
+                attack.archer_sticker_snapshot = hit.sticker
+                attack.arrow_name_snapshot = hit.arrow_name
+                if teacher.status is TeacherStatus.RECOVERING:
+                    for recovery in teacher.recoveries:
+                        if recovery.completed_at is None:
+                            recovery.completed_at = shot_at
+                teacher.current_hp = max(0, teacher.current_hp - hit.damage)
+                if teacher.current_hp == 0:
+                    await session.delete(teacher)
+                else:
+                    teacher.status = TeacherStatus.INJURED
+                attacker = await session.get(User, attack.attacker_id)
+                if attacker is None:
+                    continue
+                sticker_key = f"ARCHER_MID_STICKER:{attack.id}"
+                if hit.sticker:
+                    await notification_service.enqueue(
+                        session,
+                        notification_type="ARCHER_MID_STICKER",
+                        recipient_user_id=attack.attacker_id,
+                        idempotency_key=sticker_key,
+                        payload={
+                            "operation": "send_sticker",
+                            "chat_id": attacker.telegram_user_id,
+                            "sticker": hit.sticker,
+                        },
+                    )
+                await notification_service.enqueue(
+                    session,
+                    notification_type="ARCHER_MID_DAMAGE",
+                    recipient_user_id=attack.attacker_id,
+                    idempotency_key=f"ARCHER_MID_DAMAGE:{attack.id}",
+                    payload={
+                        "chat_id": attacker.telegram_user_id,
+                        "text": archer_midway_banner(
+                            attack.id,
+                            attack.teacher_name_snapshot or teacher.teacher.name,
+                            attack.teacher_emoji_snapshot or teacher.teacher.emoji,
+                            hit.name,
+                            hit.emoji,
+                            hit.arrow_name,
+                            hit.damage,
+                        ),
+                        "parse_mode": MARKDOWN_V2,
+                        **({"depends_on_key": sticker_key} if hit.sticker else {}),
+                    },
+                )
+    return len(attack_ids)
 
 
 def _needs_repair_reminder(result) -> bool:
@@ -276,15 +379,6 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "depends_on_key": f"ATTACK_RESULT:{key}:ATTACKER",
                             },
                         )
-                        await _enqueue_archer_stickers(
-                            session,
-                            result,
-                            key,
-                            scope="ATTACKER",
-                            chat_id=result.attacker_telegram_id,
-                            recipient_id=result.attack.attacker_id,
-                            after=f"ATTACK_TEACHER_INJURY:{key}:ATTACKER",
-                        )
                         await notification_service.enqueue(
                             session,
                             notification_type="ATTACK_RESULT",
@@ -295,15 +389,6 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "text": _result_text(result, recipient="defender"),
                                 "parse_mode": MARKDOWN_V2,
                             },
-                        )
-                        await _enqueue_archer_stickers(
-                            session,
-                            result,
-                            key,
-                            scope="TARGET",
-                            chat_id=result.target_telegram_id,
-                            recipient_id=result.attack.target_id,
-                            after=f"ATTACK_RESULT:{key}:TARGET",
                         )
                         if not result.blocked_by_shield:
                             await notification_service.enqueue(
@@ -365,15 +450,6 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                     "text": text,
                                     "parse_mode": MARKDOWN_V2,
                                 },
-                            )
-                            await _enqueue_archer_stickers(
-                                session,
-                                result,
-                                key,
-                                scope="GROUP",
-                                chat_id=result.source_chat_id,
-                                recipient_id=result.attack.attacker_id,
-                                after=f"ATTACK_RESULT:{key}:GROUP",
                             )
                         if (
                             result.attack.launch_chat_id is not None

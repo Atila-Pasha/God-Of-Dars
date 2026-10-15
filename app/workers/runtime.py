@@ -6,7 +6,7 @@ import logging
 from aiogram import Bot
 
 from app.core.config import settings
-from app.workers.attack_resolver import resolve_due_attacks
+from app.workers.attack_resolver import resolve_due_archer_shots, resolve_due_attacks
 from app.workers.game_message_cleanup import run_game_message_cleanup_worker
 from app.workers.notification_worker import run_notification_worker
 
@@ -17,6 +17,7 @@ async def _attack_worker(bot: Bot, worker_id: int) -> None:
     while True:
         processed = 0
         try:
+            await resolve_due_archer_shots(batch_size=settings.WORKER_BATCH_SIZE)
             processed = await resolve_due_attacks(
                 bot, batch_size=settings.WORKER_BATCH_SIZE
             )

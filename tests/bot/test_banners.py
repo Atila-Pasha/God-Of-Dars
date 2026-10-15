@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from app.bot.banners import (
+    archer_midway_banner,
     attack_preview_banner,
     attack_result_banner,
     castle_repair_reminder_banner,
@@ -88,6 +89,19 @@ def test_attack_preview_lists_teachers_without_icon_gap_or_summary() -> None:
     assert "> 50 DMG" in text
     assert "tg://emoji?id=5825699971076202989) *طلا*: 10" in text
     assert "tg://emoji?id=5902520589356113908) *موز*: 1" in text
+    assert "کماندار" not in text
+    assert "سهم احتمالی تیر" not in text
+
+
+def test_midway_archer_message_has_ten_variants_and_teacher_icon() -> None:
+    messages = {
+        archer_midway_banner(index, "قضاتی", "123", "محسنی", "456", "تیر ساده", 6)
+        for index in range(10)
+    }
+    assert len(messages) == 10
+    assert all("6 HP" in message for message in messages)
+    assert all("tg://emoji?id=123" in message for message in messages)
+    assert all("tg://emoji?id=456" in message for message in messages)
 
 
 def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:

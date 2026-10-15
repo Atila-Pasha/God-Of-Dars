@@ -59,6 +59,13 @@ class Attack(Base):
         ),
         Index("ix_attacks_attack_command_id", "attack_command_id"),
         Index(
+            "ix_attacks_archer_midway_due",
+            "status",
+            "created_at",
+            "resolve_at",
+            postgresql_where=text("archer_processed_at IS NULL"),
+        ),
+        Index(
             "uq_pending_attack_per_teacher",
             "attacker_id",
             "target_id",
@@ -145,6 +152,9 @@ class Attack(Base):
     arrow_name_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
     result_archer_injury: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    archer_processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     attack_xp_awarded: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
