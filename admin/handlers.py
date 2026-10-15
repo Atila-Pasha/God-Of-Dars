@@ -145,28 +145,88 @@ async def archer_admin_list(
     if not allowed(message):
         return
     await state.clear()
-    if "تیر" in (message.text or ""):
-        rows = list(await session.scalars(select(ArrowPack).order_by(ArrowPack.id)))
-        lines = [
-            f"#{item.id} {item.name}: {item.quantity} تیر × قدرت {item.power} | قیمت {item.purchase_price} {item.purchase_resource.value} | سطح {item.unlock_level} | {'فعال' if item.is_active else 'غیرفعال'}"
-            for item in rows
-        ]
-        await message.answer(
-            "🎯 پک‌های تیر\n"
-            + ("\n".join(lines) or "موردی ثبت نشده.")
-            + "\n\nویرایش: /pack_edit ID field value\nتغییر وضعیت: /pack_toggle ID"
+    kind = "pack" if "تیر" in (message.text or "") else "archer"
+    rows = await _archer_rows(session, kind)
+    await message.answer(
+        _archer_list_text(kind, rows), reply_markup=keyboards.archer_catalog(kind, rows)
+    )
+
+
+def _archer_fields(kind: str):
+    return ARROW_FIELDS if kind == "pack" else ARCHER_FIELDS
+
+
+def _archer_model(kind: str):
+    return ArrowPack if kind == "pack" else Archer
+
+
+async def _archer_rows(session: AsyncSession, kind: str):
+    model = _archer_model(kind)
+    return list(await session.scalars(select(model).order_by(model.id)))
+
+
+def _archer_list_text(kind: str, rows) -> str:
+    title = "🎯 پک‌های تیر" if kind == "pack" else "🏹 کماندارها"
+    return f"{title}\n{len(rows)} مورد ثبت‌شده. برای مدیریت، یکی را انتخاب کنید."
+
+
+def _archer_detail(item, kind: str) -> str:
+    labels = _archer_fields(kind)
+    lines = [
+        f"{'🎯 پک تیر' if kind == 'pack' else '🏹 کماندار'} #{item.id}: {item.name}"
+    ]
+    for field, label in labels:
+        value = getattr(item, field)
+        if isinstance(value, ResourceType):
+            value = "طلا" if value == ResourceType.COIN else "الماس"
+        lines.append(
+            f"{label.split('؛')[0].split(':')[0]}: {value if value is not None else '—'}"
         )
-    else:
-        rows = list(await session.scalars(select(Archer).order_by(Archer.id)))
-        lines = [
-            f"#{item.id} {item.name}: قدرت {item.power} | خرید {item.purchase_price} {item.purchase_resource.value} | ارتقا {item.upgrade_price} الماس | سطح {item.unlock_level} | اموجی {item.emoji or '—'} | استیکر {item.sticker or '—'} | {'فعال' if item.is_active else 'غیرفعال'}"
-            for item in rows
-        ]
-        await message.answer(
-            "🏹 کماندارها\n"
-            + ("\n".join(lines) or "موردی ثبت نشده.")
-            + "\n\nویرایش: /archer_edit ID field value\nتغییر وضعیت: /archer_toggle ID"
+    lines.append("وضعیت: فعال" if item.is_active else "وضعیت: غیرفعال")
+    return "\n".join(lines)
+
+
+def _archer_prompt(kind: str, field: str, *, editing: bool = False) -> str:
+    label = dict(_archer_fields(kind))[field]
+    prefix = "مقدار جدید" if editing else "مقدار"
+    return f"{prefix} «{label}» را بفرستید:" + (
+        "\nبرای پاک‌کردن، «بدون مقدار» را بزنید."
+        if field in {"emoji", "sticker", "description"}
+        else ""
+    )
+
+
+async def _archer_show_input(
+    message: Message, kind: str, field: str, *, create: bool, edit: bool = False
+) -> None:
+    markup = (
+        keyboards.archer_currency(kind, create=create)
+        if field == "purchase_resource"
+        else keyboards.archer_input(
+            kind, optional=field in {"emoji", "sticker", "description"}, create=create
         )
+    )
+    await message.edit_text(
+        _archer_prompt(kind, field, editing=edit), reply_markup=markup
+    )
+
+
+def _archer_review_text(kind: str, values: dict) -> str:
+    lines = ["اطلاعات را بررسی و ثبت را تأیید کنید:"]
+    for field, label in _archer_fields(kind):
+        value = values.get(field)
+        if isinstance(value, ResourceType):
+            value = "طلا" if value == ResourceType.COIN else "الماس"
+        lines.append(
+            f"{label.split('؛')[0].split(':')[0]}: {value if value is not None else '—'}"
+        )
+    return "\n".join(lines)
+
+
+async def _archer_show_review(message: Message, kind: str, values: dict) -> None:
+    await message.edit_text(
+        _archer_review_text(kind, values), reply_markup=keyboards.archer_review(kind)
+    )
 
 
 @router.message(F.text.in_(button_labels("➕ کماندار جدید", "➕ پک تیر جدید")))
@@ -177,15 +237,13 @@ async def archer_admin_start(message: Message, state: FSMContext) -> None:
     await state.set_state(ArcherStates.value)
     await state.update_data(kind=kind, index=0, values={})
     await message.answer(
-        (ARROW_FIELDS if kind == "pack" else ARCHER_FIELDS)[0][1] + ":",
-        reply_markup=keyboards.cancel_keyboard(),
+        _archer_prompt(kind, _archer_fields(kind)[0][0]),
+        reply_markup=keyboards.archer_input(kind, optional=False, create=True),
     )
 
 
 @router.message(ArcherStates.value)
-async def archer_admin_value(
-    message: Message, state: FSMContext, session: AsyncSession
-) -> None:
+async def archer_admin_value(message: Message, state: FSMContext) -> None:
     if not allowed(message):
         return
     if (message.text or "") in {"لغو", "❌ لغو", "🏠 منوی اصلی"}:
@@ -193,8 +251,14 @@ async def archer_admin_value(
         await message.answer("ساخت آیتم لغو شد.", reply_markup=keyboards.content_menu())
         return
     data = await state.get_data()
-    fields = ARROW_FIELDS if data["kind"] == "pack" else ARCHER_FIELDS
+    fields = _archer_fields(data["kind"])
     index = int(data["index"])
+    if index >= len(fields):
+        await message.answer(
+            _archer_review_text(data["kind"], data["values"]),
+            reply_markup=keyboards.archer_review(data["kind"]),
+        )
+        return
     field = fields[index][0]
     raw = (
         message.sticker.file_id
@@ -215,23 +279,256 @@ async def archer_admin_value(
     try:
         value = _catalog_value(field, raw)
     except (ValueError, KeyError) as exc:
-        await message.answer(f"مقدار نامعتبر: {exc}\n{fields[index][1]}:")
+        await message.answer(
+            f"مقدار نامعتبر: {exc}\n{_archer_prompt(data['kind'], field)}",
+            reply_markup=(
+                keyboards.archer_currency(data["kind"], create=True)
+                if field == "purchase_resource"
+                else keyboards.archer_input(
+                    data["kind"],
+                    optional=field in {"emoji", "sticker", "description"},
+                    create=True,
+                )
+            ),
+        )
         return
     values = dict(data["values"])
     values[field] = value
     if index + 1 < len(fields):
         await state.update_data(index=index + 1, values=values)
-        await message.answer(fields[index + 1][1] + ":")
+        next_field = fields[index + 1][0]
+        await message.answer(
+            _archer_prompt(data["kind"], next_field),
+            reply_markup=(
+                keyboards.archer_currency(data["kind"], create=True)
+                if next_field == "purchase_resource"
+                else keyboards.archer_input(
+                    data["kind"],
+                    optional=next_field in {"emoji", "sticker", "description"},
+                    create=True,
+                )
+            ),
+        )
         return
-    model = ArrowPack if data["kind"] == "pack" else Archer
-    item = model(**values)
-    session.add(item)
+    await state.update_data(index=len(fields), values=values)
+    await message.answer(
+        _archer_review_text(data["kind"], values),
+        reply_markup=keyboards.archer_review(data["kind"]),
+    )
+
+
+@router.message(ArcherStates.edit_value)
+async def archer_admin_edit_value(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message):
+        return
+    data = await state.get_data()
+    kind, item_id, field = data["kind"], int(data["item_id"]), data["field"]
+    raw = (
+        message.sticker.file_id
+        if field == "sticker" and message.sticker
+        else (message.text or "")
+    )
+    if field == "emoji" and message.entities:
+        raw = next(
+            (
+                entity.custom_emoji_id
+                for entity in message.entities
+                if entity.type == "custom_emoji"
+            ),
+            raw,
+        )
+    try:
+        value = _catalog_value(field, raw)
+    except (ValueError, KeyError) as exc:
+        await message.answer(
+            f"مقدار نامعتبر: {exc}\n{_archer_prompt(kind, field, editing=True)}",
+            reply_markup=keyboards.archer_input(
+                kind,
+                optional=field in {"emoji", "sticker", "description"},
+                create=False,
+            ),
+        )
+        return
+    item = await session.get(_archer_model(kind), item_id)
+    if item is None:
+        await state.clear()
+        await message.answer("آیتم پیدا نشد.")
+        return
+    setattr(item, field, value)
     await session.commit()
     await state.clear()
     await message.answer(
-        f"✅ {item.name} با شناسه {item.id} ثبت شد.",
-        reply_markup=keyboards.content_menu(),
+        f"✅ {item.name} به‌روزرسانی شد.\n\n{_archer_detail(item, kind)}",
+        reply_markup=keyboards.archer_actions(kind, item.id, item.is_active),
     )
+
+
+@router.callback_query(F.data.startswith("catalog:"))
+async def archer_admin_callback(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    if (
+        not allowed(callback)
+        or not callback.data
+        or not isinstance(callback.message, Message)
+    ):
+        return
+    parts = callback.data.split(":")
+    if len(parts) < 3 or parts[1] not in {"archer", "pack"}:
+        await callback.answer("دکمه نامعتبر است.", show_alert=True)
+        return
+    kind, action = parts[1:3]
+    message = callback.message
+    fields = _archer_fields(kind)
+    model = _archer_model(kind)
+    if action == "list":
+        await state.clear()
+        rows = await _archer_rows(session, kind)
+        await message.edit_text(
+            _archer_list_text(kind, rows),
+            reply_markup=keyboards.archer_catalog(kind, rows),
+        )
+    elif action == "create":
+        await state.clear()
+        await state.set_state(ArcherStates.value)
+        await state.update_data(kind=kind, index=0, values={})
+        await _archer_show_input(message, kind, fields[0][0], create=True)
+    elif (
+        action in {"open", "edit", "toggle"} and len(parts) == 4 and parts[3].isdigit()
+    ):
+        item = await session.get(model, int(parts[3]))
+        if item is None:
+            await callback.answer("آیتم پیدا نشد.", show_alert=True)
+            return
+        await state.clear()
+        if action == "toggle":
+            item.is_active = not item.is_active
+            await session.commit()
+        if action == "edit":
+            await message.edit_text(
+                f"ویرایش «{item.name}»؛ فیلد را انتخاب کنید:",
+                reply_markup=keyboards.archer_edit_fields(kind, item.id, fields),
+            )
+        else:
+            await message.edit_text(
+                _archer_detail(item, kind),
+                reply_markup=keyboards.archer_actions(kind, item.id, item.is_active),
+            )
+    elif (
+        action == "field"
+        and len(parts) == 5
+        and parts[3].isdigit()
+        and parts[4] in dict(fields)
+    ):
+        item = await session.get(model, int(parts[3]))
+        if item is None:
+            await callback.answer("آیتم پیدا نشد.", show_alert=True)
+            return
+        field = parts[4]
+        await state.clear()
+        await state.set_state(ArcherStates.edit_value)
+        await state.update_data(kind=kind, item_id=item.id, field=field)
+        await _archer_show_input(message, kind, field, create=False, edit=True)
+    elif action in {"currency", "skip", "back", "cancel", "save"}:
+        data = await state.get_data()
+        current_state = await state.get_state()
+        if data.get("kind") != kind or current_state not in {
+            ArcherStates.value.state,
+            ArcherStates.edit_value.state,
+        }:
+            await callback.answer("این فرم منقضی شده است.", show_alert=True)
+            return
+        create = current_state == ArcherStates.value.state
+        if action == "cancel":
+            await state.clear()
+            rows = await _archer_rows(session, kind)
+            await message.edit_text(
+                _archer_list_text(kind, rows),
+                reply_markup=keyboards.archer_catalog(kind, rows),
+            )
+        elif action == "back":
+            if create:
+                index = int(data["index"])
+                if index == 0:
+                    await state.clear()
+                    rows = await _archer_rows(session, kind)
+                    await message.edit_text(
+                        _archer_list_text(kind, rows),
+                        reply_markup=keyboards.archer_catalog(kind, rows),
+                    )
+                else:
+                    index -= 1
+                    await state.update_data(index=index)
+                    await _archer_show_input(
+                        message, kind, fields[index][0], create=True
+                    )
+            else:
+                await state.clear()
+                item = await session.get(model, int(data["item_id"]))
+                if item:
+                    await message.edit_text(
+                        f"ویرایش «{item.name}»؛ فیلد را انتخاب کنید:",
+                        reply_markup=keyboards.archer_edit_fields(
+                            kind, item.id, fields
+                        ),
+                    )
+        elif action == "save" and create and int(data["index"]) == len(fields):
+            item = model(**data["values"])
+            session.add(item)
+            await session.commit()
+            await state.clear()
+            await message.edit_text(
+                f"✅ {item.name} با شناسه {item.id} ثبت شد.\n\n{_archer_detail(item, kind)}",
+                reply_markup=keyboards.archer_actions(kind, item.id, item.is_active),
+            )
+        elif action in {"currency", "skip"}:
+            field = fields[int(data["index"])][0] if create else data["field"]
+            if (
+                action == "currency"
+                and field == "purchase_resource"
+                and len(parts) == 4
+                and parts[3] in {"COIN", "DIAMOND"}
+            ):
+                value = ResourceType(parts[3])
+            elif action == "skip" and field in {"emoji", "sticker", "description"}:
+                value = None
+            else:
+                await callback.answer("این گزینه معتبر نیست.", show_alert=True)
+                return
+            if create:
+                values = dict(data["values"])
+                values[field] = value
+                index = int(data["index"]) + 1
+                await state.update_data(index=index, values=values)
+                if index == len(fields):
+                    await _archer_show_review(message, kind, values)
+                else:
+                    await _archer_show_input(
+                        message, kind, fields[index][0], create=True
+                    )
+            else:
+                item = await session.get(model, int(data["item_id"]))
+                if item is None:
+                    await callback.answer("آیتم پیدا نشد.", show_alert=True)
+                    return
+                setattr(item, field, value)
+                await session.commit()
+                await state.clear()
+                await message.edit_text(
+                    _archer_detail(item, kind),
+                    reply_markup=keyboards.archer_actions(
+                        kind, item.id, item.is_active
+                    ),
+                )
+        else:
+            await callback.answer("این گزینه معتبر نیست.", show_alert=True)
+            return
+    else:
+        await callback.answer("دکمه نامعتبر است.", show_alert=True)
+        return
+    await callback.answer()
 
 
 @router.message(Command("archer_edit", "pack_edit", "archer_toggle", "pack_toggle"))

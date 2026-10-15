@@ -405,6 +405,115 @@ def cancel_keyboard() -> ReplyKeyboardMarkup:
     return _reply([["❌ لغو"]], "اطلاعات خواسته‌شده را بفرستید")
 
 
+def archer_catalog(kind: str, items) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{'✅' if item.is_active else '⛔️'} {item.name}",
+                callback_data=f"catalog:{kind}:open:{item.id}",
+            )
+        ]
+        for item in items
+    ]
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="➕ ساخت کماندار" if kind == "archer" else "➕ ساخت پک تیر",
+                callback_data=f"catalog:{kind}:create",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def archer_actions(kind: str, item_id: int, active: bool) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✏️ ویرایش", callback_data=f"catalog:{kind}:edit:{item_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⛔️ غیرفعال‌کردن" if active else "✅ فعال‌کردن",
+                    callback_data=f"catalog:{kind}:toggle:{item_id}",
+                )
+            ],
+            [InlineKeyboardButton(text="بازگشت", callback_data=f"catalog:{kind}:list")],
+        ]
+    )
+
+
+def archer_edit_fields(kind: str, item_id: int, fields) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=label.split("؛")[0].split(":")[0],
+                callback_data=f"catalog:{kind}:field:{item_id}:{field}",
+            )
+        ]
+        for field, label in fields
+    ]
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="بازگشت", callback_data=f"catalog:{kind}:open:{item_id}"
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def archer_input(kind: str, *, optional: bool, create: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if optional:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="بدون مقدار", callback_data=f"catalog:{kind}:skip"
+                )
+            ]
+        )
+    rows.append(
+        [InlineKeyboardButton(text="بازگشت", callback_data=f"catalog:{kind}:back")]
+    )
+    if create:
+        rows.append(
+            [InlineKeyboardButton(text="لغو", callback_data=f"catalog:{kind}:cancel")]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def archer_currency(kind: str, *, create: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="🥇 طلا", callback_data=f"catalog:{kind}:currency:COIN"
+            ),
+            InlineKeyboardButton(
+                text="💎 الماس", callback_data=f"catalog:{kind}:currency:DIAMOND"
+            ),
+        ],
+        [InlineKeyboardButton(text="بازگشت", callback_data=f"catalog:{kind}:back")],
+    ]
+    if create:
+        rows.append(
+            [InlineKeyboardButton(text="لغو", callback_data=f"catalog:{kind}:cancel")]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def archer_review(kind: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ ثبت", callback_data=f"catalog:{kind}:save")],
+            [InlineKeyboardButton(text="بازگشت", callback_data=f"catalog:{kind}:back")],
+            [InlineKeyboardButton(text="لغو", callback_data=f"catalog:{kind}:cancel")],
+        ]
+    )
+
+
 def study_pack_actions(pack_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

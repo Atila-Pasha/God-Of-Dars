@@ -43,6 +43,7 @@ class TeacherStates(StatesGroup):
 
 class ArcherStates(StatesGroup):
     value = State()
+    edit_value = State()
 
 
 class ShieldStates(StatesGroup):
