@@ -175,10 +175,8 @@ async def resolve_due_archer_shots(
                         "text": archer_midway_banner(
                             attack.id,
                             attack.teacher_name_snapshot or teacher.teacher.name,
-                            attack.teacher_emoji_snapshot or teacher.teacher.emoji,
                             hit.name,
                             hit.emoji,
-                            hit.arrow_name,
                             hit.damage,
                         ),
                         "parse_mode": MARKDOWN_V2,

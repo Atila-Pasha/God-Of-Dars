@@ -93,15 +93,18 @@ def test_attack_preview_lists_teachers_without_icon_gap_or_summary() -> None:
     assert "سهم احتمالی تیر" not in text
 
 
-def test_midway_archer_message_has_ten_variants_and_teacher_icon() -> None:
+def test_midway_archer_message_has_ten_variants_in_requested_pattern() -> None:
     messages = {
-        archer_midway_banner(index, "قضاتی", "123", "محسنی", "456", "تیر ساده", 6)
-        for index in range(10)
+        archer_midway_banner(index, "قضاتی", "محسنی", "456", 6) for index in range(10)
     }
     assert len(messages) == 10
+    assert all(
+        message.startswith("کماندار محسنی ![🏹](tg://emoji?id=456) به دبیر قضاتی")
+        for message in messages
+    )
     assert all("6 HP" in message for message in messages)
-    assert all("tg://emoji?id=123" in message for message in messages)
-    assert all("tg://emoji?id=456" in message for message in messages)
+    assert all("تیر ساده" not in message for message in messages)
+    assert all("![👨‍🏫]" not in message for message in messages)
     assert all("\\." in message for message in messages)
 
 

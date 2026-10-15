@@ -267,26 +267,24 @@ def attack_preview_banner(preview: AttackPreview) -> str:
 
 
 _ARCHER_SHOT_LINES = (
-    "کماندار {archer} با {arrow}، {damage} HP از جان دبیرت {teacher} کم کرد.",
-    "تیر {archer} به {teacher} خورد و {damage} HP از جانش برد.",
-    "{archer} با {arrow} به {teacher} شلیک کرد؛ {damage} HP آسیب وارد شد.",
-    "دبیرت {teacher} هدف تیر {archer} قرار گرفت و {damage} HP از دست داد.",
-    "شلیک {archer}، جان {teacher} را {damage} HP کاهش داد.",
-    "{archer} از دژ دفاع کرد؛ تیرش {damage} HP به {teacher} آسیب زد.",
-    "تیر {arrow} از کمان {archer} رها شد و {damage} HP از {teacher} گرفت.",
-    "{teacher} از تیر {archer} آسیب دید؛ میزان آسیب {damage} HP بود.",
-    "کماندار {archer}، {teacher} را نشانه گرفت و {damage} HP آسیب رساند.",
-    "{archer} با یک شلیک، {damage} HP از جان دبیرت {teacher} برد.",
+    "کماندار {archer} {icon} به دبیر {teacher} {damage} HP آسیب زد.",
+    "کماندار {archer} {icon} به دبیر {teacher} شلیک کرد و {damage} HP از جانش کم کرد.",
+    "کماندار {archer} {icon} به دبیر {teacher} تیر زد و {damage} HP آسیب رساند.",
+    "کماندار {archer} {icon} به دبیر {teacher} شلیک کرد؛ {damage} HP آسیب وارد شد.",
+    "کماندار {archer} {icon} به دبیر {teacher} حمله کرد و {damage} HP از جانش برد.",
+    "کماندار {archer} {icon} به دبیر {teacher} تیر انداخت و {damage} HP از جانش کم شد.",
+    "کماندار {archer} {icon} به دبیر {teacher} شلیک کرد و جانش را {damage} HP کاهش داد.",
+    "کماندار {archer} {icon} به دبیر {teacher} تیر زد؛ میزان آسیب {damage} HP بود.",
+    "کماندار {archer} {icon} به دبیر {teacher} شلیک کرد و {damage} HP به او ضربه زد.",
+    "کماندار {archer} {icon} به دبیر {teacher} شلیک کرد؛ {damage} HP از جان دبیر کم شد.",
 )
 
 
 def archer_midway_banner(
     attack_id: int,
     teacher_name: str,
-    teacher_emoji: str | None,
     archer_name: str,
     archer_emoji: str | None,
-    arrow_name: str,
     damage: int,
 ) -> str:
     archer_icon = (
@@ -295,10 +293,10 @@ def archer_midway_banner(
         else emoji(ARCHER_EMOJI_ID, "🏹")
     )
     values = {
-        "archer": f"{archer_icon} {escape(archer_name)}",
-        "arrow": escape(arrow_name),
+        "archer": escape(archer_name),
+        "icon": archer_icon,
         "damage": escape(damage),
-        "teacher": f"{teacher_icon(teacher_emoji)} {escape(teacher_name)}",
+        "teacher": escape(teacher_name),
     }
     line = "".join(
         escape(literal) + (values[field] if field is not None else "")
@@ -306,7 +304,7 @@ def archer_midway_banner(
             _ARCHER_SHOT_LINES[attack_id % len(_ARCHER_SHOT_LINES)]
         )
     )
-    return f"{archer_icon} {bold('شلیک کماندار دژ')}\n{line}"
+    return line
 
 
 def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -> str:
