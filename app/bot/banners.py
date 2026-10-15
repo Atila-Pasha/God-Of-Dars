@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from string import Formatter
 from typing import TYPE_CHECKING
 
 from app.bot.custom_emojis import CUSTOM_EMOJI_IDS, premium_emoji_id
@@ -293,11 +294,17 @@ def archer_midway_banner(
         if archer_emoji and archer_emoji.isdigit()
         else emoji(ARCHER_EMOJI_ID, "🏹")
     )
-    line = _ARCHER_SHOT_LINES[attack_id % len(_ARCHER_SHOT_LINES)].format(
-        archer=f"{archer_icon} {escape(archer_name)}",
-        arrow=escape(arrow_name),
-        damage=escape(damage),
-        teacher=f"{teacher_icon(teacher_emoji)} {escape(teacher_name)}",
+    values = {
+        "archer": f"{archer_icon} {escape(archer_name)}",
+        "arrow": escape(arrow_name),
+        "damage": escape(damage),
+        "teacher": f"{teacher_icon(teacher_emoji)} {escape(teacher_name)}",
+    }
+    line = "".join(
+        escape(literal) + (values[field] if field is not None else "")
+        for literal, field, _format, _conversion in Formatter().parse(
+            _ARCHER_SHOT_LINES[attack_id % len(_ARCHER_SHOT_LINES)]
+        )
     )
     return f"{archer_icon} {bold('شلیک کماندار دژ')}\n{line}"
 

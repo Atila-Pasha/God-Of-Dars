@@ -102,6 +102,7 @@ def test_midway_archer_message_has_ten_variants_and_teacher_icon() -> None:
     assert all("6 HP" in message for message in messages)
     assert all("tg://emoji?id=123" in message for message in messages)
     assert all("tg://emoji?id=456" in message for message in messages)
+    assert all("\\." in message for message in messages)
 
 
 def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
