@@ -41,6 +41,10 @@ class TeacherStates(StatesGroup):
     edit_value = State()
 
 
+class ArcherStates(StatesGroup):
+    value = State()
+
+
 class ShieldStates(StatesGroup):
     name = State()
     reduction_percent = State()

@@ -83,6 +83,10 @@ async def _deliver_notification(
                 except TelegramBadRequest as exc:
                     if "message to delete not found" not in str(exc).lower():
                         raise
+            elif payload.get("operation") == "send_sticker":
+                await bot.send_sticker(
+                    chat_id=payload["chat_id"], sticker=payload["sticker"]
+                )
             else:
                 send_kwargs = {
                     "chat_id": payload["chat_id"],

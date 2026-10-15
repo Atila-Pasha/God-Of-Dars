@@ -75,6 +75,19 @@ async def _command_result(session, result):
         )
         for row, (name, _ability, icon) in zip(records, details, strict=True)
     )
+    archer_hits = tuple(
+        (
+            name,
+            icon,
+            row.archer_name_snapshot,
+            row.arrow_name_snapshot or "تیر",
+            row.archer_emoji_snapshot,
+            row.result_archer_injury,
+        )
+        for row, (name, _ability, icon) in zip(records, details, strict=True)
+        if getattr(row, "archer_name_snapshot", None)
+        and getattr(row, "result_archer_injury", 0) > 0
+    )
     return replace(
         result,
         teacher_name="، ".join(name for name, _, _ in details),
@@ -89,6 +102,15 @@ async def _command_result(session, result):
         source_chat_id=records[0].source_chat_id,
         blocked_by_shield=all((row.result_damage or 0) == 0 for row in records)
         and result.blocked_by_shield,
+        archer_hits=archer_hits,
+        archer_stickers=tuple(
+            dict.fromkeys(
+                row.archer_sticker_snapshot
+                for row in records
+                if getattr(row, "archer_sticker_snapshot", None)
+                and getattr(row, "result_archer_injury", 0) > 0
+            )
+        ),
     )
 
 
@@ -187,6 +209,19 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "depends_on_key": f"ATTACK_RESULT:{key}:ATTACKER",
                             },
                         )
+                        for index, sticker in enumerate(result.archer_stickers):
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="ARCHER_STICKER",
+                                recipient_user_id=result.attack.attacker_id,
+                                idempotency_key=f"ARCHER_STICKER:{key}:{index}",
+                                payload={
+                                    "operation": "send_sticker",
+                                    "chat_id": result.attacker_telegram_id,
+                                    "sticker": sticker,
+                                    "depends_on_key": f"ATTACK_TEACHER_INJURY:{key}:ATTACKER",
+                                },
+                            )
                         await notification_service.enqueue(
                             session,
                             notification_type="ATTACK_RESULT",
@@ -198,6 +233,19 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 "parse_mode": MARKDOWN_V2,
                             },
                         )
+                        for index, sticker in enumerate(result.archer_stickers):
+                            await notification_service.enqueue(
+                                session,
+                                notification_type="ARCHER_STICKER",
+                                recipient_user_id=result.attack.target_id,
+                                idempotency_key=f"ARCHER_STICKER:{key}:TARGET:{index}",
+                                payload={
+                                    "operation": "send_sticker",
+                                    "chat_id": result.target_telegram_id,
+                                    "sticker": sticker,
+                                    "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",
+                                },
+                            )
                         if result.source_chat_id is not None:
                             await notification_service.enqueue(
                                 session,
@@ -210,6 +258,19 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                     "parse_mode": MARKDOWN_V2,
                                 },
                             )
+                            for index, sticker in enumerate(result.archer_stickers):
+                                await notification_service.enqueue(
+                                    session,
+                                    notification_type="ARCHER_STICKER",
+                                    recipient_user_id=result.attack.attacker_id,
+                                    idempotency_key=f"ARCHER_STICKER:{key}:GROUP:{index}",
+                                    payload={
+                                        "operation": "send_sticker",
+                                        "chat_id": result.source_chat_id,
+                                        "sticker": sticker,
+                                        "depends_on_key": f"ATTACK_RESULT:{key}:GROUP",
+                                    },
+                                )
                         if (
                             result.attack.launch_chat_id is not None
                             and result.attack.launch_message_id is not None

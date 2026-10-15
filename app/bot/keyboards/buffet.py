@@ -70,6 +70,11 @@ def buffet_menu_keyboard() -> ReplyKeyboardMarkup:
             ],
             [
                 KeyboardButton(
+                    text="کماندار ها", icon_custom_emoji_id="5402133431670816471"
+                )
+            ],
+            [
+                KeyboardButton(
                     text="بازگشت به منو اصلی",
                     icon_custom_emoji_id="5235864325540815679",
                 )

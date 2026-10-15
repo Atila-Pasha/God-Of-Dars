@@ -1,4 +1,5 @@
 from app.models.answer import Answer
+from app.models.archer import Archer, ArrowPack, UserArcher, UserArrow
 from app.models.attack import Attack
 from app.models.bot_settings import BotSettings
 from app.models.castle import Castle
@@ -27,6 +28,10 @@ from app.models.user_shield import UserShield
 from app.models.user_teacher import UserTeacher
 
 __all__ = [
+    "Archer",
+    "ArrowPack",
+    "UserArcher",
+    "UserArrow",
     "Answer",
     "Attack",
     "BotSettings",

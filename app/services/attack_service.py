@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from math import ceil
 from uuid import uuid4
 
 from sqlalchemy import func, select, update
@@ -17,6 +18,7 @@ from app.models.user_teacher import UserTeacher
 from app.repositories.castle import CastleRepository
 from app.repositories.teacher import TeacherRepository
 from app.repositories.user import UserRepository
+from app.services.archer_service import ArcherService
 from app.services.castle_service import CastleService
 from app.services.daily_quest_service import DailyQuestService
 from app.services.lock_order import lock_attack_dependencies, lock_users_ordered
@@ -66,6 +68,8 @@ class AttackResult:
     teacher_injuries: tuple[TeacherInjury, ...] = ()
     castle_strength_before: int = 0
     source_chat_id: int | None = None
+    archer_hits: tuple[tuple[str, str | None, str, str, str | None, int], ...] = ()
+    archer_stickers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,7 @@ class AttackPreview:
     teacher_ids: str = ""
     teacher_emojis: tuple[str | None, ...] = ()
     teacher_details: tuple[tuple[str, str | None, str | None], ...] = ()
+    estimated_archer_injury: int = 0
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,7 @@ class AttackService:
         self.teachers = TeacherRepository()
         self.castles = CastleRepository()
         self.teacher_service = TeacherService(self.teachers, config=self.config)
+        self.archer_service = ArcherService()
         self.castle_service = CastleService(self.castles, config=self.config)
 
     @staticmethod
@@ -772,6 +778,26 @@ class AttackService:
         castle_result = await self.castle_service.receive_attack_damage(
             session, target.id, castle_damage, teacher_names=command_names
         )
+        shot_index = 0
+        if attack.attack_command_id is not None:
+            shot_index = (
+                await session.scalar(
+                    select(func.count(Attack.id)).where(
+                        Attack.attack_command_id == attack.attack_command_id,
+                        Attack.status == AttackStatus.RESOLVED,
+                    )
+                )
+                or 0
+            )
+        archer_hit = await self.archer_service.fire(
+            session,
+            target.id,
+            max(0, (teacher.current_hp if teacher is not None else 0) - injury),
+            teacher.teacher.max_hp if teacher is not None else 0,
+            shot_index,
+        )
+        archer_injury = archer_hit.damage if archer_hit else 0
+        injury += archer_injury
         loot = self._loot(
             target,
             castle_result.applied_damage,
@@ -792,6 +818,12 @@ class AttackService:
         attack.resolved_at = now
         attack.result_damage = castle_result.applied_damage
         attack.result_teacher_injury = injury
+        attack.result_archer_injury = archer_injury
+        if archer_hit:
+            attack.archer_name_snapshot = archer_hit.name
+            attack.archer_emoji_snapshot = archer_hit.emoji
+            attack.archer_sticker_snapshot = archer_hit.sticker
+            attack.arrow_name_snapshot = archer_hit.arrow_name
         attack.loot_coin = loot["loot_coin"]
         attack.loot_diamond = loot["loot_diamond"]
         attack.loot_banana = 0
@@ -862,6 +894,21 @@ class AttackService:
             teacher_details=((teacher_name, teacher_ability, teacher_icon),),
             castle_strength_before=castle_result.castle_strength_before,
             source_chat_id=attack.source_chat_id,
+            archer_hits=(
+                (
+                    teacher_name,
+                    teacher_icon,
+                    archer_hit.name,
+                    archer_hit.arrow_name,
+                    archer_hit.emoji,
+                    archer_hit.damage,
+                ),
+            )
+            if archer_hit
+            else (),
+            archer_stickers=(archer_hit.sticker,)
+            if archer_hit and archer_hit.sticker
+            else (),
         )
 
     async def _selection_for_update(
@@ -989,6 +1036,24 @@ class AttackService:
         ]
         damage = min(castle.strength, sum(mitigated_damages))
         injury = sum(item[1] for item in resolved)
+        archers = await self.archer_service.owned(session, target.id)
+        stocks = await self.archer_service.ammunition(session, target.id)
+        equipped = next((item for item in stocks if item.is_equipped), None)
+        archer_injury = 0
+        if archers and equipped:
+            for index, (teacher, (_damage, counter)) in enumerate(
+                zip(teachers, resolved, strict=True)
+            ):
+                if index >= equipped.quantity:
+                    break
+                remaining = max(0, teacher.current_hp - counter)
+                archer = archers[index % len(archers)]
+                archer_injury += min(
+                    remaining,
+                    self.archer_service.power(archer) + equipped.pack.power,
+                    max(1, ceil(teacher.teacher.max_hp * 0.3)),
+                )
+        injury += archer_injury
         loot = self._loot(
             target,
             damage,
@@ -1016,6 +1081,7 @@ class AttackService:
             defense_power=castle.defense_power,
             estimated_castle_damage=damage,
             estimated_teacher_injury=injury,
+            estimated_archer_injury=archer_injury,
             teacher_ids=",".join(str(teacher.id) for teacher in teachers),
             teacher_emojis=tuple(teacher.teacher.emoji for teacher in teachers),
             teacher_details=tuple(
@@ -1131,8 +1197,9 @@ class AttackService:
         total_damage = 0
         total_injury = 0
         teacher_results = []
+        archer_hits = []
         attack_command_id = str(uuid4())
-        for teacher in teachers:
+        for shot_index, teacher in enumerate(teachers):
             teacher_damage = self.teacher_service.damage(teacher)
             damage, injury = self.config.attack_rules.resolve(
                 teacher_damage,
@@ -1143,6 +1210,26 @@ class AttackService:
                 session, target.id, damage, teacher_names=names
             )
             applied_damage = castle_damage_result.applied_damage
+            archer_hit = await self.archer_service.fire(
+                session,
+                target.id,
+                max(0, teacher.current_hp - injury),
+                teacher.teacher.max_hp,
+                shot_index,
+            )
+            archer_injury = archer_hit.damage if archer_hit else 0
+            injury += archer_injury
+            if archer_hit:
+                archer_hits.append(
+                    (
+                        teacher.teacher.name,
+                        teacher.teacher.emoji,
+                        archer_hit.name,
+                        archer_hit.arrow_name,
+                        archer_hit.emoji,
+                        archer_hit.damage,
+                    )
+                )
             if injury:
                 teacher.current_hp = max(0, teacher.current_hp - injury)
                 if teacher.current_hp == 0:
@@ -1175,6 +1262,12 @@ class AttackService:
                 loot_diamond=loot["loot_diamond"],
                 loot_banana=loot["loot_banana"],
                 is_successful=applied_damage > 0,
+                result_teacher_injury=injury,
+                result_archer_injury=archer_injury,
+                archer_name_snapshot=archer_hit.name if archer_hit else None,
+                archer_emoji_snapshot=archer_hit.emoji if archer_hit else None,
+                archer_sticker_snapshot=archer_hit.sticker if archer_hit else None,
+                arrow_name_snapshot=archer_hit.arrow_name if archer_hit else None,
             )
             session.add(attack)
             await session.flush()
@@ -1244,6 +1337,14 @@ class AttackService:
             castle_strength_before=teacher_results[0][
                 0
             ].target_castle_strength_snapshot,
+            archer_hits=tuple(archer_hits),
+            archer_stickers=tuple(
+                dict.fromkeys(
+                    row[0].archer_sticker_snapshot
+                    for row in teacher_results
+                    if row[0].archer_sticker_snapshot
+                )
+            ),
         )
 
     async def _ensure_target_attackable(

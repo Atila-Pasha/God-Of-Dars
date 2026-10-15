@@ -172,6 +172,25 @@ class ShieldPurchaseCallback(CallbackData, prefix="shield_purchase"):
     shield_id: int
 
 
+class ArcherCallback(CallbackData, prefix="archer_shop"):
+    action: Literal[
+        "menu",
+        "archers",
+        "packs",
+        "buy_archer",
+        "buy_pack",
+        "confirm_archer",
+        "confirm_pack",
+        "upgrade",
+        "confirm_upgrade",
+        "sell",
+        "confirm_sell",
+        "owned",
+        "equip",
+    ]
+    item_id: int = 0
+
+
 class MineCallback(CallbackData, prefix="mine"):
     action: Literal[
         "refresh",

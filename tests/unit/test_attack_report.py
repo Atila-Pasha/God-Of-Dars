@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.bot.banners import attack_teacher_injury_banner
+from app.bot.banners import attack_result_banner, attack_teacher_injury_banner
 from app.core.enums import AttackStatus
 from app.services.attack_service import AttackResult
 from app.workers.attack_resolver import _command_result
@@ -91,3 +91,30 @@ async def test_report_waits_for_every_teacher_then_sums_the_command() -> None:
     assert "> 《 جان باقی‌مانده: *20 HP* 》" in banner
     assert "Let’s go to the hospital\\." in banner
     assert "دبیرت را در نبرد از دست دادی" in banner
+
+
+def test_archer_hit_names_both_combatants_and_arrow_pack() -> None:
+    result = AttackResult(
+        attack=SimpleNamespace(),
+        attacker_telegram_id=10,
+        attacker_name="آرش",
+        target_name="نگار",
+        target_telegram_id=20,
+        teacher_name="فراهانی",
+        ability_text=None,
+        castle_damage=10,
+        teacher_injury=12,
+        castle_strength_after=90,
+        loot_coin=0,
+        loot_diamond=0,
+        loot_banana=0,
+        archer_hits=(("فراهانی", "123", "محسنی", "تیر ساده", "456", 6),),
+    )
+
+    report = attack_result_banner(result)
+    assert "کماندار محسنی" in report
+    assert "تیر ساده" in report
+    assert "فراهانی" in report
+    assert "6 HP" in report
+    assert "tg://emoji?id=123" in report
+    assert "tg://emoji?id=456" in report

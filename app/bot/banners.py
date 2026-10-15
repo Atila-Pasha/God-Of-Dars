@@ -250,6 +250,7 @@ def attack_preview_banner(preview: AttackPreview) -> str:
         f"> {escape(preview.defense_power)} DMG {DEFENSE}\n\n"
         f"{INJURY} آسیب احتمالی دبیر:\n"
         f"> {escape(preview.estimated_teacher_injury)} HP {INJURY}\n\n"
+        f"🏹 سهم احتمالی تیر کماندار: {escape(preview.estimated_archer_injury)} HP\n\n"
         f"{LOOT} {bold('غنیمت')} احتمالی از منابع حریف:\n"
         f"{COIN} {bold('طلا')}: {escape(preview.loot_coin)}\n"
         f"{BANANA} {bold('موز')}: {escape(preview.loot_banana)}\n\n"
@@ -309,6 +310,13 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         else f"“Keep going, commander\\.” {STAR}"
     )
     loot_label = "منابع ازدست‌رفته" if recipient == "defender" else "غنیمت‌های کسب‌شده"
+    archer_lines = "".join(
+        f"{emoji(archer_icon, '🏹') if archer_icon and archer_icon.isdigit() else escape(archer_icon or '🏹')} "
+        f"کماندار {escape(archer_name)} با {escape(arrow_name)} به "
+        f"{teacher_icon(teacher_icon_id)} {escape(teacher_name)} "
+        f"{escape(damage)} HP آسیب زد\\.\n"
+        for teacher_name, teacher_icon_id, archer_name, arrow_name, archer_icon, damage in result.archer_hits
+    )
     return (
         f"{FINISH} {bold(headline)} {FINISH}\n\n"
         f"{REPORT} {bold('گزارش نتیجهٔ نبرد:')}\n"
@@ -321,11 +329,14 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"> {escape(result.castle_strength_after)} DMG {CASTLE}\n\n"
         f"{HEAL} آسیب واردشده به دبیر:\n"
         f"> {escape(result.teacher_injury)} HP {HEAL}\n\n"
-        f"{LOOT} {loot_label}:\n"
-        f"{COIN} طلا: {escape(result.loot_coin)}\n"
-        f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
-        f"{BANANA} موز: {escape(result.loot_banana)}\n\n"
-        f"{closing}"
+        + (f"🏹 {bold('شلیک کماندارها:')}\n{archer_lines}\n" if archer_lines else "")
+        + (
+            f"{LOOT} {loot_label}:\n"
+            f"{COIN} طلا: {escape(result.loot_coin)}\n"
+            f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
+            f"{BANANA} موز: {escape(result.loot_banana)}\n\n"
+            f"{closing}"
+        )
     )
 
 

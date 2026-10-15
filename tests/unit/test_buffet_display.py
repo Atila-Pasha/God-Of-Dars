@@ -147,6 +147,7 @@ async def test_buffet_entry_keeps_all_menu_buttons(monkeypatch) -> None:
             "تبدیل منابع",
             "فهرست سپر ها",
             "خرید دبیر",
+            "کماندار ها",
             "بازگشت به منو اصلی",
         ]
         assert all(row[0].icon_custom_emoji_id for row in keyboard.keyboard[:3])
@@ -154,6 +155,7 @@ async def test_buffet_entry_keeps_all_menu_buttons(monkeypatch) -> None:
             "5220021677244559322",
             "5825861861278490879",
             "5784897390922174736",
+            "5402133431670816471",
             "5235864325540815679",
         ]
 

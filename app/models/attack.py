@@ -125,6 +125,15 @@ class Attack(Base):
     result_teacher_injury: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    archer_name_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    archer_emoji_snapshot: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    archer_sticker_snapshot: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    arrow_name_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    result_archer_injury: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     attack_xp_awarded: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
