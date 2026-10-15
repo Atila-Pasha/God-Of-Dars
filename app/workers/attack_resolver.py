@@ -16,6 +16,7 @@ from app.bot.banners import (
     attack_result_banner,
     attack_teacher_injury_banner,
     castle_repair_reminder_banner,
+    revenge_prompt_banner,
     rich_banner,
 )
 from app.core.config import settings
@@ -418,11 +419,7 @@ async def resolve_due_attacks(bot: Bot, *, batch_size: int = 100) -> int:
                                 idempotency_key=f"ATTACK_REVENGE_PROMPT:{key}:TARGET",
                                 payload={
                                     "chat_id": result.target_telegram_id,
-                                    "text": rich_banner(
-                                        "🗡️ می‌خوای تلافی کنی؟\n"
-                                        f"{result.attacker_name} به دژت حمله کرد. "
-                                        "اگه می‌خوای جوابش رو بدی، دبیرهات رو انتخاب کن."
-                                    ),
+                                    "text": revenge_prompt_banner(result.attacker_name),
                                     "parse_mode": MARKDOWN_V2,
                                     "revenge_attack_id": result.attack.id,
                                     "depends_on_key": f"ATTACK_RESULT:{key}:TARGET",

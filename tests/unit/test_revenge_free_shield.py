@@ -6,6 +6,7 @@ import pytest
 from aiogram.types import CallbackQuery, Chat, Message
 from aiogram.types import User as TelegramUser
 
+from app.bot.banners import revenge_prompt_banner
 from app.bot.callbacks import RevengeCallback
 from app.bot.handlers import battle
 from app.bot.keyboards.revenge import revenge_keyboard
@@ -22,6 +23,13 @@ def test_revenge_buttons_have_requested_styles_and_sword() -> None:
     assert (revenge.text, revenge.style) == ("انتقام", "danger")
     assert revenge.icon_custom_emoji_id == "5823192436024813346"
     assert "42" in revenge.callback_data
+
+
+def test_revenge_prompt_starts_in_persian_with_attacker_name_inside_sentence() -> None:
+    message = revenge_prompt_banner("Alex_7")
+    assert message.startswith("*فرمانده تو از طرف Alex\\_7 مورد حمله قرار گرفتی")
+    assert "می‌خوای انتقام بگیری یا نه؟" in message
+    assert "\n" not in message
 
 
 @pytest.mark.asyncio

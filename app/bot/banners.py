@@ -102,6 +102,13 @@ def rich_banner(value: str) -> str:
     return "\n".join(lines)
 
 
+def revenge_prompt_banner(attacker_name: str) -> str:
+    return rich_banner(
+        f"فرمانده تو از طرف {attacker_name} مورد حمله قرار گرفتی. "
+        "می‌خوای انتقام بگیری یا نه؟"
+    )
+
+
 def _short(value: str, limit: int = 180) -> str:
     normalized = " ".join(value.split())
     return normalized if len(normalized) <= limit else normalized[: limit - 1] + "…"
