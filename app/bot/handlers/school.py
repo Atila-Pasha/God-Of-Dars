@@ -44,6 +44,7 @@ from app.bot.keyboards.school import (
     castle_keyboard,
     confirmation_keyboard,
     hospital_keyboard,
+    school_archers_keyboard,
     school_keyboard,
     teacher_catalog_keyboard,
     teacher_catalog_page_keyboard,
@@ -65,6 +66,7 @@ from app.bot.utils.telegram import (
 from app.core.enums import TeacherStatus
 from app.core.game_logic import GameConfigurationError
 from app.models.user_teacher import UserTeacher
+from app.services.archer_service import ArcherService
 from app.services.castle_service import CastleService
 from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
@@ -92,6 +94,7 @@ user_service = UserService()
 castle_service = CastleService()
 teacher_service = TeacherService()
 hospital_service = HospitalService()
+archer_service = ArcherService()
 
 SCHOOL_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "school"
@@ -359,6 +362,38 @@ async def _castle_view(
             can_repair=can_repair,
         ),
         parse_mode=MARKDOWN_V2,
+    )
+
+
+async def _archers_view(target: CallbackQuery, session: AsyncSession) -> None:
+    user = await _user(session, target.from_user.id)
+    owned = await archer_service.owned(session, user.id)
+    arrows = await archer_service.ammunition(session, user.id)
+    if owned:
+        archer = owned[0]
+        archer_text = (
+            f"● کماندار: {bold(archer.archer.name)}\n"
+            f"● سطح: {escape(archer.level)}\n"
+            f"● قدرت: {escape(archer_service.power(archer))}"
+        )
+    else:
+        archer_text = "هنوز کمانداری نداری\\."
+    arrow_lines = [
+        f"{escape(stock.pack.name)}: {escape(stock.quantity)} تیر، قدرت {escape(stock.pack.power)}"
+        + (" \\(انتخاب‌شده\\)" if stock.is_equipped else "")
+        for stock in arrows
+    ]
+    arrow_text = "\n".join(arrow_lines) if arrow_lines else "تیری در انبار نیست\\."
+    text = (
+        f"{emoji('5402133431670816471', '🏹')} {bold('کماندار دژ')}\n\n"
+        f"{archer_text}\n\n"
+        f"{emoji('5314526780416092636', '🎯')} {bold('موجودی تیر')}\n"
+        f"{arrow_text}\n\n"
+        "هر دبیر مهاجم تا یک تیر از نوع انتخاب‌شده می‌خورد\\. "
+        "خرید کماندار و پک تیر، انتخاب تیر، ارتقا و فروش در بوفه انجام می‌شود\\."
+    )
+    await _send_or_edit(
+        target, text, reply_markup=school_archers_keyboard(), parse_mode=MARKDOWN_V2
     )
 
 
@@ -807,8 +842,12 @@ async def school_callback_handler(
             await _castle_view(callback, session)
         elif callback_data.action == "teachers":
             await _teachers_view(callback, session)
+        elif callback_data.action == "archers":
+            await _archers_view(callback, session)
         elif callback_data.action == "hospital":
             await _hospital_view(callback, session)
+        elif callback_data.action == "school":
+            await _school_view(callback, session)
         elif callback_data.action == "back":
             if callback.message is None:
                 await callback.answer()

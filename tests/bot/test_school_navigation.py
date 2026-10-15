@@ -7,6 +7,7 @@ from app.bot.callbacks import (
     CastleCallback,
     ConfirmationCallback,
     HospitalCallback,
+    SchoolCallback,
     TeacherCallback,
 )
 from app.bot.handlers import profile, school
@@ -61,6 +62,7 @@ async def test_school_next_level_preserves_shield_custom_emoji(monkeypatch) -> N
 
 def test_school_buttons_use_requested_custom_emojis() -> None:
     castle, teachers = school_keyboard().inline_keyboard[0]
+    archers, hospital = school_keyboard().inline_keyboard[1]
     assert (castle.text, castle.icon_custom_emoji_id) == (
         "دژ",
         "5825546447470206916",
@@ -69,6 +71,56 @@ def test_school_buttons_use_requested_custom_emojis() -> None:
         "دبیرها",
         "5915633360734002967",
     )
+    assert (archers.text, archers.icon_custom_emoji_id) == (
+        "کماندارها",
+        "5402133431670816471",
+    )
+    assert hospital.text == "🏥 بیمارستان"
+
+
+@pytest.mark.asyncio
+async def test_school_archers_shows_owned_archer_and_selected_ammo(monkeypatch) -> None:
+    target = callback()
+    monkeypatch.setattr(school, "_user", AsyncMock(return_value=SimpleNamespace(id=10)))
+    owned = SimpleNamespace(
+        level=2,
+        archer=SimpleNamespace(name="محسنی", power=4),
+    )
+    stock = SimpleNamespace(
+        pack=SimpleNamespace(name="تیر ساده", power=2),
+        quantity=5,
+        is_equipped=True,
+    )
+    monkeypatch.setattr(school.archer_service, "owned", AsyncMock(return_value=[owned]))
+    monkeypatch.setattr(
+        school.archer_service, "ammunition", AsyncMock(return_value=[stock])
+    )
+    send = AsyncMock()
+    monkeypatch.setattr(school, "_send_or_edit", send)
+
+    await school.school_callback_handler(
+        target, SchoolCallback(action="archers"), AsyncMock()
+    )
+
+    banner = send.await_args.args[1]
+    assert "محسنی" in banner
+    assert "تیر ساده" in banner
+    assert "انتخاب‌شده" in banner
+    assert "5402133431670816471" in banner
+    target.answer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_school_archers_back_returns_to_school(monkeypatch) -> None:
+    target = callback()
+    school_view = AsyncMock()
+    monkeypatch.setattr(school, "_school_view", school_view)
+
+    await school.school_callback_handler(
+        target, SchoolCallback(action="school"), AsyncMock()
+    )
+
+    school_view.assert_awaited_once()
 
 
 @pytest.mark.asyncio

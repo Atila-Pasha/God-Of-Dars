@@ -38,10 +38,29 @@ def school_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="کماندارها",
+                    icon_custom_emoji_id="5402133431670816471",
+                    callback_data=SchoolCallback(action="archers").pack(),
+                ),
+                InlineKeyboardButton(
                     text="🏥 بیمارستان",
                     callback_data=SchoolCallback(action="hospital").pack(),
                 ),
             ],
+        ]
+    )
+
+
+def school_archers_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="بازگشت به مدرسه من",
+                    icon_custom_emoji_id="5235864325540815679",
+                    callback_data=SchoolCallback(action="school").pack(),
+                )
+            ]
         ]
     )
 

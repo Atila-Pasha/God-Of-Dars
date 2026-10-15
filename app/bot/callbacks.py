@@ -26,7 +26,7 @@ class HelpCallback(CallbackData, prefix="help"):
 
 
 class SchoolCallback(CallbackData, prefix="school"):
-    action: Literal["castle", "teachers", "hospital", "back"]
+    action: Literal["castle", "teachers", "archers", "hospital", "school", "back"]
 
 
 class CastleCallback(CallbackData, prefix="castle"):
