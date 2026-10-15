@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.banners import MARKDOWN_V2, rich_plain
 from app.bot.callbacks import ArcherCallback, SchoolCallback
 from app.bot.keyboards.main_menu import main_menu_keyboard
+from app.bot.utils.telegram import safe_edit_text
 from app.core.enums import ResourceType
 from app.services.archer_service import ArcherError, ArcherService
 from app.services.school_errors import (
@@ -47,11 +48,19 @@ def school_back() -> InlineKeyboardMarkup:
 
 
 async def banner(
-    message: Message, text: str, *, reply_markup: InlineKeyboardMarkup
+    message: Message,
+    text: str,
+    *,
+    reply_markup: InlineKeyboardMarkup,
+    edit: bool = True,
 ) -> None:
-    await message.answer(
-        rich_plain(text), reply_markup=reply_markup, parse_mode=MARKDOWN_V2
-    )
+    content = rich_plain(text)
+    if edit:
+        await safe_edit_text(
+            message, content, reply_markup=reply_markup, parse_mode=MARKDOWN_V2
+        )
+    else:
+        await message.answer(content, reply_markup=reply_markup, parse_mode=MARKDOWN_V2)
 
 
 def button(
@@ -68,7 +77,9 @@ def keyboard(rows: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def show_menu(message: Message, session: AsyncSession, user_id: int) -> None:
+async def show_menu(
+    message: Message, session: AsyncSession, user_id: int, *, edit: bool = False
+) -> None:
     await banner(
         message,
         "🏹 خرید کماندار و تیر\n\n"
@@ -81,6 +92,7 @@ async def show_menu(message: Message, session: AsyncSession, user_id: int) -> No
                 [button("پک تیر کماندار", "packs", icon=ARROW_ICON)],
             ]
         ),
+        edit=edit,
     )
 
 
@@ -108,7 +120,7 @@ async def callback(
         )
         action = callback_data.action
         if action == "menu":
-            await show_menu(callback.message, session, user.id)
+            await show_menu(callback.message, session, user.id, edit=True)
         elif action == "archers":
             catalog = await service.catalog(session)
             rows = [
