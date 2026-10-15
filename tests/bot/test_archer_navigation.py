@@ -85,6 +85,7 @@ async def test_archer_button_updates_its_message(monkeypatch, action: str) -> No
             purchase_price=80,
             purchase_resource=ResourceType.COIN,
             upgrade_price=2,
+            emoji=None,
         ),
     )
     monkeypatch.setattr(

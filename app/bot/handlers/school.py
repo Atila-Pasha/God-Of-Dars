@@ -13,6 +13,7 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.archer_banners import school_overview
 from app.bot.banners import (
     FORT,
     LEVEL,
@@ -369,30 +370,10 @@ async def _archers_view(target: CallbackQuery, session: AsyncSession) -> None:
     user = await _user(session, target.from_user.id)
     owned = await archer_service.owned(session, user.id)
     arrows = await archer_service.ammunition(session, user.id)
-    if owned:
-        archer = owned[0]
-        archer_icon = getattr(archer.archer, "emoji", None)
-        archer_text = (
-            f"● کماندار: {emoji(archer_icon, '🏹') if archer_icon and archer_icon.isdigit() else emoji('5314526780416092636', '🏹')} {bold(archer.archer.name)}\n"
-            f"● سطح: {escape(archer.level)}\n"
-            f"● قدرت: {escape(archer_service.power(archer))}"
-        )
-    else:
-        archer_text = "هنوز کمانداری نداری\\."
-    arrow_lines = [
-        f"{escape(stock.pack.name)}: {escape(stock.quantity)} تیر، قدرت {escape(stock.pack.power)}"
-        + (" \\(انتخاب‌شده\\)" if stock.is_equipped else "")
-        for stock in arrows
-    ]
-    arrow_text = "\n".join(arrow_lines) if arrow_lines else "تیری در انبار نیست\\."
-    text = (
-        f"{emoji('5314526780416092636', '🏹')} {bold('کماندار دژ')}\n\n"
-        f"{archer_text}\n\n"
-        f"{emoji('5314526780416092636', '🎯')} {bold('موجودی تیر')}\n"
-        f"{arrow_text}\n\n"
-        "هر دبیر مهاجم تا یک تیر از نوع انتخاب‌شده می‌خورد\\. "
-        "ارتقا، فروش و انتخاب تیر از همین بخش انجام می‌شود\\. "
-        "برای خرید کماندار و پک تیر به بوفه برو\\."
+    text = school_overview(
+        owned[0] if owned else None,
+        arrows,
+        archer_service.power(owned[0]) if owned else 0,
     )
     await _send_or_edit(
         target,
