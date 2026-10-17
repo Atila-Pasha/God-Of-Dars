@@ -1,7 +1,10 @@
 """Archer shop and deterministic, bounded counterfire."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from math import ceil
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,9 +12,13 @@ from sqlalchemy.orm import selectinload
 
 from app.core.enums import ResourceType
 from app.models.archer import Archer, ArrowPack, UserArcher, UserArrow
+from app.models.knight import UserKnight
 from app.models.resource import Resource
 from app.models.user import User
 from app.services.resource_service import ResourceService
+
+if TYPE_CHECKING:
+    from app.services.knight_service import KnightHit
 
 
 class ArcherError(ValueError):
@@ -115,7 +122,14 @@ class ArcherService:
             )
         if archer.purchase_resource not in (ResourceType.COIN, ResourceType.DIAMOND):
             raise ArcherError("ارز خرید نامعتبر است.")
-        owned = UserArcher(user_id=user_id, archer_id=archer_id)
+        knight = await session.scalar(
+            select(UserKnight).where(UserKnight.user_id == user_id).with_for_update()
+        )
+        owned = UserArcher(
+            user_id=user_id,
+            archer_id=archer_id,
+            is_equipped=knight is None or not knight.is_equipped,
+        )
         session.add(owned)
         await session.flush()
         await ResourceService.debit(
@@ -196,6 +210,11 @@ class ArcherService:
                 reference_id=owned.id,
             )
         await session.delete(owned)
+        knight = await session.scalar(
+            select(UserKnight).where(UserKnight.user_id == user_id).with_for_update()
+        )
+        if knight and knight.current_hp > 0:
+            knight.is_equipped = True
         await session.flush()
         return name, refund, currency
 
@@ -283,11 +302,18 @@ class ArcherService:
         teacher_hp: int,
         teacher_max_hp: int,
         shot_index: int,
-    ) -> ArcherHit | None:
+        incoming_power: int = 0,
+    ) -> ArcherHit | KnightHit | None:
         """Fire once per attacking teacher; strongest stocked arrow is spent first."""
         archers = await self.owned(session, defender_id, lock=True)
         arrows = await self.ammunition(session, defender_id, lock=True)
-        if not archers or not arrows or teacher_hp <= 0:
+        if not archers or not getattr(archers[0], "is_equipped", True):
+            from app.services.knight_service import KnightService
+
+            return await KnightService().strike(
+                session, defender_id, teacher_hp, teacher_max_hp, incoming_power
+            )
+        if not arrows or teacher_hp <= 0:
             return None
         archer = archers[shot_index % len(archers)]
         stock = next((item for item in arrows if item.is_equipped), None)

@@ -54,6 +54,7 @@ def school_overview(
     if owned:
         archer_section = (
             f"{emoji(ARCHER, '🏹')} کماندار: {archer_name(owned.archer.name, owned.archer.emoji)}\n\n"
+            f"● وضعیت: {escape('فعال' if getattr(owned, 'is_equipped', True) else 'غیرفعال')}\n"
             f"● سطح: {escape(owned.level)}\n"
             f"● قدرت:\n{quote(f'{escape(power)} DMG {emoji(TARGET, "🎯")}')}"
         )
@@ -78,16 +79,15 @@ def school_overview(
 
 def buffet_entry() -> str:
     return (
-        f"{emoji(SHOP, '💞')} {bold('خرید کماندار و تیر')}\n\n"
+        f"{emoji(SHOP, '💞')} {bold('دفاع دژ')}\n\n"
         + quote(
             escape(
-                "کماندار از دژ دفاع می‌کند و با تیر به دبیرهای مهاجم آسیب می‌زند. "
-                "هر فرمانده فقط یک کماندار می‌تواند داشته باشد."
+                "کماندار با تیر و شوالیه با شمشیر از دژ دفاع می‌کنند. تیر کماندار را جداگانه تهیه کن؛ شوالیه تیر مصرف نمی‌کند و با صفرشدن جانش از دست می‌رود."
             )
         )
         + "\n\n"
-        + f"● {escape('ارتقا، فروش و انتخاب تیر،')}\n"
-        + escape("در «مدرسه من ← کماندارها» انجام می‌شود.")
+        + f"● {escape('هم‌زمان فقط یک نگهبان فعال است.')}\n"
+        + escape("ارتقا، فروش و انتخاب نگهبان از «مدرسه من» انجام می‌شود.")
     )
 
 

@@ -75,6 +75,9 @@ class UserArcher(Base):
     level: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1, server_default="1"
     )
+    is_equipped: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

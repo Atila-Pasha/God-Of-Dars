@@ -165,6 +165,47 @@ async def test_concurrent_mine_collect_consumes_window_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_full_mine_waits_for_collection_before_next_cycle() -> None:
+    user_id = await _user()
+    cap = MineService().config.mine_max_catchup_minutes
+    async with AsyncSessionLocal() as session, session.begin():
+        session.add(
+            Mine(
+                user_id=user_id,
+                level=1,
+                last_collected_at=datetime.now(UTC) - timedelta(days=2),
+                today_coin=cap * 2,
+                daily_produced_minutes=cap,
+            )
+        )
+
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            snapshot = await MineService().open(session, user_id)
+            assert snapshot.daily_produced_minutes == cap
+            assert snapshot.today_coin == cap * 2
+
+        async with AsyncSessionLocal() as session, session.begin():
+            snapshot, amounts = await MineService().collect(
+                session, user_id, resource_type=ResourceType.COIN
+            )
+            assert amounts == (cap * 2, 0, 0)
+            assert snapshot.daily_produced_minutes == 0
+
+        async with AsyncSessionLocal() as session, session.begin():
+            mine = await session.scalar(select(Mine).where(Mine.user_id == user_id))
+            assert mine is not None
+            mine.last_collected_at -= timedelta(minutes=10)
+
+        async with AsyncSessionLocal() as session, session.begin():
+            snapshot = await MineService().open(session, user_id)
+            assert snapshot.daily_produced_minutes == 10
+            assert snapshot.today_coin == 20
+    finally:
+        await _cleanup([user_id])
+
+
+@pytest.mark.asyncio
 async def test_concurrent_study_start_has_one_active_session() -> None:
     user_id = await _user()
     pack_key = f"concurrency-{uuid4().hex[:12]}"
@@ -993,10 +1034,14 @@ async def test_attack_resource_lock_prevents_stale_reward_overwrite() -> None:
     original_receive = service.castle_service.receive_attack_damage
 
     async def receive_and_pause(
-        session, user_id, incoming_damage, *, teacher_names=None
+        session, user_id, incoming_damage, *, teacher_names=None, ignore_shield=False
     ):
         result = await original_receive(
-            session, user_id, incoming_damage, teacher_names=teacher_names
+            session,
+            user_id,
+            incoming_damage,
+            teacher_names=teacher_names,
+            ignore_shield=ignore_shield,
         )
         paused.set()
         await reward_started.wait()
@@ -1377,8 +1422,8 @@ async def test_notification_outbox_is_idempotent_and_two_workers_send_once() -> 
     try:
         await asyncio.gather(enqueue(), enqueue())
         await asyncio.gather(
-            process_due_notifications(bot, batch_size=1),
-            process_due_notifications(bot, batch_size=1),
+            process_due_notifications(bot, batch_size=1, recipient_user_id=user_id),
+            process_due_notifications(bot, batch_size=1, recipient_user_id=user_id),
         )
         assert bot.send_message.await_count == 1
         async with AsyncSessionLocal() as session:
@@ -1407,7 +1452,7 @@ async def test_notification_failure_retries_and_preserves_idempotency() -> None:
                 idempotency_key="TEST:notification:retry",
                 payload={"chat_id": 123, "text": "retry"},
             )
-        await process_due_notifications(bot, batch_size=1)
+        await process_due_notifications(bot, batch_size=1, recipient_user_id=user_id)
         async with AsyncSessionLocal() as session, session.begin():
             row = await session.scalar(
                 select(Notification)
@@ -1415,7 +1460,7 @@ async def test_notification_failure_retries_and_preserves_idempotency() -> None:
                 .with_for_update()
             )
             row.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
-        await process_due_notifications(bot, batch_size=1)
+        await process_due_notifications(bot, batch_size=1, recipient_user_id=user_id)
         async with AsyncSessionLocal() as session:
             row = await session.scalar(
                 select(Notification).where(
@@ -1449,7 +1494,7 @@ async def test_notification_crash_window_is_at_least_once() -> None:
                 idempotency_key="TEST:notification:crash-window",
                 payload={"chat_id": 123, "text": "may duplicate"},
             )
-        await process_due_notifications(bot, batch_size=1)
+        await process_due_notifications(bot, batch_size=1, recipient_user_id=user_id)
         async with AsyncSessionLocal() as session, session.begin():
             row = await session.scalar(
                 select(Notification)
@@ -1457,7 +1502,7 @@ async def test_notification_crash_window_is_at_least_once() -> None:
                 .with_for_update()
             )
             row.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
-        await process_due_notifications(bot, batch_size=1)
+        await process_due_notifications(bot, batch_size=1, recipient_user_id=user_id)
         assert len(deliveries) == 2
     finally:
         await _cleanup([user_id])
@@ -1481,7 +1526,7 @@ async def test_stale_processing_notification_is_recovered_after_worker_restart()
                 processing_at=datetime.now(UTC) - timedelta(hours=1),
             )
             session.add(row)
-        await process_due_notifications(bot, batch_size=1)
+        await process_due_notifications(bot, batch_size=1, recipient_user_id=user_id)
         async with AsyncSessionLocal() as session:
             row = await session.scalar(
                 select(Notification).where(
@@ -1496,7 +1541,10 @@ async def test_stale_processing_notification_is_recovered_after_worker_restart()
 
 
 @pytest.mark.asyncio
-async def test_shield_activation_and_attack_resolution_are_serializable() -> None:
+@pytest.mark.parametrize("shield_before_resolution", [True, False])
+async def test_shield_activation_does_not_cancel_pending_attack(
+    shield_before_resolution: bool,
+) -> None:
     attacker_id = await _user()
     target_id = await _user(coin=10)
     attack_id = shield_id = teacher_id = None
@@ -1551,15 +1599,22 @@ async def test_shield_activation_and_attack_resolution_are_serializable() -> Non
             await ShieldService().buy(session, target_id, shield_id)
 
     try:
-        results = await asyncio.gather(resolve(), activate(), return_exceptions=True)
-        assert not [result for result in results if isinstance(result, Exception)]
+        if shield_before_resolution:
+            await activate()
+            await resolve()
+        else:
+            results = await asyncio.gather(
+                resolve(), activate(), return_exceptions=True
+            )
+            assert not [result for result in results if isinstance(result, Exception)]
         async with AsyncSessionLocal() as session:
             attack = await session.get(Attack, attack_id)
             assert attack.status is AttackStatus.RESOLVED
+            assert attack.result_damage > 0
             castle_strength = await session.scalar(
                 select(Castle.strength).where(Castle.user_id == target_id)
             )
-            assert 0 <= castle_strength <= 100
+            assert castle_strength == 100 - attack.result_damage
             assert await session.scalar(
                 select(func.count(Transaction.id)).where(
                     Transaction.reference_type == "ATTACK",

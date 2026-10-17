@@ -5,6 +5,7 @@ import logging
 import re
 from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
+from typing import cast
 
 from aiogram import Bot, F, Router
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -51,6 +52,7 @@ from app.core.config import settings
 from app.core.enums import ResourceType
 from app.models.archer import Archer, ArrowPack
 from app.models.daily_quest import QUEST_TYPES
+from app.models.knight import Knight
 from app.models.study_pack import StudyPack
 from app.models.user import User
 from app.repositories.bot_settings import BotSettingsRepository
@@ -102,6 +104,18 @@ ARCHER_FIELDS = (
     ("sticker", "استیکر را بفرستید؛ برای خالی -"),
     ("description", "توضیح؛ برای خالی -"),
 )
+KNIGHT_FIELDS = (
+    ("name", "نام شوالیه"),
+    ("power", "قدرت پایه شمشیر"),
+    ("max_hp", "جان پایه شوالیه"),
+    ("purchase_price", "قیمت خرید"),
+    ("purchase_resource", "ارز خرید: COIN یا DIAMOND"),
+    ("upgrade_price", "قیمت پایه ارتقا به الماس"),
+    ("unlock_level", "سطح بازشدن"),
+    ("emoji", "شناسه اموجی سفارشی یا اموجی معمولی؛ برای خالی -"),
+    ("sticker", "استیکر را بفرستید؛ برای خالی -"),
+    ("description", "توضیح؛ برای خالی -"),
+)
 ARROW_FIELDS = (
     ("name", "نام پک تیر"),
     ("power", "قدرت هر تیر"),
@@ -117,20 +131,21 @@ def _catalog_value(field: str, value: str) -> object:
     value = value.strip()
     if field in {
         "power",
+        "max_hp",
         "quantity",
         "purchase_price",
         "upgrade_price",
         "unlock_level",
     }:
-        parsed = int(value)
-        if parsed < (1 if field in {"quantity", "unlock_level"} else 0):
+        amount = int(value)
+        if amount < (1 if field in {"quantity", "unlock_level", "max_hp"} else 0):
             raise ValueError("مقدار باید مثبت باشد.")
-        return parsed
+        return amount
     if field == "purchase_resource":
-        parsed = ResourceType(value.upper())
-        if parsed not in (ResourceType.COIN, ResourceType.DIAMOND):
+        currency = ResourceType(value.upper())
+        if currency not in (ResourceType.COIN, ResourceType.DIAMOND):
             raise ValueError("فقط COIN یا DIAMOND مجاز است.")
-        return parsed
+        return currency
     if field == "name" and not value:
         raise ValueError("نام نمی‌تواند خالی باشد.")
     if field in {"emoji", "sticker", "description"} and value == "-":
@@ -138,14 +153,20 @@ def _catalog_value(field: str, value: str) -> object:
     return value
 
 
-@router.message(F.text.in_(button_labels("🏹 کماندارها", "🎯 پک‌های تیر")))
+@router.message(F.text.in_(button_labels("🏹 کماندارها", "🎯 پک‌های تیر", "⚔️ شوالیه‌ها")))
 async def archer_admin_list(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
     if not allowed(message):
         return
     await state.clear()
-    kind = "pack" if "تیر" in (message.text or "") else "archer"
+    kind = (
+        "pack"
+        if "تیر" in (message.text or "")
+        else "knight"
+        if "شوالیه" in (message.text or "")
+        else "archer"
+    )
     rows = await _archer_rows(session, kind)
     await message.answer(
         _archer_list_text(kind, rows), reply_markup=keyboards.archer_catalog(kind, rows)
@@ -153,11 +174,27 @@ async def archer_admin_list(
 
 
 def _archer_fields(kind: str):
-    return ARROW_FIELDS if kind == "pack" else ARCHER_FIELDS
+    return (
+        ARROW_FIELDS
+        if kind == "pack"
+        else KNIGHT_FIELDS
+        if kind == "knight"
+        else ARCHER_FIELDS
+    )
 
 
-def _archer_model(kind: str):
-    return ArrowPack if kind == "pack" else Archer
+CatalogItem = Archer | ArrowPack | Knight
+CatalogModel = type[Archer] | type[ArrowPack] | type[Knight]
+
+
+def _archer_model(kind: str) -> CatalogModel:
+    return ArrowPack if kind == "pack" else Knight if kind == "knight" else Archer
+
+
+async def _catalog_item(
+    session: AsyncSession, model: CatalogModel, item_id: int
+) -> CatalogItem | None:
+    return cast(CatalogItem | None, await session.get(model, item_id))
 
 
 async def _archer_rows(session: AsyncSession, kind: str):
@@ -166,14 +203,20 @@ async def _archer_rows(session: AsyncSession, kind: str):
 
 
 def _archer_list_text(kind: str, rows) -> str:
-    title = "🎯 پک‌های تیر" if kind == "pack" else "🏹 کماندارها"
+    title = (
+        "🎯 پک‌های تیر"
+        if kind == "pack"
+        else "⚔️ شوالیه‌ها"
+        if kind == "knight"
+        else "🏹 کماندارها"
+    )
     return f"{title}\n{len(rows)} مورد ثبت‌شده. برای مدیریت، یکی را انتخاب کنید."
 
 
 def _archer_detail(item, kind: str) -> str:
     labels = _archer_fields(kind)
     lines = [
-        f"{'🎯 پک تیر' if kind == 'pack' else '🏹 کماندار'} #{item.id}: {item.name}"
+        f"{'🎯 پک تیر' if kind == 'pack' else '⚔️ شوالیه' if kind == 'knight' else '🏹 کماندار'} #{item.id}: {item.name}"
     ]
     for field, label in labels:
         value = getattr(item, field)
@@ -229,11 +272,19 @@ async def _archer_show_review(message: Message, kind: str, values: dict) -> None
     )
 
 
-@router.message(F.text.in_(button_labels("➕ کماندار جدید", "➕ پک تیر جدید")))
+@router.message(
+    F.text.in_(button_labels("➕ کماندار جدید", "➕ پک تیر جدید", "➕ شوالیه جدید"))
+)
 async def archer_admin_start(message: Message, state: FSMContext) -> None:
     if not allowed(message):
         return
-    kind = "pack" if "تیر" in (message.text or "") else "archer"
+    kind = (
+        "pack"
+        if "تیر" in (message.text or "")
+        else "knight"
+        if "شوالیه" in (message.text or "")
+        else "archer"
+    )
     await state.set_state(ArcherStates.value)
     await state.update_data(kind=kind, index=0, values={})
     await message.answer(
@@ -335,7 +386,7 @@ async def archer_admin_edit_value(
             (
                 entity.custom_emoji_id
                 for entity in message.entities
-                if entity.type == "custom_emoji"
+                if entity.type == "custom_emoji" and entity.custom_emoji_id
             ),
             raw,
         )
@@ -351,7 +402,7 @@ async def archer_admin_edit_value(
             ),
         )
         return
-    item = await session.get(_archer_model(kind), item_id)
+    item = await _catalog_item(session, _archer_model(kind), item_id)
     if item is None:
         await state.clear()
         await message.answer("آیتم پیدا نشد.")
@@ -376,7 +427,7 @@ async def archer_admin_callback(
     ):
         return
     parts = callback.data.split(":")
-    if len(parts) < 3 or parts[1] not in {"archer", "pack"}:
+    if len(parts) < 3 or parts[1] not in {"archer", "pack", "knight"}:
         await callback.answer("دکمه نامعتبر است.", show_alert=True)
         return
     kind, action = parts[1:3]
@@ -398,7 +449,7 @@ async def archer_admin_callback(
     elif (
         action in {"open", "edit", "toggle"} and len(parts) == 4 and parts[3].isdigit()
     ):
-        item = await session.get(model, int(parts[3]))
+        item = await _catalog_item(session, model, int(parts[3]))
         if item is None:
             await callback.answer("آیتم پیدا نشد.", show_alert=True)
             return
@@ -422,7 +473,7 @@ async def archer_admin_callback(
         and parts[3].isdigit()
         and parts[4] in dict(fields)
     ):
-        item = await session.get(model, int(parts[3]))
+        item = await _catalog_item(session, model, int(parts[3]))
         if item is None:
             await callback.answer("آیتم پیدا نشد.", show_alert=True)
             return
@@ -466,7 +517,7 @@ async def archer_admin_callback(
                     )
             else:
                 await state.clear()
-                item = await session.get(model, int(data["item_id"]))
+                item = await _catalog_item(session, model, int(data["item_id"]))
                 if item:
                     await message.edit_text(
                         f"ویرایش «{item.name}»؛ فیلد را انتخاب کنید:",
@@ -475,7 +526,7 @@ async def archer_admin_callback(
                         ),
                     )
         elif action == "save" and create and int(data["index"]) == len(fields):
-            item = model(**data["values"])
+            item = cast(CatalogItem, model(**data["values"]))
             session.add(item)
             await session.commit()
             await state.clear()
@@ -509,7 +560,7 @@ async def archer_admin_callback(
                         message, kind, fields[index][0], create=True
                     )
             else:
-                item = await session.get(model, int(data["item_id"]))
+                item = await _catalog_item(session, model, int(data["item_id"]))
                 if item is None:
                     await callback.answer("آیتم پیدا نشد.", show_alert=True)
                     return
@@ -531,16 +582,37 @@ async def archer_admin_callback(
     await callback.answer()
 
 
-@router.message(Command("archer_edit", "pack_edit", "archer_toggle", "pack_toggle"))
+@router.message(
+    Command(
+        "archer_edit",
+        "pack_edit",
+        "knight_edit",
+        "archer_toggle",
+        "pack_toggle",
+        "knight_toggle",
+    )
+)
 async def archer_admin_edit(message: Message, session: AsyncSession) -> None:
     if not allowed(message):
         return
     parts = (message.text or "").split(maxsplit=3)
     command = parts[0].split("@")[0]
-    model = ArrowPack if command.startswith("/pack") else Archer
-    fields = dict(ARROW_FIELDS if model is ArrowPack else ARCHER_FIELDS)
+    model: type[Archer] | type[ArrowPack] | type[Knight] = (
+        ArrowPack
+        if command.startswith("/pack")
+        else Knight
+        if command.startswith("/knight")
+        else Archer
+    )
+    fields = dict(
+        ARROW_FIELDS
+        if model is ArrowPack
+        else KNIGHT_FIELDS
+        if model is Knight
+        else ARCHER_FIELDS
+    )
     try:
-        item = await session.get(model, int(parts[1]))
+        item = await _catalog_item(session, model, int(parts[1]))
         if item is None:
             raise ValueError("آیتم پیدا نشد.")
         if command.endswith("toggle"):
@@ -1478,6 +1550,16 @@ async def user_callback(
         )
         await callback.answer()
         return
+    if action == "message":
+        await state.update_data(user_id=user_id)
+        await state.set_state(UserStates.direct_message)
+        await callback.message.answer(
+            f"پیام برای {user.first_name or 'کاربر'} (شناسه تلگرام: {user.telegram_user_id}) را بفرستید.\n"
+            "متن یا عکس همراه کپشن پذیرفته می‌شود. برای انصراف، لغو را بزنید.",
+            reply_markup=keyboards.cancel_keyboard(),
+        )
+        await callback.answer()
+        return
     if action != "resources":
         await callback.answer("عملیات نامعتبر است.", show_alert=True)
         return
@@ -1485,6 +1567,55 @@ async def user_callback(
     await state.set_state(UserStates.resource_coin)
     await callback.message.answer("چقدر سکه اضافه کنم؟\nبرای صفر، 0 بفرستید.")
     await callback.answer()
+
+
+@router.message(UserStates.direct_message)
+async def user_direct_message(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message):
+        return
+    if not message.text and not message.photo:
+        await message.answer("فقط پیام متنی یا عکس همراه کپشن قابل ارسال است.")
+        return
+    data = await state.get_data()
+    user = await service.get_user(session, data["user_id"])
+    if user is None:
+        await state.clear()
+        await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.users_menu())
+        return
+    main_session = AiohttpSession(
+        proxy=settings.TELEGRAM_PROXY,
+        limit=settings.TELEGRAM_HTTP_LIMIT,
+    )
+    try:
+        async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
+            if message.photo:
+                buffer = BytesIO()
+                if message.bot is None:
+                    raise RuntimeError("Telegram bot context is missing")
+                await message.bot.download(
+                    message.photo[-1].file_id, destination=buffer
+                )
+                await main_bot.send_photo(
+                    chat_id=user.telegram_user_id,
+                    photo=BufferedInputFile(buffer.getvalue(), filename="message.jpg"),
+                    caption=message.caption,
+                )
+            else:
+                if message.text is None:
+                    raise RuntimeError("Direct message text is missing")
+                await main_bot.send_message(
+                    chat_id=user.telegram_user_id,
+                    text=message.text,
+                )
+    except TelegramAPIError:
+        await message.answer("ارسال پیام ممکن نشد؛ کاربر شاید ربات را مسدود کرده باشد.")
+        return
+    await state.clear()
+    await message.answer(
+        "✅ پیام برای کاربر ارسال شد.", reply_markup=keyboards.users_menu()
+    )
 
 
 @router.message(UserStates.level_increase)
@@ -1577,7 +1708,8 @@ async def resource_diamond(
         await message.answer(str(exc))
         return
     await state.update_data(diamond=value)
-    await save_resources(message, state, session)
+    await state.set_state(UserStates.resource_banana)
+    await message.answer("چقدر موز اضافه کنم؟\nبرای صفر، 0 بفرستید.")
 
 
 @router.message(UserStates.resource_banana)
@@ -1586,19 +1718,24 @@ async def save_resources(
 ) -> None:
     if not allowed(message) or not message.text:
         return
+    try:
+        banana = number(message.text, "مقدار موز")
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
     data = await state.get_data()
     user = await service.add_resources(
         session,
         data["user_id"],
         coin=data["coin"],
         diamond=data["diamond"],
-        banana=0,
+        banana=banana,
     )
     await state.clear()
     if user is None:
         await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.users_menu())
         return
-    amounts = f"🪙 {data['coin']} سکه و 💎 {data['diamond']} الماس"
+    amounts = f"🪙 {data['coin']} سکه، 💎 {data['diamond']} الماس و 🍌 {banana} موز"
     await message.answer(
         "منابع با موفقیت اضافه شد.\n" + user_text(user),
         reply_markup=keyboards.users_menu(),

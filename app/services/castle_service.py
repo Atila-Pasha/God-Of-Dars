@@ -204,15 +204,19 @@ class CastleService:
         incoming_damage: int,
         *,
         teacher_names: tuple[str, ...] | None = None,
+        ignore_shield: bool = False,
     ) -> CastleDamageResult:
-        """Apply incoming damage after consuming the equipped buffet shield."""
+        """Apply damage; pending attacks already passed the launch-time shield check."""
         castle = await self.repository.get_by_user(session, user_id, for_update=True)
         if castle is None:
             raise CastleNotFound
         mitigation = (
             ShieldMitigation(incoming_damage, 0, incoming_damage)
-            if castle.strength == 0
-            and not await self.shield_service.has_free_shield(session, user_id)
+            if ignore_shield
+            or (
+                castle.strength == 0
+                and not await self.shield_service.has_free_shield(session, user_id)
+            )
             else await self.shield_service.consume_for_attack(
                 session, user_id, incoming_damage, teacher_names=teacher_names
             )

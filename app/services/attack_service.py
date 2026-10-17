@@ -19,9 +19,10 @@ from app.models.user_teacher import UserTeacher
 from app.repositories.castle import CastleRepository
 from app.repositories.teacher import TeacherRepository
 from app.repositories.user import UserRepository
-from app.services.archer_service import ArcherService
+from app.services.archer_service import ArcherHit, ArcherService
 from app.services.castle_service import CastleService
 from app.services.daily_quest_service import DailyQuestService
+from app.services.knight_service import KnightHit, KnightService
 from app.services.lock_order import lock_attack_dependencies, lock_users_ordered
 from app.services.mine_service import MineService
 from app.services.resource_service import ResourceService
@@ -77,6 +78,7 @@ class AttackResult:
     mine_loot_diamond: int = 0
     archer_hits: tuple[tuple[str, str | None, str, str, str | None, int], ...] = ()
     archer_stickers: tuple[str, ...] = ()
+    knight_died: bool = False
 
 
 @dataclass(frozen=True)
@@ -143,6 +145,7 @@ class AttackService:
         self.castle_service = CastleService(self.castles, config=self.config)
         self.mine_service = MineService(config=self.config)
         self.archer_service = ArcherService()
+        self.knight_service = KnightService()
 
     @staticmethod
     async def _ensure_no_active_attack(session: AsyncSession, attacker_id: int) -> None:
@@ -427,7 +430,7 @@ class AttackService:
         selection_is_live = selection is not None and selection.expires_at > now
         target = (
             await self.users.get_active_by_id(session, selection.target_id)
-            if selection_is_live
+            if selection is not None and selection_is_live
             else None
         )
         if selection is not None and target is not None:
@@ -449,7 +452,9 @@ class AttackService:
             attacker,
             teacher_name=teacher_name,
             recent_target_ids=recent_ids,
-            exclude_target_ids={selection.target_id} if selection_is_live else set(),
+            exclude_target_ids={selection.target_id}
+            if selection is not None and selection_is_live
+            else set(),
         )
         expires_at = now + timedelta(
             seconds=self.config.attack_rules.random_selection_ttl_seconds
@@ -794,45 +799,6 @@ class AttackService:
                 )
             )
             command_names = tuple(name for name in names if name) or command_names
-        if await self.castle_service.shield_service.has_free_shield(
-            session, target.id
-        ) or (
-            target_castle.strength > 0
-            and await self.castle_service.shield_service.has_active_shield(
-                session, target.id, command_names
-            )
-        ):
-            now = datetime.now(UTC)
-            attack.status = AttackStatus.RESOLVED
-            attack.resolved_at = now
-            attack.result_damage = 0
-            attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
-            attack.is_successful = False
-            attack.result_teacher_injury = (
-                attack.result_archer_injury
-                if attack.archer_processed_at is not None
-                else 0
-            )
-            await session.flush()
-            return AttackResult(
-                attack=attack,
-                attacker_telegram_id=attacker.telegram_user_id,
-                attacker_name=attacker.first_name,
-                target_name=target.first_name,
-                target_telegram_id=target.telegram_user_id,
-                teacher_name=teacher_name,
-                ability_text=teacher_ability,
-                castle_damage=0,
-                teacher_injury=attack.result_teacher_injury,
-                castle_strength_after=target_castle.strength,
-                loot_coin=0,
-                loot_diamond=0,
-                loot_banana=0,
-                blocked_by_shield=True,
-                teacher_details=((teacher_name, teacher_ability, teacher_icon),),
-                castle_strength_before=attack.target_castle_strength_snapshot,
-                source_chat_id=attack.source_chat_id,
-            )
         castle_damage, injury = self.config.attack_rules.resolve(
             attack.teacher_damage_snapshot,
             (
@@ -846,8 +812,19 @@ class AttackService:
             else 0,
             teacher.current_hp if teacher is not None else 0,
         )
+        guard_reduction = (
+            attack.guard_reduction_snapshot
+            if attack.archer_processed_at is not None
+            and attack.guard_reduction_snapshot > 0
+            else await self.knight_service.reduction(session, target.id)
+        )
+        castle_damage = castle_damage * (100 - guard_reduction) // 100
         castle_result = await self.castle_service.receive_attack_damage(
-            session, target.id, castle_damage, teacher_names=command_names
+            session,
+            target.id,
+            castle_damage,
+            teacher_names=command_names,
+            ignore_shield=True,
         )
         shot_index = 0
         if attack.attack_command_id is not None:
@@ -860,6 +837,7 @@ class AttackService:
                 )
                 or 0
             )
+        archer_hit: ArcherHit | KnightHit | SimpleNamespace | None
         if attack.archer_processed_at is not None:
             archer_injury = attack.result_archer_injury
             archer_hit = (
@@ -869,6 +847,7 @@ class AttackService:
                     sticker=attack.archer_sticker_snapshot,
                     arrow_name=attack.arrow_name_snapshot or "تیر",
                     damage=archer_injury,
+                    died=attack.guard_died_snapshot,
                 )
                 if attack.archer_name_snapshot and archer_injury > 0
                 else None
@@ -880,6 +859,7 @@ class AttackService:
                 max(0, (teacher.current_hp if teacher is not None else 0) - injury),
                 teacher.teacher.max_hp if teacher is not None else 0,
                 shot_index,
+                attack.teacher_damage_snapshot,
             )
             archer_injury = archer_hit.damage if archer_hit else 0
             injury += archer_injury
@@ -896,6 +876,8 @@ class AttackService:
             castle_result.castle_strength_before,
             attack.teacher_damage_snapshot,
         )
+        for key in ("loot_coin", "loot_diamond"):
+            loot[key] = loot[key] * (100 - guard_reduction) // 100
         mine_loot = await self._raid_mine(
             session,
             target,
@@ -905,6 +887,7 @@ class AttackService:
             breached=castle_result.castle_strength_after == 0
             and loot["loot_coin"] == 0
             and loot["loot_diamond"] == 0,
+            guard_reduction=guard_reduction,
         )
         empty_target_bonus = (
             self._empty_target_bonus(target, loot_damage)
@@ -939,6 +922,10 @@ class AttackService:
         )
         attack.result_teacher_injury = total_injury
         attack.result_archer_injury = archer_injury
+        attack.guard_reduction_snapshot = guard_reduction
+        attack.guard_died_snapshot = attack.guard_died_snapshot or bool(
+            getattr(archer_hit, "died", False)
+        )
         if archer_hit:
             attack.archer_name_snapshot = archer_hit.name
             attack.archer_emoji_snapshot = archer_hit.emoji
@@ -1041,6 +1028,7 @@ class AttackService:
             archer_stickers=(archer_hit.sticker,)
             if archer_hit and archer_hit.sticker
             else (),
+            knight_died=attack.guard_died_snapshot,
         )
 
     async def _selection_for_update(
@@ -1095,6 +1083,8 @@ class AttackService:
         recent_target_ids: tuple[int, ...] = (),
         exclude_target_ids: set[int] | None = None,
     ):
+        if teacher_ids is None and teacher_name is None:
+            raise TeacherNotOwned
         excluded = set(exclude_target_ids or ())
         for _ in range(5):
             target = await self._pick_random_target(
@@ -1104,13 +1094,15 @@ class AttackService:
                 recent_target_ids=recent_target_ids,
             )
             try:
-                preview = (
-                    await self._preview_by_teacher_ids(
+                if teacher_ids is not None:
+                    preview = await self._preview_by_teacher_ids(
                         session, attacker, target, teacher_ids
                     )
-                    if teacher_ids is not None
-                    else await self._preview(session, attacker, target, teacher_name)
-                )
+                else:
+                    assert teacher_name is not None
+                    preview = await self._preview(
+                        session, attacker, target, teacher_name
+                    )
             except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
                 # A shield can activate after the candidate query. Try another
                 # eligible opponent before reporting that the pool is empty.
@@ -1443,6 +1435,8 @@ class AttackService:
                 else 0,
                 teacher.current_hp,
             )
+            guard_reduction = await self.knight_service.reduction(session, target.id)
+            damage = damage * (100 - guard_reduction) // 100
             castle_damage_result = await self.castle_service.receive_attack_damage(
                 session, target.id, damage, teacher_names=names
             )
@@ -1453,6 +1447,7 @@ class AttackService:
                 max(0, teacher.current_hp - injury),
                 teacher.teacher.max_hp,
                 shot_index,
+                teacher_damage,
             )
             archer_injury = archer_hit.damage if archer_hit else 0
             injury += archer_injury
@@ -1486,6 +1481,8 @@ class AttackService:
                 castle_damage_result.castle_strength_before,
                 teacher_damage,
             )
+            for key in ("loot_coin", "loot_diamond"):
+                loot[key] = loot[key] * (100 - guard_reduction) // 100
             mine_loot = await self._raid_mine(
                 session,
                 target,
@@ -1495,6 +1492,7 @@ class AttackService:
                 breached=castle_damage_result.castle_strength_after == 0
                 and loot["loot_coin"] == 0
                 and loot["loot_diamond"] == 0,
+                guard_reduction=guard_reduction,
             )
             # XP is awarded once per attack command, not once per selected
             # teacher. Resource loot remains per actual castle damage.
@@ -1525,6 +1523,8 @@ class AttackService:
                 is_successful=loot_damage > 0,
                 result_teacher_injury=injury,
                 result_archer_injury=archer_injury,
+                guard_reduction_snapshot=guard_reduction,
+                guard_died_snapshot=bool(getattr(archer_hit, "died", False)),
                 archer_name_snapshot=archer_hit.name if archer_hit else None,
                 archer_emoji_snapshot=archer_hit.emoji if archer_hit else None,
                 archer_sticker_snapshot=archer_hit.sticker if archer_hit else None,
@@ -1629,6 +1629,7 @@ class AttackService:
                     if row[0].archer_sticker_snapshot
                 )
             ),
+            knight_died=any(row[0].guard_died_snapshot for row in teacher_results),
         )
 
     async def _ensure_target_attackable(
@@ -1660,6 +1661,7 @@ class AttackService:
         castle_strength: int,
         attack_power: int,
         breached: bool,
+        guard_reduction: int = 0,
     ) -> tuple[int, int]:
         """Take uncollected mine cargo only after the castle has fallen."""
         if not breached or loot_damage <= 0:
@@ -1679,6 +1681,8 @@ class AttackService:
             diamond_balance=mine.today_diamond,
         )
         coin, diamond = loot["loot_coin"], loot["loot_diamond"]
+        coin = coin * (100 - guard_reduction) // 100
+        diamond = diamond * (100 - guard_reduction) // 100
         mine.today_coin -= coin
         mine.today_diamond -= diamond
         return coin, diamond
@@ -1687,7 +1691,7 @@ class AttackService:
         mine = await session.scalar(select(Mine).where(Mine.user_id == target_id))
         if mine is None:
             return None
-        cargo = SimpleNamespace(
+        cargo = Mine(
             level=mine.level,
             last_collected_at=mine.last_collected_at,
             today=mine.today,

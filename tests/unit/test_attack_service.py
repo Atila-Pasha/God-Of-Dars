@@ -36,6 +36,24 @@ async def test_castle_damage_never_exceeds_remaining_strength() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pending_attack_damage_ignores_shield_activated_midflight() -> None:
+    castle = SimpleNamespace(strength=100)
+    service = CastleService()
+    service.repository = SimpleNamespace(get_by_user=AsyncMock(return_value=castle))
+    service.shield_service = SimpleNamespace(
+        has_free_shield=AsyncMock(return_value=True),
+        consume_for_attack=AsyncMock(),
+    )
+    session = SimpleNamespace(flush=AsyncMock())
+
+    result = await service.receive_attack_damage(session, 1, 30, ignore_shield=True)
+
+    assert (result.applied_damage, result.castle_strength_after) == (30, 70)
+    service.shield_service.has_free_shield.assert_not_awaited()
+    service.shield_service.consume_for_attack.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_destroyed_castle_has_no_battle_defense() -> None:
     service = CastleService()
     service.snapshot = AsyncMock(
@@ -46,6 +64,21 @@ async def test_destroyed_castle_has_no_battle_defense() -> None:
 
     assert battle.defense_power == 0
     assert AttackRules().resolve(20, battle.defense_power, 100) == (20, 0)
+
+
+def test_castle_defense_cannot_cancel_an_entire_teacher_attack() -> None:
+    rules = AttackRules()
+
+    assert rules.resolve(75, 25, 100) == (50, 6)
+    assert rules.resolve(75, 100, 100) == (23, 25)
+    assert rules.resolve(75, 100_000, 100)[0] == 23
+    assert rules.resolve(1, 100_000, 1)[0] == 1
+    assert rules.resolve(0, 100_000, 1)[0] == 0
+
+
+def test_castle_defense_absorption_cap_must_leave_room_for_damage() -> None:
+    with pytest.raises(ValueError):
+        AttackRules(max_defense_absorption_ratio=1.0)
 
 
 @pytest.mark.parametrize(
@@ -131,7 +164,9 @@ async def test_attack_preview_rejects_a_target_with_an_active_shield():
     service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=100))
     service.castle_service.shield_service = SimpleNamespace(
         has_free_shield=AsyncMock(return_value=False),
-        active_shield=AsyncMock(return_value=SimpleNamespace(name="سپر آبی", sticker="file-id")),
+        active_shield=AsyncMock(
+            return_value=SimpleNamespace(name="سپر آبی", sticker="file-id")
+        ),
     )
 
     with pytest.raises(TargetProtectedByShield) as error:
@@ -143,9 +178,7 @@ async def test_attack_preview_rejects_a_target_with_an_active_shield():
         )
 
     assert (error.value.shield_name, error.value.sticker) == ("سپر آبی", "file-id")
-    service.castle_service.shield_service.active_shield.assert_awaited_once_with(
-        ANY, 2
-    )
+    service.castle_service.shield_service.active_shield.assert_awaited_once_with(ANY, 2)
 
 
 def test_loot_is_capped_by_teacher_power_not_target_wealth():

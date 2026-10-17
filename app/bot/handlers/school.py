@@ -7,6 +7,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
+    InaccessibleMessage,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -47,12 +48,14 @@ from app.bot.keyboards.school import (
     hospital_keyboard,
     school_archers_keyboard,
     school_keyboard,
+    school_knights_keyboard,
     teacher_catalog_keyboard,
     teacher_catalog_page_keyboard,
     teacher_detail_keyboard,
     teacher_purchase_back_keyboard,
     teachers_keyboard,
 )
+from app.bot.knight_banners import school_overview as knight_school_overview
 from app.bot.progress import premium_capacity_bar, premium_progress_bar
 from app.bot.teacher_lookup import (
     BUYABLE_TEACHERS_QUERY,
@@ -69,6 +72,7 @@ from app.core.game_logic import GameConfigurationError
 from app.models.user_teacher import UserTeacher
 from app.services.archer_service import ArcherService
 from app.services.castle_service import CastleService
+from app.services.knight_service import KnightService
 from app.services.recovery_service import HospitalService
 from app.services.school_errors import (
     AttackInProgress,
@@ -96,6 +100,7 @@ castle_service = CastleService()
 teacher_service = TeacherService()
 hospital_service = HospitalService()
 archer_service = ArcherService()
+knight_service = KnightService()
 
 SCHOOL_LABEL = next(
     label for label, section in MENU_SECTION_BY_LABEL.items() if section == "school"
@@ -381,7 +386,19 @@ async def _archers_view(target: CallbackQuery, session: AsyncSession) -> None:
         reply_markup=school_archers_keyboard(
             getattr(owned[0], "id", None) if owned else None,
             has_arrows=bool(arrows),
+            equipped=getattr(owned[0], "is_equipped", True) if owned else True,
         ),
+        parse_mode=MARKDOWN_V2,
+    )
+
+
+async def _knights_view(target: CallbackQuery, session: AsyncSession) -> None:
+    user = await _user(session, target.from_user.id)
+    owned = await knight_service.owned(session, user.id)
+    await _send_or_edit(
+        target,
+        knight_school_overview(owned),
+        reply_markup=school_knights_keyboard(owned),
         parse_mode=MARKDOWN_V2,
     )
 
@@ -823,7 +840,11 @@ async def school_callback_handler(
     callback_data: SchoolCallback,
     session: AsyncSession,
 ) -> None:
-    if callback.from_user is None:
+    if (
+        callback.from_user is None
+        or callback.message is None
+        or isinstance(callback.message, InaccessibleMessage)
+    ):
         await callback.answer()
         return
     try:
@@ -833,6 +854,8 @@ async def school_callback_handler(
             await _teachers_view(callback, session)
         elif callback_data.action == "archers":
             await _archers_view(callback, session)
+        elif callback_data.action == "knights":
+            await _knights_view(callback, session)
         elif callback_data.action == "hospital":
             await _hospital_view(callback, session)
         elif callback_data.action == "school":
@@ -1114,7 +1137,11 @@ async def confirmation_callback_handler(
     callback_data: ConfirmationCallback,
     session: AsyncSession,
 ) -> None:
-    if callback.from_user is None:
+    if (
+        callback.from_user is None
+        or callback.message is None
+        or isinstance(callback.message, InaccessibleMessage)
+    ):
         await callback.answer()
         return
     group_castle_repair_request = (

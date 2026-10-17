@@ -11,10 +11,10 @@ GAME_GROUP_EMOJI_ID = "5453957997418004470"
 MENU_SECTIONS = (
     ("مدرسه من", "school", "5825697157872623308"),
     ("کتابخانه", "library", "5825629907274703191"),
-    ("بوفه", "buffet", "5823511728188563725"),
     ("معدن منابع", "mine", "5823474022670671455"),
-    ("پروفایل", "profile", "5825647731388981287"),
     ("فعالیت‌های روزانه", "daily", "5825898080737697438"),
+    ("بوفه", "buffet", "5823511728188563725"),
+    ("پروفایل", "profile", "5825647731388981287"),
     ("حمله", "attack", "5823192436024813346"),
     ("گروه بازی", "game_group", GAME_GROUP_EMOJI_ID),
 )
@@ -35,7 +35,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             button.icon_custom_emoji_id = custom_emoji_id
         buttons.append(button)
 
-    keyboard = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    keyboard = [buttons[:3], buttons[3:6], [buttons[6]], [buttons[7]]]
 
     return ReplyKeyboardMarkup(
         keyboard=keyboard,

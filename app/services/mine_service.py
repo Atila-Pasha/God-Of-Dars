@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, time, timedelta
-from math import ceil
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -107,36 +106,13 @@ class MineService:
         last = mine.last_collected_at
         if last.tzinfo is None:
             last = last.replace(tzinfo=UTC)
-        current_day = now.astimezone(self.DAY_TIMEZONE).date()
         limit = self.config.mine_max_catchup_minutes
         elapsed_minutes = max(0, int((now - last).total_seconds() // 60))
-        capped = elapsed_minutes > limit
-        elapsed_minutes = min(elapsed_minutes, limit)
-        start = now - timedelta(minutes=elapsed_minutes) if capped else last
-        end = start + timedelta(minutes=elapsed_minutes)
-        midnight = datetime.combine(
-            current_day, time.min, tzinfo=self.DAY_TIMEZONE
-        ).astimezone(UTC)
-        today_minutes = min(
-            elapsed_minutes,
-            max(0, ceil((end - max(start, midnight)).total_seconds() / 60)),
-        )
-        previous_minutes = elapsed_minutes - today_minutes
-        start_day = start.astimezone(self.DAY_TIMEZONE).date()
-        previous_used = (
-            (mine.daily_produced_minutes or 0)
-            if mine.today == start_day and start_day != current_day
-            else 0
-        )
-        previous_credit = min(previous_minutes, max(0, limit - previous_used))
-        current_used = (
-            (mine.daily_produced_minutes or 0) if mine.today == current_day else 0
-        )
-        current_credit = min(today_minutes, max(0, limit - current_used))
-        mine.today = current_day
-        # The today_* fields are uncollected cargo and persist across midnight.
-        mine.daily_produced_minutes = current_used + current_credit
-        credited_minutes = previous_credit + current_credit
+        used_minutes = min(limit, max(0, mine.daily_produced_minutes or 0))
+        credited_minutes = min(elapsed_minutes, limit - used_minutes)
+        mine.daily_produced_minutes = used_minutes + credited_minutes
+        # Cargo and the production cap survive midnight until the player collects.
+        mine.today = now.astimezone(self.DAY_TIMEZONE).date()
         if elapsed_minutes == 0:
             return 0
         production = self._production(mine)
@@ -150,8 +126,12 @@ class MineService:
             if amount == 0:
                 continue
             setattr(mine, f"today_{field}", getattr(mine, f"today_{field}") + amount)
-        # Discard old backlog once the catch-up ceiling is reached.
-        mine.last_collected_at = now if capped or credited_minutes == 0 else end
+        # Once full, discard idle time so the next cycle begins at collection.
+        mine.last_collected_at = (
+            now
+            if mine.daily_produced_minutes >= limit
+            else last + timedelta(minutes=credited_minutes)
+        )
         return credited_minutes
 
     async def collect(
@@ -212,6 +192,9 @@ class MineService:
         mine.today_diamond -= amounts[1]
         mine.today_banana -= amounts[2]
         if any(amounts):
+            if mine.daily_produced_minutes >= self.config.mine_max_catchup_minutes:
+                mine.daily_produced_minutes = 0
+                mine.last_collected_at = datetime.now(UTC)
             mine.collection_count += 1
             await DailyQuestService().record_event(
                 session,

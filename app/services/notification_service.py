@@ -43,31 +43,35 @@ class NotificationService:
         now: datetime,
         stale_before: datetime,
         batch_size: int,
+        recipient_user_id: int | None = None,
     ) -> list[Notification]:
         """Atomically lease due notifications without blocking peer workers."""
+        statement = select(Notification).where(
+            or_(
+                and_(
+                    Notification.status == NotificationStatus.PENDING,
+                    or_(
+                        Notification.next_attempt_at.is_(None),
+                        Notification.next_attempt_at <= now,
+                    ),
+                ),
+                and_(
+                    Notification.status == NotificationStatus.FAILED,
+                    Notification.next_attempt_at <= now,
+                ),
+                and_(
+                    Notification.status == NotificationStatus.PROCESSING,
+                    Notification.processing_at <= stale_before,
+                ),
+            ),
+        )
+        if recipient_user_id is not None:
+            statement = statement.where(
+                Notification.recipient_user_id == recipient_user_id
+            )
         rows = list(
             await session.scalars(
-                select(Notification)
-                .where(
-                    or_(
-                        and_(
-                            Notification.status == NotificationStatus.PENDING,
-                            or_(
-                                Notification.next_attempt_at.is_(None),
-                                Notification.next_attempt_at <= now,
-                            ),
-                        ),
-                        and_(
-                            Notification.status == NotificationStatus.FAILED,
-                            Notification.next_attempt_at <= now,
-                        ),
-                        and_(
-                            Notification.status == NotificationStatus.PROCESSING,
-                            Notification.processing_at <= stale_before,
-                        ),
-                    ),
-                )
-                .order_by(Notification.created_at, Notification.id)
+                statement.order_by(Notification.created_at, Notification.id)
                 .limit(batch_size)
                 .with_for_update(skip_locked=True)
             )

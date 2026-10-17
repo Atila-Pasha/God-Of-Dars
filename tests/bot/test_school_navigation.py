@@ -62,7 +62,8 @@ async def test_school_next_level_preserves_shield_custom_emoji(monkeypatch) -> N
 
 def test_school_buttons_use_requested_custom_emojis() -> None:
     castle, teachers = school_keyboard().inline_keyboard[0]
-    archers, hospital = school_keyboard().inline_keyboard[1]
+    knight, archers = school_keyboard().inline_keyboard[1]
+    hospital = school_keyboard().inline_keyboard[2][0]
     assert (castle.text, castle.icon_custom_emoji_id) == (
         "دژ",
         "5825546447470206916",
@@ -70,6 +71,10 @@ def test_school_buttons_use_requested_custom_emojis() -> None:
     assert (teachers.text, teachers.icon_custom_emoji_id) == (
         "دبیرها",
         "5915633360734002967",
+    )
+    assert (knight.text, knight.icon_custom_emoji_id) == (
+        "شوالیه",
+        "5372804525935567057",
     )
     assert (archers.text, archers.icon_custom_emoji_id) == (
         "کماندارها",

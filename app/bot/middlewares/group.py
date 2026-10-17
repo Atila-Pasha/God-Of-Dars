@@ -10,6 +10,7 @@ from aiogram.types import (
     CallbackQuery,
     Chat,
     ChatMemberUpdated,
+    InaccessibleMessage,
     Message,
     TelegramObject,
 )
@@ -162,7 +163,9 @@ class GroupAccessMiddleware(BaseMiddleware):
         return await handler(event, data)
 
     @staticmethod
-    def _callback_reply_target(message: Message) -> tuple[int, int | None]:
+    def _callback_reply_target(
+        message: Message | InaccessibleMessage,
+    ) -> tuple[int, int | None]:
         replied = getattr(message, "reply_to_message", None)
         if (
             replied is not None

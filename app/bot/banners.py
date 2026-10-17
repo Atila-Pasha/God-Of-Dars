@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 MARKDOWN_V2 = "MarkdownV2"
 ARCHER_EMOJI_ID = "5314526780416092636"
+KNIGHT_EMOJI_ID = "5372804525935567057"
+SWORD_EMOJI_ID = "5825961702088254236"
 _SPECIAL = re.compile(r"([\\_*\[\]()~`>#+\-=|{}.!])")
 
 
@@ -293,7 +295,22 @@ def archer_midway_banner(
     archer_name: str,
     archer_emoji: str | None,
     damage: int,
+    *,
+    knight: bool = False,
+    knight_died: bool = False,
 ) -> str:
+    if knight:
+        icon = (
+            emoji(archer_emoji, "⚔️")
+            if archer_emoji and archer_emoji.isdigit()
+            else emoji(KNIGHT_EMOJI_ID, "⚔️")
+        )
+        line = f"{icon} {escape('شوالیه')} {escape(archer_name)} {emoji(SWORD_EMOJI_ID, '⚔️')} {escape('به دبیر')} {escape(teacher_name)} {escape(damage)} HP {escape('آسیب زد.')}"
+        return line + (
+            f"\n{emoji(KNIGHT_EMOJI_ID, '⚔️')} {escape('جان شوالیه به صفر رسید و از مدرسه حذف شد.')}"
+            if knight_died
+            else ""
+        )
     archer_icon = (
         emoji(archer_emoji, "🏹")
         if archer_emoji and archer_emoji.isdigit()
@@ -400,15 +417,20 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         else ""
     )
     archer_lines = "".join(
-        f"{emoji(archer_icon, '🏹') if archer_icon and archer_icon.isdigit() else emoji(ARCHER_EMOJI_ID, '🏹')} "
-        f"کماندار {escape(archer_name)} با {escape(arrow_name)} به "
+        f"{emoji(archer_icon, '⚔️' if arrow_name == 'شمشیر' else '🏹') if archer_icon and archer_icon.isdigit() else emoji(KNIGHT_EMOJI_ID if arrow_name == 'شمشیر' else ARCHER_EMOJI_ID, '⚔️' if arrow_name == 'شمشیر' else '🏹')} "
+        f"{'شوالیه' if arrow_name == 'شمشیر' else 'کماندار'} {escape(archer_name)} با {emoji(SWORD_EMOJI_ID, '⚔️') if arrow_name == 'شمشیر' else escape(arrow_name)} به "
         f"{teacher_icon(teacher_icon_id)} {escape(teacher_name)} "
         f"{escape(damage)} HP آسیب زد\\.\n"
         for teacher_name, teacher_icon_id, archer_name, arrow_name, archer_icon, damage in result.archer_hits
     )
     archer_note = (
-        f"{emoji(ARCHER_EMOJI_ID, '🏹')} {bold('شلیک کماندارها:')}\n{archer_lines}\n"
+        f"{emoji(KNIGHT_EMOJI_ID, '⚔️') if any(row[3] == 'شمشیر' for row in result.archer_hits) else emoji(ARCHER_EMOJI_ID, '🏹')} {bold('دفاع شوالیه:' if any(row[3] == 'شمشیر' for row in result.archer_hits) else 'شلیک کماندارها:')}\n{archer_lines}\n"
         if archer_lines
+        else ""
+    )
+    knight_death_note = (
+        f"{emoji(KNIGHT_EMOJI_ID, '⚔️')} {escape('شوالیه در این نبرد جان باخت و از مدرسه حذف شد.')}\n\n"
+        if result.knight_died
         else ""
     )
     return (
@@ -425,6 +447,7 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{HEAL} آسیب واردشده به دبیر:\n"
         f"> {escape(result.teacher_injury)} HP {HEAL}\n\n"
         f"{archer_note}"
+        f"{knight_death_note}"
         f"{LOOT} {loot_label}:\n"
         f"{COIN} طلا: {escape(coin_amount)}\n"
         f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"

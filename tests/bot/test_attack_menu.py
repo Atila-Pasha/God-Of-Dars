@@ -31,11 +31,15 @@ def test_main_menu_attack_button_has_custom_sword_icon() -> None:
     assert attack_button.icon_custom_emoji_id == "5823192436024813346"
 
 
-def test_game_group_button_is_next_to_attack_with_requested_icon() -> None:
-    row = next(row for row in main_menu_keyboard().keyboard if row[0].text == "حمله")
-
-    assert row[1].text == "گروه بازی"
-    assert row[1].icon_custom_emoji_id == "5453957997418004470"
+def test_main_menu_rows_follow_requested_order() -> None:
+    rows = main_menu_keyboard().keyboard
+    assert [[button.text for button in row] for row in rows] == [
+        ["مدرسه من", "کتابخانه", "معدن منابع"],
+        ["فعالیت‌های روزانه", "بوفه", "پروفایل"],
+        ["حمله"],
+        ["گروه بازی"],
+    ]
+    assert rows[-1][0].icon_custom_emoji_id == "5453957997418004470"
 
 
 @pytest.mark.asyncio

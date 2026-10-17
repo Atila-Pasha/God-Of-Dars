@@ -21,6 +21,8 @@ maximum_banana = 500
 [castle_progression]
 max_level = 500
 cost_growth = 1.012
+# Add this amount per level after the last explicitly priced upgrade.
+cost_linear_step = 200
 strength_growth = 1.02
 defense_growth = 1.02
 
@@ -28,6 +30,8 @@ defense_growth = 1.02
 # amount damages the castle. The castle then counter-attacks the teacher.
 [attack]
 defense_absorption_ratio = 1.0
+# Castle defense cannot absorb more than this fraction of teacher damage.
+max_defense_absorption_ratio = 0.7
 counter_damage_ratio = 0.25
 loot_percent = 10
 banana_reward = 20

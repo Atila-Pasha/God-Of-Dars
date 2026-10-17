@@ -153,6 +153,12 @@ class Attack(Base):
     result_archer_injury: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    guard_reduction_snapshot: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    guard_died_snapshot: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     archer_processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

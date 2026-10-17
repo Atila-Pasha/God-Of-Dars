@@ -85,8 +85,12 @@ async def test_active_attack_error_uses_requested_banner() -> None:
 async def test_shield_rejection_sends_sticker_before_named_message() -> None:
     target = message()
     order = []
-    target.answer_sticker = AsyncMock(side_effect=lambda sticker: order.append(("sticker", sticker)))
-    target.answer = AsyncMock(side_effect=lambda content: order.append(("message", content)))
+    target.answer_sticker = AsyncMock(
+        side_effect=lambda sticker: order.append(("sticker", sticker))
+    )
+    target.answer = AsyncMock(
+        side_effect=lambda content: order.append(("message", content))
+    )
 
     await battle._report_error(
         target, TargetProtectedByShield("سپر کاظمی", "telegram-sticker-id")

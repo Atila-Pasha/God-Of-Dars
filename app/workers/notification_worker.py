@@ -20,7 +20,9 @@ from app.services.notification_service import NotificationService
 logger = logging.getLogger(__name__)
 
 
-async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> int:
+async def process_due_notifications(
+    bot: Bot, *, batch_size: int = 100, recipient_user_id: int | None = None
+) -> int:
     now = datetime.now(UTC)
     async with AsyncSessionLocal() as session, session.begin():
         notifications = await NotificationService().claim_due_batch(
@@ -29,6 +31,7 @@ async def process_due_notifications(bot: Bot, *, batch_size: int = 100) -> int:
             stale_before=now
             - timedelta(seconds=settings.NOTIFICATION_PROCESSING_TIMEOUT_SECONDS),
             batch_size=batch_size,
+            recipient_user_id=recipient_user_id,
         )
     if not notifications:
         return 0

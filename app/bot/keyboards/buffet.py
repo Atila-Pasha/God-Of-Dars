@@ -70,7 +70,7 @@ def buffet_menu_keyboard() -> ReplyKeyboardMarkup:
             ],
             [
                 KeyboardButton(
-                    text="کماندار ها", icon_custom_emoji_id="5402133431670816471"
+                    text="دفاع دژ", icon_custom_emoji_id="5372804525935567057"
                 )
             ],
             [

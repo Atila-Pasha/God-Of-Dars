@@ -33,6 +33,18 @@ def test_progression_is_defined_and_bounded_through_level_500() -> None:
     assert game_config.teacher_slots(500) == game_config.max_owned_teacher_slots
 
 
+def test_castle_upgrade_cost_does_not_flatline_after_level_four() -> None:
+    assert (
+        game_config.castle_upgrade(5).diamond_cost
+        - game_config.castle_upgrade(4).diamond_cost
+        >= 200
+    )
+    for level in (10, 20, 50, 100, 200, 500):
+        previous = game_config.castle_upgrade(level - 1).diamond_cost
+        current = game_config.castle_upgrade(level).diamond_cost
+        assert current - previous >= 200
+
+
 def test_level_upgrade_uses_the_authoritative_xp_curve_and_keeps_overflow() -> None:
     for level in (1, 10, 15, 29, 100):
         assert game_config.level_progression.upgrade_cost(level) == (

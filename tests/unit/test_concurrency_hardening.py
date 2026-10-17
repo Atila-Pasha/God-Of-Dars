@@ -53,7 +53,7 @@ def test_mine_keeps_uncollected_balance_across_midnight() -> None:
     assert mine.today_banana == 1
 
 
-def test_mine_daily_cap_persists_after_collection_and_resets_next_day() -> None:
+def test_mine_cap_persists_across_days_without_collection() -> None:
     service = MineService(config=game_config)
     noon = datetime(2026, 10, 5, 12, tzinfo=UTC)
     cap = game_config.mine_max_catchup_minutes
@@ -73,12 +73,12 @@ def test_mine_daily_cap_persists_after_collection_and_resets_next_day() -> None:
     assert mine.last_collected_at == noon
 
     tomorrow = noon + timedelta(days=1)
-    assert service._accrue(mine, now=tomorrow) == cap
+    assert service._accrue(mine, now=tomorrow) == 0
     assert mine.daily_produced_minutes == cap
-    assert mine.today_coin == cap * game_config.mine_level(1).coin_per_minute
+    assert mine.today_coin == 0
 
 
-def test_mine_daily_cap_applies_across_repeated_opens() -> None:
+def test_mine_cycle_cap_applies_across_repeated_opens() -> None:
     service = MineService(config=game_config)
     now = datetime(2026, 10, 5, 18, tzinfo=UTC)
     cap = game_config.mine_max_catchup_minutes
@@ -119,7 +119,7 @@ def test_mine_keeps_producing_after_early_collection() -> None:
     assert mine.daily_produced_minutes == 2
 
 
-def test_mine_resets_at_tehran_midnight_after_daily_cap() -> None:
+def test_mine_does_not_reset_at_tehran_midnight() -> None:
     service = MineService(config=game_config)
     # 20:30 UTC is 00:00 the next day in Tehran.
     now = datetime(2026, 10, 12, 20, 32, tzinfo=UTC)
@@ -133,13 +133,13 @@ def test_mine_resets_at_tehran_midnight_after_daily_cap() -> None:
         daily_produced_minutes=game_config.mine_max_catchup_minutes,
     )
 
-    assert service._accrue(mine, now=now) == 2
+    assert service._accrue(mine, now=now) == 0
     assert mine.today == datetime(2026, 10, 13, tzinfo=UTC).date()
-    assert mine.daily_produced_minutes == 2
-    assert mine.today_coin == 2 * game_config.mine_level(1).coin_per_minute
+    assert mine.daily_produced_minutes == game_config.mine_max_catchup_minutes
+    assert mine.today_coin == 0
 
 
-def test_mine_starts_new_tehran_day_before_utc_midnight() -> None:
+def test_mine_does_not_start_new_cycle_before_utc_midnight() -> None:
     service = MineService(config=game_config)
     now = datetime(2026, 10, 12, 20, 55, tzinfo=UTC)
     mine = Mine(
@@ -152,9 +152,9 @@ def test_mine_starts_new_tehran_day_before_utc_midnight() -> None:
         daily_produced_minutes=game_config.mine_max_catchup_minutes,
     )
 
-    assert service._accrue(mine, now=now) == 2
-    assert mine.daily_produced_minutes == 2
-    assert mine.today_coin == 2 * game_config.mine_level(4).coin_per_minute
+    assert service._accrue(mine, now=now) == 0
+    assert mine.daily_produced_minutes == game_config.mine_max_catchup_minutes
+    assert mine.today_coin == 0
 
 
 @pytest.mark.asyncio
@@ -169,6 +169,7 @@ async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -
         today_coin=0,
         today_diamond=0,
         today_banana=0,
+        daily_produced_minutes=game_config.mine_max_catchup_minutes,
         collection_count=0,
     )
     rows = iter(
@@ -193,6 +194,7 @@ async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -
 
     assert amounts == (0, 0, 0)
     assert mine.collection_count == 0
+    assert mine.daily_produced_minutes == game_config.mine_max_catchup_minutes
     record_event.assert_not_awaited()
 
 
@@ -207,6 +209,7 @@ async def test_mine_collects_gold_and_diamonds_independently(monkeypatch) -> Non
         today_coin=100,
         today_diamond=20,
         today_banana=5,
+        daily_produced_minutes=45,
         collection_count=0,
     )
     resources = Resource(user_id=1, coin=0, diamond=0, banana=0)
@@ -242,6 +245,7 @@ async def test_mine_collects_gold_and_diamonds_independently(monkeypatch) -> Non
         20,
         0,
     )
+    assert snapshot.daily_produced_minutes == 45
     credit_coin.assert_awaited_once()
     credit_banana.assert_awaited_once()
     credit_diamond.assert_not_awaited()
@@ -251,7 +255,60 @@ async def test_mine_collects_gold_and_diamonds_independently(monkeypatch) -> Non
     )
     assert amounts == (0, 20, 0)
     assert snapshot.today_diamond == 0
+    assert snapshot.daily_produced_minutes == 45
     credit_diamond.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_collecting_full_mine_starts_new_cycle_and_keeps_other_cargo(
+    monkeypatch,
+) -> None:
+    cap = game_config.mine_max_catchup_minutes
+    mine = Mine(
+        id=9,
+        user_id=1,
+        level=2,
+        last_collected_at=datetime.now(UTC) - timedelta(days=2),
+        today_coin=100,
+        today_diamond=20,
+        today_banana=0,
+        daily_produced_minutes=cap,
+        collection_count=0,
+    )
+    rows = iter(
+        (
+            SimpleNamespace(scalar_one_or_none=lambda: SimpleNamespace(id=1)),
+            SimpleNamespace(
+                scalar_one_or_none=lambda: Resource(
+                    user_id=1, coin=0, diamond=0, banana=0
+                )
+            ),
+            SimpleNamespace(scalar_one_or_none=lambda: mine),
+        )
+    )
+    session = SimpleNamespace(
+        execute=AsyncMock(side_effect=lambda statement: next(rows)),
+        flush=AsyncMock(),
+    )
+    monkeypatch.setattr(ResourceService, "credit_coin", AsyncMock())
+    monkeypatch.setattr(DailyQuestService, "record_event", AsyncMock())
+
+    snapshot, amounts = await MineService(config=game_config).collect(
+        session, 1, resource_type=ResourceType.COIN
+    )
+
+    assert amounts == (100, 0, 0)
+    assert snapshot.daily_produced_minutes == 0
+    assert snapshot.today_diamond == 20
+    assert mine.last_collected_at > datetime.now(UTC) - timedelta(minutes=1)
+    assert (
+        MineService(config=game_config)._accrue(
+            mine, now=mine.last_collected_at + timedelta(minutes=10)
+        )
+        == 10
+    )
+    assert mine.daily_produced_minutes == 10
+    assert mine.today_diamond == 20 + 10 * game_config.mine_level(2).diamond_per_minute
 
 
 class _RewardSession:

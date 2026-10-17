@@ -15,14 +15,16 @@ def test_archer_menu_labels_match_the_text_telegram_sends() -> None:
 
     assert "کماندارها" in labels
     assert "پک‌های تیر" in labels
+    assert "شوالیه‌ها" in labels
     assert "کماندارها" in handlers.button_labels("🏹 کماندارها")
     assert "پک‌های تیر" in handlers.button_labels("🎯 پک‌های تیر")
+    assert "شوالیه‌ها" in handlers.button_labels("⚔️ شوالیه‌ها")
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("label", "heading"),
-    [("کماندارها", "کماندارها"), ("پک‌های تیر", "پک‌های تیر")],
+    [("کماندارها", "کماندارها"), ("پک‌های تیر", "پک‌های تیر"), ("شوالیه‌ها", "شوالیه‌ها")],
 )
 async def test_archer_lists_open_from_premium_buttons(
     monkeypatch, label: str, heading: str
@@ -39,7 +41,9 @@ async def test_archer_lists_open_from_premium_buttons(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("label", ["➕ کماندار جدید", "➕ پک تیر جدید"])
+@pytest.mark.parametrize(
+    "label", ["➕ کماندار جدید", "➕ پک تیر جدید", "➕ شوالیه جدید"]
+)
 async def test_archer_create_buttons_start_the_form(monkeypatch, label: str) -> None:
     monkeypatch.setattr(handlers, "allowed", lambda _: True)
     message = SimpleNamespace(text=label, answer=AsyncMock())
@@ -56,6 +60,7 @@ def test_archer_admin_keyboards_have_all_editable_fields() -> None:
     for kind, fields in (
         ("archer", handlers.ARCHER_FIELDS),
         ("pack", handlers.ARROW_FIELDS),
+        ("knight", handlers.KNIGHT_FIELDS),
     ):
         markup = keyboards.archer_edit_fields(kind, 12, fields)
         callbacks = {

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.bot.handlers.mine import _extraction_bar, _mine_text, _ore_bar
+from app.bot.handlers.mine import _mine_text, _ore_bar
 from app.services.shield_service import ShieldService
 
 
@@ -36,9 +36,11 @@ def test_mine_banner_uses_actual_production_scale() -> None:
     assert "tg://emoji?id=594" in text
     assert _ore_bar(1035, 2880) in text
     assert _ore_bar(450, 720) in text
-    assert "پیشرفت استخراج امروز" in text
+    assert "پیشرفت استخراج این نوبت" in text
     assert "360 از 720 دقیقه" in text
-    assert _extraction_bar(360, 720) in text
+    assert text.split("360 از 720 دقیقه\n", 1)[1].startswith(
+        "برای دیدن پیشرفت هر دقیقه"
+    )
     assert "مقیاس نوار محموله" not in text
     assert "هر زمان می‌توانی برداشت کنی" in text
 
@@ -59,8 +61,8 @@ def test_diamond_without_production_has_no_fake_capacity() -> None:
     assert "1,530" in text
     assert "\u2066100%\u2069" in text
     assert _ore_bar(1530, 1440) in text
-    assert "سقف تولید امروز تکمیل شد" in text
-    assert "۰۰:۰۰ به وقت تهران" in text
+    assert "سقف استخراج تکمیل شد" in text
+    assert "پس از برداشت منابع، استخراج دوباره شروع می‌شود" in text
 
 
 def test_mine_bar_tracks_cargo_even_when_today_production_is_near_zero() -> None:
@@ -76,12 +78,11 @@ def test_mine_bar_tracks_cargo_even_when_today_production_is_near_zero() -> None
     text = _mine_text(snapshot)
 
     assert "2 از 720 دقیقه" in text
-    assert _extraction_bar(2, 720) in text
     assert _ore_bar(1570, 1440) in text
     assert "\u2066100%\u2069" in text
 
 
-def test_mine_daily_bar_keeps_progress_after_partial_collection() -> None:
+def test_mine_text_keeps_progress_after_partial_collection() -> None:
     snapshot = SimpleNamespace(
         level=2,
         production=SimpleNamespace(coin_per_minute=4, diamond_per_minute=1),
@@ -94,14 +95,24 @@ def test_mine_daily_bar_keeps_progress_after_partial_collection() -> None:
     text = _mine_text(snapshot)
 
     assert "45 از 720 دقیقه" in text
-    assert _extraction_bar(45, 720) in text
     assert "موجودی قابل برداشت: *\u20660\u2069*" in text
 
 
-def test_mine_progress_percentage_changes_every_minute() -> None:
-    assert "0\\.1%" in _extraction_bar(1, 720)
-    assert "0\\.3%" in _extraction_bar(2, 720)
-    assert _extraction_bar(1, 720) != _extraction_bar(2, 720)
+def test_mine_progress_has_text_without_its_own_bar() -> None:
+    snapshot = SimpleNamespace(
+        level=1,
+        production=SimpleNamespace(coin_per_minute=2, diamond_per_minute=0),
+        today_coin=0,
+        today_diamond=0,
+        daily_produced_minutes=665,
+    )
+
+    text = _mine_text(snapshot)
+
+    assert "665 از 720 دقیقه" in text
+    assert text.split("665 از 720 دقیقه\n", 1)[1].startswith(
+        "برای دیدن پیشرفت هر دقیقه"
+    )
 
 
 def test_kazemi_shield_exception_only_applies_to_named_teachers() -> None:

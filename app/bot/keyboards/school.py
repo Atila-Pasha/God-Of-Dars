@@ -39,24 +39,41 @@ def school_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="شوالیه",
+                    icon_custom_emoji_id="5372804525935567057",
+                    callback_data=SchoolCallback(action="knights").pack(),
+                ),
+                InlineKeyboardButton(
                     text="کماندارها",
                     icon_custom_emoji_id="5402133431670816471",
                     callback_data=SchoolCallback(action="archers").pack(),
                 ),
+            ],
+            [
                 InlineKeyboardButton(
                     text="🏥 بیمارستان",
                     callback_data=SchoolCallback(action="hospital").pack(),
-                ),
+                )
             ],
         ]
     )
 
 
 def school_archers_keyboard(
-    owned_id: int | None = None, *, has_arrows: bool = False
+    owned_id: int | None = None, *, has_arrows: bool = False, equipped: bool = True
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if owned_id is not None:
+        if not equipped:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="فعال‌کردن کماندار",
+                        icon_custom_emoji_id="5402133431670816471",
+                        callback_data=ArcherCallback(action="equip_archer").pack(),
+                    )
+                ]
+            )
         rows.append(
             [
                 InlineKeyboardButton(
@@ -83,6 +100,49 @@ def school_archers_keyboard(
                     icon_custom_emoji_id="5314526780416092636",
                     callback_data=ArcherCallback(action="equip").pack(),
                 )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="بازگشت",
+                icon_custom_emoji_id="5235864325540815679",
+                callback_data=SchoolCallback(action="school").pack(),
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def school_knights_keyboard(owned=None) -> InlineKeyboardMarkup:
+    rows = []
+    if owned is not None:
+        if not owned.is_equipped and owned.current_hp > 0:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="فعال‌کردن شوالیه",
+                        icon_custom_emoji_id="5372804525935567057",
+                        callback_data=ArcherCallback(action="equip_knight").pack(),
+                    )
+                ]
+            )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="ارتقای شوالیه",
+                    icon_custom_emoji_id="5823677853228605366",
+                    callback_data=ArcherCallback(
+                        action="knight_upgrade", item_id=owned.id
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="فروش شوالیه",
+                    icon_custom_emoji_id="5825656871079387950",
+                    callback_data=ArcherCallback(
+                        action="knight_sell", item_id=owned.id
+                    ).pack(),
+                ),
             ]
         )
     rows.append(

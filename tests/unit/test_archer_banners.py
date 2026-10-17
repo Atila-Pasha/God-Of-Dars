@@ -65,7 +65,7 @@ def test_sale_upgrade_and_shop_banners_use_requested_icons() -> None:
         assert icon in upgrade
     assert ">5 DMG" in upgrade
     assert shop.startswith(f"![💞](tg://emoji?id={banners.SHOP})")
-    assert ">کماندار از دژ دفاع می‌کند" in shop
+    assert ">کماندار با تیر و شوالیه با شمشیر" in shop
     assert packs.startswith(f"![🐇](tg://emoji?id={banners.RABBIT})")
     assert ">هر دبیر مهاجم" in packs
     assert bought.startswith(f"![✔️](tg://emoji?id={banners.CHECK})")

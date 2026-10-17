@@ -26,7 +26,9 @@ class HelpCallback(CallbackData, prefix="help"):
 
 
 class SchoolCallback(CallbackData, prefix="school"):
-    action: Literal["castle", "teachers", "archers", "hospital", "school", "back"]
+    action: Literal[
+        "castle", "teachers", "archers", "knights", "hospital", "school", "back"
+    ]
 
 
 class CastleCallback(CallbackData, prefix="castle"):
@@ -177,23 +179,37 @@ class ShieldPurchaseCallback(CallbackData, prefix="shield_purchase"):
     shield_id: int
 
 
+ArcherAction = Literal[
+    "menu",
+    "back_buffet",
+    "archers",
+    "packs",
+    "buy_archer",
+    "buy_pack",
+    "confirm_archer",
+    "confirm_pack",
+    "upgrade",
+    "confirm_upgrade",
+    "sell",
+    "confirm_sell",
+    "owned",
+    "equip",
+    "knights",
+    "buy_knight",
+    "confirm_knight",
+    "equip_knight",
+    "equip_archer",
+    "knight_upgrade",
+    "confirm_knight_upgrade",
+    "knight_sell",
+    "confirm_knight_sell",
+    "knight_heal",
+    "confirm_knight_heal",
+]
+
+
 class ArcherCallback(CallbackData, prefix="archer_shop"):
-    action: Literal[
-        "menu",
-        "back_buffet",
-        "archers",
-        "packs",
-        "buy_archer",
-        "buy_pack",
-        "confirm_archer",
-        "confirm_pack",
-        "upgrade",
-        "confirm_upgrade",
-        "sell",
-        "confirm_sell",
-        "owned",
-        "equip",
-    ]
+    action: ArcherAction
     item_id: int = 0
 
 

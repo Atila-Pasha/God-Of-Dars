@@ -115,10 +115,13 @@ async def resolve_due_archer_shots(
                     teacher.current_hp,
                     teacher.teacher.max_hp,
                     shot_index,
+                    attack.teacher_damage_snapshot,
                 )
                 if hit is None:
                     continue
                 attack.result_archer_injury = hit.damage
+                attack.guard_reduction_snapshot = getattr(hit, "reduction", 0)
+                attack.guard_died_snapshot = getattr(hit, "died", False)
                 attack.archer_name_snapshot = hit.name
                 attack.archer_emoji_snapshot = hit.emoji
                 attack.archer_sticker_snapshot = hit.sticker
@@ -144,15 +147,13 @@ async def resolve_due_archer_shots(
                     if attack.launch_chat_id == chat_id
                     else None
                 )
-                if timer_message_id is None:
-                    logger.warning(
-                        "Attack %s has no countdown message for archer reply",
-                        attack.id,
-                    )
-                    continue
-                reply = {"reply_to_message_id": timer_message_id}
+                reply = (
+                    {"reply_to_message_id": timer_message_id}
+                    if timer_message_id is not None
+                    else {}
+                )
                 sticker_key = f"ARCHER_MID_STICKER:{attack.id}"
-                send_sticker = bool(hit.sticker and not group_attack)
+                send_sticker = bool(hit.sticker)
                 if send_sticker:
                     await notification_service.enqueue(
                         session,
@@ -179,6 +180,8 @@ async def resolve_due_archer_shots(
                             hit.name,
                             hit.emoji,
                             hit.damage,
+                            knight=hit.arrow_name == "شمشیر",
+                            knight_died=getattr(hit, "died", False),
                         ),
                         "parse_mode": MARKDOWN_V2,
                         **reply,
@@ -289,6 +292,7 @@ async def _command_result(session, result):
         )
         and result.blocked_by_shield,
         archer_hits=archer_hits,
+        knight_died=any(getattr(row, "guard_died_snapshot", False) for row in records),
         archer_stickers=tuple(
             dict.fromkeys(
                 row.archer_sticker_snapshot

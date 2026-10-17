@@ -122,3 +122,29 @@ def test_archer_hit_names_both_combatants_and_arrow_pack() -> None:
     assert "6 HP" in report
     assert "tg://emoji?id=123" in report
     assert "tg://emoji?id=456" in report
+
+
+def test_knight_hit_uses_sword_and_knight_name() -> None:
+    result = AttackResult(
+        attack=SimpleNamespace(),
+        attacker_telegram_id=10,
+        attacker_name="آرش",
+        target_name="نگار",
+        target_telegram_id=20,
+        teacher_name="فراهانی",
+        ability_text=None,
+        castle_damage=8,
+        teacher_injury=7,
+        castle_strength_after=92,
+        loot_coin=0,
+        loot_diamond=0,
+        loot_banana=0,
+        archer_hits=(("فراهانی", None, "نگهبان", "شمشیر", None, 7),),
+        knight_died=True,
+    )
+
+    report = attack_result_banner(result)
+    assert "شوالیه نگهبان" in report
+    assert "کماندار نگهبان" not in report
+    assert "tg://emoji?id=5825961702088254236" in report
+    assert "شوالیه در این نبرد جان باخت" in report

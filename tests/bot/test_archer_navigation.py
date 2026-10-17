@@ -23,6 +23,7 @@ async def test_buffet_archer_menu_only_offers_purchases() -> None:
     assert actions == [
         "archer_shop:archers:0",
         "archer_shop:packs:0",
+        "archer_shop:knights:0",
         "archer_shop:back_buffet:0",
     ]
     assert markup.inline_keyboard[-1][0].text == "بازگشت"

@@ -487,7 +487,11 @@ async def revenge_callback_handler(
         if attack is not None and attack.status is AttackStatus.RESOLVED
         else None
     )
-    if defender is None or defender.telegram_user_id != callback.from_user.id:
+    if (
+        attack is None
+        or defender is None
+        or defender.telegram_user_id != callback.from_user.id
+    ):
         await callback.answer("این پیام برای شما نیست.", show_alert=True)
         return
     if callback_data.action == "no":

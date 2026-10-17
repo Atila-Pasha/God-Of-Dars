@@ -10,6 +10,7 @@ from app.models.daily_quest import DailyQuest, DailyQuestEvent, DailyQuestProgre
 from app.models.defense import Defense
 from app.models.group import Group
 from app.models.group_question import GroupQuestion
+from app.models.knight import Knight, UserKnight
 from app.models.mine import Mine
 from app.models.notification import Notification
 from app.models.question import Question
@@ -46,6 +47,8 @@ __all__ = [
     "Group",
     "GroupQuestion",
     "Mine",
+    "Knight",
+    "UserKnight",
     "Notification",
     "Question",
     "RandomAttackSelection",

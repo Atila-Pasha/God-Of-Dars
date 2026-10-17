@@ -61,6 +61,7 @@ class AttackRules:
     """Configurable combat rules shared by every attacker type."""
 
     defense_absorption_ratio: float = 1.0
+    max_defense_absorption_ratio: float = 0.7
     counter_damage_ratio: float = 0.25
     loot_percent: int = 10
     banana_reward: int = 20
@@ -75,6 +76,8 @@ class AttackRules:
     def __post_init__(self) -> None:
         if self.defense_absorption_ratio < 0 or self.counter_damage_ratio < 0:
             raise ValueError("attack ratios cannot be negative")
+        if not 0 <= self.max_defense_absorption_ratio < 1:
+            raise ValueError("maximum defense absorption must be below one")
         if not 0 <= self.loot_percent <= 100 or self.banana_reward < 0:
             raise ValueError("loot_percent must be between 0 and 100")
         if self.empty_target_bonus_coin < 0:
@@ -94,7 +97,10 @@ class AttackRules:
         """Return (castle damage before shields, counter damage to attacker)."""
         if min(attack_power, defense_power, defender_hp) < 0:
             raise ValueError("combat values cannot be negative")
-        absorbed = round(defense_power * self.defense_absorption_ratio)
+        absorbed = min(
+            round(defense_power * self.defense_absorption_ratio),
+            int(attack_power * self.max_defense_absorption_ratio),
+        )
         castle_damage = max(0, attack_power - absorbed)
         counter_damage = min(
             defender_hp, round(defense_power * self.counter_damage_ratio)
@@ -227,6 +233,7 @@ class GameConfig:
     castle_upgrade_by_level: dict[int, CastleUpgrade] = field(default_factory=dict)
     castle_max_level: int = 500
     castle_cost_growth: float = 1.08
+    castle_cost_linear_step: int = 0
     castle_strength_growth: float = 1.02
     castle_defense_growth: float = 1.02
     castle_repair: CastleRepairRules = field(default_factory=CastleRepairRules)
@@ -296,6 +303,8 @@ class GameConfig:
             )
             < 1
         ):
+            raise ValueError("castle progression is invalid")
+        if self.castle_cost_linear_step < 0:
             raise ValueError("castle progression is invalid")
         previous_level = 0
         for level, slots in self.teacher_slots_by_level:
@@ -470,7 +479,9 @@ class GameConfig:
             steps = castle_level - anchor_level
             upgrade = CastleUpgrade(
                 diamond_cost=max(
-                    1, round(anchor.diamond_cost * self.castle_cost_growth**steps)
+                    1,
+                    round(anchor.diamond_cost * self.castle_cost_growth**steps)
+                    + self.castle_cost_linear_step * steps,
                 ),
                 strength_delta=max(
                     1, round(anchor.strength_delta * self.castle_strength_growth**steps)
@@ -849,6 +860,9 @@ class GameConfig:
             castle_cost_growth=float(
                 data.get("castle_progression", {}).get("cost_growth", 1.08)
             ),
+            castle_cost_linear_step=int(
+                data.get("castle_progression", {}).get("cost_linear_step", 0)
+            ),
             castle_strength_growth=float(
                 data.get("castle_progression", {}).get("strength_growth", 1.02)
             ),
@@ -956,6 +970,9 @@ class GameConfig:
             attack_rules=AttackRules(
                 defense_absorption_ratio=float(
                     attack_data.get("defense_absorption_ratio", 1.0)
+                ),
+                max_defense_absorption_ratio=float(
+                    attack_data.get("max_defense_absorption_ratio", 0.7)
                 ),
                 counter_damage_ratio=float(
                     attack_data.get("counter_damage_ratio", 0.25)

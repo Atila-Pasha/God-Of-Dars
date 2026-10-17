@@ -160,11 +160,11 @@ def content_menu() -> ReplyKeyboardMarkup:
     return _reply(
         [
             ["👨‍🏫 دبیرها", "🛡 سپرها"],
-            ["🏹 کماندارها", "🎯 پک‌های تیر"],
+            ["🏹 کماندارها", "🎯 پک‌های تیر", "⚔️ شوالیه‌ها"],
             ["📖 پک‌های مطالعه", "🎯 فعالیت‌های روزانه"],
             ["❓ سؤال روزانه", "👥 سؤال گروهی"],
             ["➕ دبیر جدید", "➕ سپر جدید"],
-            ["➕ کماندار جدید", "➕ پک تیر جدید"],
+            ["➕ کماندار جدید", "➕ پک تیر جدید", "➕ شوالیه جدید"],
             ["➕ پک مطالعه جدید"],
             ["🏠 منوی اصلی"],
         ],
@@ -260,6 +260,11 @@ def user_actions(user_id: int, active: bool) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="💰 تغییر منابع", callback_data=f"user:resources:{user_id}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✉️ ارسال پیام", callback_data=f"user:message:{user_id}"
                 )
             ],
             [
@@ -418,7 +423,11 @@ def archer_catalog(kind: str, items) -> InlineKeyboardMarkup:
     rows.append(
         [
             InlineKeyboardButton(
-                text="➕ ساخت کماندار" if kind == "archer" else "➕ ساخت پک تیر",
+                text="➕ ساخت شوالیه"
+                if kind == "knight"
+                else "➕ ساخت کماندار"
+                if kind == "archer"
+                else "➕ ساخت پک تیر",
                 callback_data=f"catalog:{kind}:create",
             )
         ]

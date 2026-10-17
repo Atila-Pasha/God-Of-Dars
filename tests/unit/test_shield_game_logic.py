@@ -86,7 +86,9 @@ async def test_active_shield_returns_its_sticker_unless_bypassed() -> None:
     shield = SimpleNamespace(name="سپر کاظمی", sticker="sticker-file-id")
     active = SimpleNamespace(shield=shield)
     session = SimpleNamespace(
-        execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: active))
+        execute=AsyncMock(
+            return_value=SimpleNamespace(scalar_one_or_none=lambda: active)
+        )
     )
     service = ShieldService()
 
