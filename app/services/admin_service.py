@@ -111,6 +111,24 @@ class AdminService:
         await session.flush()
         return user, old_level
 
+    async def decrease_user_level(
+        self, session: AsyncSession, user_id: int, amount: int
+    ) -> tuple[User, int] | None:
+        """Decrease a user's level, keeping the minimum level at one."""
+        if amount < 1:
+            raise ValueError("مقدار کاهش لول باید حداقل 1 باشد.")
+        user = await UserRepository().get_by_id_for_update(session, user_id)
+        if user is None:
+            return None
+        old_level = user.level
+        if old_level - amount < 1:
+            raise ValueError(
+                f"لول فعلی کاربر {old_level} است و نمی‌تواند کمتر از 1 شود."
+            )
+        user.level -= amount
+        await session.flush()
+        return user, old_level
+
     async def add_resources(
         self,
         session: AsyncSession,

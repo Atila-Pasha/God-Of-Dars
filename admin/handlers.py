@@ -1550,6 +1550,16 @@ async def user_callback(
         )
         await callback.answer()
         return
+    if action == "level_down":
+        await state.update_data(user_id=user_id)
+        await state.set_state(UserStates.level_decrease)
+        await callback.message.answer(
+            f"لول فعلی کاربر {user.level} است. چند لول کم کنم؟\n"
+            "یک عدد مثبت بفرستید. لول نمی‌تواند کمتر از ۱ شود. برای انصراف، لغو را بزنید.",
+            reply_markup=keyboards.cancel_keyboard(),
+        )
+        await callback.answer()
+        return
     if action == "message":
         await state.update_data(user_id=user_id)
         await state.set_state(UserStates.direct_message)
@@ -1639,6 +1649,31 @@ async def user_level_increase(
     await message.answer(
         f"✅ لول کاربر از {old_level} به {user.level} افزایش یافت.\n\n"
         + user_text(user),
+        reply_markup=keyboards.user_actions(user.id, user.is_active),
+    )
+    await message.answer("مدیریت کاربران", reply_markup=keyboards.users_menu())
+
+
+@router.message(UserStates.level_decrease)
+async def user_level_decrease(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message) or not message.text:
+        return
+    try:
+        amount = number(message.text, "مقدار کاهش لول", minimum=1)
+        data = await state.get_data()
+        result = await service.decrease_user_level(session, data["user_id"], amount)
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.clear()
+    if result is None:
+        await message.answer("کاربر پیدا نشد.", reply_markup=keyboards.users_menu())
+        return
+    user, old_level = result
+    await message.answer(
+        f"✅ لول کاربر از {old_level} به {user.level} کاهش یافت.\n\n" + user_text(user),
         reply_markup=keyboards.user_actions(user.id, user.is_active),
     )
     await message.answer("مدیریت کاربران", reply_markup=keyboards.users_menu())

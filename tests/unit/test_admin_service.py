@@ -76,3 +76,32 @@ async def test_admin_level_increase_rejects_exceeding_game_cap(monkeypatch) -> N
 
     assert user.level == max_level - 1
     session.flush.assert_not_awaited()
+
+
+async def test_admin_decreases_level_without_changing_xp(monkeypatch) -> None:
+    user = SimpleNamespace(level=10, xp=250)
+    locked_lookup = AsyncMock(return_value=user)
+    monkeypatch.setattr(UserRepository, "get_by_id_for_update", locked_lookup)
+    session = AsyncMock()
+
+    result = await AdminService().decrease_user_level(session, 42, 3)
+
+    assert result == (user, 10)
+    assert user.level == 7
+    assert user.xp == 250
+    locked_lookup.assert_awaited_once_with(session, 42)
+    session.flush.assert_awaited_once()
+
+
+async def test_admin_level_decrease_rejects_below_one(monkeypatch) -> None:
+    user = SimpleNamespace(level=2)
+    monkeypatch.setattr(
+        UserRepository, "get_by_id_for_update", AsyncMock(return_value=user)
+    )
+    session = AsyncMock()
+
+    with pytest.raises(ValueError, match="کمتر از 1"):
+        await AdminService().decrease_user_level(session, 42, 2)
+
+    assert user.level == 2
+    session.flush.assert_not_awaited()

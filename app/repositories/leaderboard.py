@@ -68,7 +68,7 @@ class LeaderboardRepository:
         correct_answers = func.count(Answer.id).filter(
             Answer.is_correct.is_(True), Answer.is_valid.is_(True)
         )
-        total_answers = func.count(Answer.id)
+        total_answers = func.count(Answer.id).filter(Answer.is_valid.is_(True))
         accuracy = correct_answers * 1.0 / func.nullif(total_answers, 0)
         rows = (
             await session.execute(
@@ -208,7 +208,7 @@ class LeaderboardRepository:
         correct_answers = func.count(Answer.id).filter(
             Answer.is_correct.is_(True), Answer.is_valid.is_(True)
         )
-        total_answers = func.count(Answer.id)
+        total_answers = func.count(Answer.id).filter(Answer.is_valid.is_(True))
         stats = (
             select(
                 User.id.label("user_id"),

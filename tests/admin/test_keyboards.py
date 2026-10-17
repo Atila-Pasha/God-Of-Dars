@@ -66,7 +66,9 @@ def test_content_menu_exposes_create_actions_without_commands() -> None:
 
 
 def test_user_actions_expose_level_increase() -> None:
-    assert "user:level:42" in inline_data(keyboards.user_actions(42, True))
+    actions = inline_data(keyboards.user_actions(42, True))
+    assert "user:level:42" in actions
+    assert "user:level_down:42" in actions
 
 
 @dataclass

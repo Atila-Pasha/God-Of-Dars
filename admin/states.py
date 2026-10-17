@@ -5,6 +5,7 @@ class UserStates(StatesGroup):
     search = State()
     direct_message = State()
     level_increase = State()
+    level_decrease = State()
     resource_coin = State()
     resource_diamond = State()
     resource_banana = State()

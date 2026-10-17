@@ -94,7 +94,7 @@ class ProfileRepository:
             select(
                 func.count(Answer.id).label("answers_count"),
                 func.count(Answer.id)
-                .filter(Answer.is_correct.is_(True))
+                .filter(Answer.is_correct.is_(True), Answer.is_valid.is_(True))
                 .label("correct_answers"),
             ).where(Answer.user_id == user_id)
         )

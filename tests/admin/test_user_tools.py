@@ -72,3 +72,23 @@ async def test_direct_message_targets_selected_user_only(monkeypatch) -> None:
 
     bot.send_message.assert_awaited_once_with(chat_id=12345, text="سلام")
     state.clear.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_level_decrease_form_updates_selected_user(monkeypatch) -> None:
+    monkeypatch.setattr(handlers, "allowed", lambda _: True)
+    user = SimpleNamespace(id=42, level=8, is_active=True)
+    decrease = AsyncMock(return_value=(user, 10))
+    monkeypatch.setattr(handlers.service, "decrease_user_level", decrease)
+    monkeypatch.setattr(handlers, "user_text", lambda _: "user card")
+    message = SimpleNamespace(text="2", answer=AsyncMock())
+    state = SimpleNamespace(
+        get_data=AsyncMock(return_value={"user_id": 42}), clear=AsyncMock()
+    )
+    session = SimpleNamespace()
+
+    await handlers.user_level_decrease(message, state, session)
+
+    decrease.assert_awaited_once_with(session, 42, 2)
+    state.clear.assert_awaited_once()
+    assert "از 10 به 8" in message.answer.await_args_list[0].args[0]
