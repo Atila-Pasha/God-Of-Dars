@@ -66,12 +66,17 @@ async def _deliver_notification(
                     .with_for_update()
                 )
                 if row is not None and row.status is NotificationStatus.PROCESSING:
-                    row.status = NotificationStatus.PENDING
                     row.processing_at = None
-                    row.next_attempt_at = datetime.now(UTC) + timedelta(
-                        seconds=settings.WORKER_POLL_INTERVAL
-                    )
-                    row.attempts = max(0, row.attempts - 1)
+                    if dependency_status in (None, NotificationStatus.FAILED):
+                        row.status = NotificationStatus.FAILED
+                        row.next_attempt_at = None
+                        row.last_error = "Required notification failed"
+                    else:
+                        row.status = NotificationStatus.PENDING
+                        row.next_attempt_at = datetime.now(UTC) + timedelta(
+                            seconds=settings.WORKER_POLL_INTERVAL
+                        )
+                        row.attempts = max(0, row.attempts - 1)
                 return
 
     try:
@@ -120,6 +125,9 @@ async def _deliver_notification(
             else:
                 row.status = NotificationStatus.FAILED
                 row.next_attempt_at = None
+                await NotificationService().fail_dependents(
+                    session, idempotency_key=row.idempotency_key
+                )
         logger.warning("Notification %s failed: %s", notification_id, exc)
         return
 

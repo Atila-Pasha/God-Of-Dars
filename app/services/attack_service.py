@@ -804,6 +804,16 @@ class AttackService:
             attack.loot_coin = attack.loot_diamond = attack.loot_banana = 0
             attack.is_successful = False
             attack.result_teacher_injury = 0
+            await DailyQuestService().record_event(
+                session,
+                user_id=attacker.id,
+                event_type="COMPLETE_BATTLES",
+                event_id=(
+                    f"attack-command:{attack.attack_command_id}"
+                    if attack.attack_command_id is not None
+                    else f"attack:{attack.id}"
+                ),
+            )
             await session.flush()
             return AttackResult(
                 attack=attack,

@@ -83,6 +83,41 @@ async def test_teacher_injury_report_waits_for_battle_report(monkeypatch) -> Non
 
 
 @pytest.mark.asyncio
+async def test_failed_battle_report_stops_dependent_delivery(monkeypatch) -> None:
+    row = SimpleNamespace(
+        id=8,
+        payload={
+            "chat_id": 42,
+            "text": "گزارش آسیب دبیر",
+            "depends_on_key": "ATTACK_RESULT:7:ATTACKER",
+        },
+        attempts=1,
+        status=NotificationStatus.PROCESSING,
+        processing_at=None,
+        next_attempt_at=None,
+        last_error=None,
+    )
+
+    class _DependencySession(_Session):
+        def __init__(self):
+            super().__init__(row)
+            self.lookups = 0
+
+        async def scalar(self, _query):
+            self.lookups += 1
+            return NotificationStatus.FAILED if self.lookups == 1 else row
+
+    bot = SimpleNamespace(send_message=AsyncMock())
+    monkeypatch.setattr(notification_worker, "AsyncSessionLocal", _DependencySession)
+
+    await notification_worker._deliver_notification(bot, row, asyncio.Semaphore(1))
+
+    bot.send_message.assert_not_awaited()
+    assert row.status is NotificationStatus.FAILED
+    assert row.next_attempt_at is None
+
+
+@pytest.mark.asyncio
 async def test_teacher_injury_report_sends_after_battle_report(monkeypatch) -> None:
     row = SimpleNamespace(
         id=9,
