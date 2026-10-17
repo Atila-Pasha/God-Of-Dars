@@ -1439,6 +1439,63 @@ async def test_notification_outbox_is_idempotent_and_two_workers_send_once() -> 
 
 
 @pytest.mark.asyncio
+async def test_blocked_notification_dependency_does_not_starve_ready_messages() -> None:
+    user_id = await _user()
+    now = datetime.now(UTC)
+    try:
+        async with AsyncSessionLocal() as session, session.begin():
+            parent = Notification(
+                notification_type="TEST",
+                recipient_user_id=user_id,
+                idempotency_key=f"TEST:parent:{uuid4().hex}",
+                payload={"chat_id": 123, "text": "parent"},
+                next_attempt_at=now + timedelta(hours=1),
+            )
+            session.add(parent)
+            await session.flush()
+            child = Notification(
+                notification_type="TEST",
+                recipient_user_id=user_id,
+                idempotency_key=f"TEST:child:{uuid4().hex}",
+                payload={
+                    "chat_id": 123,
+                    "text": "child",
+                    "depends_on_key": parent.idempotency_key,
+                },
+            )
+            ready = Notification(
+                notification_type="TEST",
+                recipient_user_id=user_id,
+                idempotency_key=f"TEST:ready:{uuid4().hex}",
+                payload={"chat_id": 123, "text": "ready"},
+            )
+            session.add_all((child, ready))
+            await session.flush()
+            parent_id, child_id, ready_id = parent.id, child.id, ready.id
+
+        async with AsyncSessionLocal() as session, session.begin():
+            claimed = await NotificationService().claim_due_batch(
+                session,
+                now=now,
+                stale_before=now - timedelta(minutes=2),
+                batch_size=1,
+            )
+            assert [row.id for row in claimed] == [ready_id]
+            parent = await session.get(Notification, parent_id)
+            parent.status = NotificationStatus.FAILED
+            await NotificationService().fail_dependents(
+                session, idempotency_key=parent.idempotency_key
+            )
+
+        async with AsyncSessionLocal() as session:
+            child = await session.get(Notification, child_id)
+            assert child.status is NotificationStatus.FAILED
+            assert child.last_error == "Required notification failed"
+    finally:
+        await _cleanup([user_id])
+
+
+@pytest.mark.asyncio
 async def test_notification_failure_retries_and_preserves_idempotency() -> None:
     user_id = await _user()
     bot = AsyncMock()

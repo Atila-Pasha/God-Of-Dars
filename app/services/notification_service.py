@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,7 +46,18 @@ class NotificationService:
         recipient_user_id: int | None = None,
     ) -> list[Notification]:
         """Atomically lease due notifications without blocking peer workers."""
+        dependency_key = Notification.payload["depends_on_key"].as_string()
+        dependency = Notification.__table__.alias("dependency")
+        dependency_sent = exists(
+            select(1)
+            .select_from(dependency)
+            .where(
+                dependency.c.idempotency_key == dependency_key,
+                dependency.c.status == NotificationStatus.SENT,
+            )
+        )
         statement = select(Notification).where(
+            or_(dependency_key.is_(None), dependency_sent),
             or_(
                 and_(
                     Notification.status == NotificationStatus.PENDING,
@@ -82,6 +93,23 @@ class NotificationService:
             row.attempts += 1
         await session.flush()
         return rows
+
+    async def fail_dependents(
+        self, session: AsyncSession, *, idempotency_key: str
+    ) -> None:
+        """A dependent message cannot be delivered after its parent fails."""
+        await session.execute(
+            update(Notification)
+            .where(
+                Notification.status == NotificationStatus.PENDING,
+                Notification.payload["depends_on_key"].as_string() == idempotency_key,
+            )
+            .values(
+                status=NotificationStatus.FAILED,
+                next_attempt_at=None,
+                last_error="Required notification failed",
+            )
+        )
 
     async def claim_due(
         self, session: AsyncSession, *, now: datetime, stale_before: datetime
