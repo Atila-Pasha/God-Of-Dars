@@ -43,6 +43,9 @@ class FakeQuestionRepository:
     async def get_group_answer(self, session, **kwargs):
         return self.group_answers.get(kwargs["user_id"])
 
+    async def lock_group_answerer(self, session, user_id):
+        return None
+
     async def has_active_group_publications(self, session, **kwargs):
         return self.active_publications
 

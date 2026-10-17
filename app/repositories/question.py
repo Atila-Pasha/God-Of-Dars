@@ -9,6 +9,7 @@ from app.models.answer import Answer
 from app.models.group import Group
 from app.models.group_question import GroupQuestion
 from app.models.question import Question
+from app.models.user import User
 
 
 class QuestionRepository:
@@ -217,16 +218,26 @@ class QuestionRepository:
         session: AsyncSession,
         *,
         question_id: int,
-        group_id: int,
         user_id: int,
         for_update: bool = False,
     ) -> Answer | None:
-        statement = select(Answer).where(
-            Answer.question_id == question_id,
-            Answer.group_id == group_id,
-            Answer.user_id == user_id,
+        statement = (
+            select(Answer)
+            .where(
+                Answer.question_id == question_id,
+                Answer.group_id.is_not(None),
+                Answer.user_id == user_id,
+            )
+            .order_by(Answer.id)
+            .limit(1)
         )
         if for_update:
             statement = statement.with_for_update()
         result = await session.execute(statement)
         return result.scalar_one_or_none()
+
+    async def lock_group_answerer(self, session: AsyncSession, user_id: int) -> None:
+        """Serialize one user's attempts across every group publication."""
+        await session.scalar(
+            select(User.id).where(User.id == user_id).with_for_update()
+        )

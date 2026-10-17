@@ -346,10 +346,10 @@ class QuestionService:
         question = publication.question
         self._validate_question(question, expected_scope=QuestionScope.GROUP)
 
+        await self.repository.lock_group_answerer(session, user_id)
         if await self.repository.get_group_answer(
             session,
             question_id=question_id,
-            group_id=group_id,
             user_id=user_id,
             for_update=True,
         ):
