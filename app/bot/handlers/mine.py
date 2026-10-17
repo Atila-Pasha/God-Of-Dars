@@ -208,7 +208,11 @@ async def mine_callback(
             await callback.answer(
                 f"منابع برداشت شد: {collected}"
                 if collected
-                else "منبع قابل برداشتی ندارید."
+                else (
+                    "استخراج دوباره شروع شد."
+                    if snapshot.cycle_restarted
+                    else "منبع قابل برداشتی ندارید."
+                )
             )
             return
         elif callback_data.action == "upgrade":

@@ -46,6 +46,8 @@ class ShieldDailyLimitReached(Exception):
 
 
 class ShieldService:
+    FREE_SHIELD_OUTGOING_PENALTY = timedelta(minutes=20)
+
     def __init__(self, *, config: GameConfig | None = None) -> None:
         self.config = config or game_config
 
@@ -271,6 +273,18 @@ class ShieldService:
         active = result.scalar_one_or_none()
         if active is not None and active.active_until is not None:
             active.active_until = active.active_until - duration
+
+    @classmethod
+    def shorten_free_shield_for_outgoing_attack(
+        cls, user: User, *, now: datetime | None = None
+    ) -> bool:
+        """Spend twenty minutes of active free protection per attack command."""
+        now = now or datetime.now(UTC)
+        until = getattr(user, "free_shield_until", None)
+        if until is None or until <= now:
+            return False
+        user.free_shield_until = max(now, until - cls.FREE_SHIELD_OUTGOING_PENALTY)
+        return True
 
     async def consume_for_attack(
         self,

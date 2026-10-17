@@ -677,6 +677,9 @@ class AttackService:
         await self.castle_service.shield_service.apply_outgoing_attack_time_penalty(
             session, attacker.id, duration
         )
+        self.castle_service.shield_service.shorten_free_shield_for_outgoing_attack(
+            attacker
+        )
         resolve_at = datetime.now(UTC) + duration
         attack_command_id = str(uuid4())
         created_attacks: list[Attack] = []
@@ -1404,6 +1407,9 @@ class AttackService:
         _, castles = await lock_attack_dependencies(session, (attacker, target))
         names = tuple(item.teacher.name for item in teachers)
         await self._ensure_target_attackable(session, target.id, names)
+        self.castle_service.shield_service.shorten_free_shield_for_outgoing_attack(
+            attacker
+        )
         target_castle = castles.get(target.id)
         if target_castle is None:
             raise AttackTargetNotRegistered

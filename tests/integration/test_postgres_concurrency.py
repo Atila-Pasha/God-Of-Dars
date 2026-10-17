@@ -816,6 +816,32 @@ async def test_injured_teacher_with_remaining_hp_can_launch_attack() -> None:
 
 
 @pytest.mark.asyncio
+async def test_launch_spends_twenty_minutes_of_attackers_free_shield() -> None:
+    attacker_id, target_id, owned_id, teacher_id = await _attack_fixture()
+    try:
+        async with AsyncSessionLocal() as session:
+            attacker = await session.get(User, attacker_id)
+            assert attacker is not None
+            initial_expiry = datetime.now(UTC) + timedelta(hours=1)
+            attacker.free_shield_until = initial_expiry
+            await session.flush()
+
+            await AttackService().start_attack_by_ids(
+                session,
+                attacker_telegram_id=attacker.telegram_user_id,
+                target_id=target_id,
+                teacher_ids=[owned_id],
+            )
+
+            assert attacker.free_shield_until == initial_expiry - timedelta(minutes=20)
+            await session.rollback()
+    finally:
+        await _cleanup([attacker_id, target_id])
+        async with AsyncSessionLocal() as session, session.begin():
+            await session.execute(delete(Teacher).where(Teacher.id == teacher_id))
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status,retryable",
     [

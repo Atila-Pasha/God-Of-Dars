@@ -36,6 +36,7 @@ class MineSnapshot:
     today_diamond: int
     today_banana: int
     daily_produced_minutes: int = 0
+    cycle_restarted: bool = False
 
 
 class MineService:
@@ -191,10 +192,17 @@ class MineService:
         mine.today_coin -= amounts[0]
         mine.today_diamond -= amounts[1]
         mine.today_banana -= amounts[2]
+        cargo_empty = not (mine.today_coin or mine.today_diamond or mine.today_banana)
+        cycle_restarted = (
+            mine.daily_produced_minutes >= self.config.mine_max_catchup_minutes
+            and (any(amounts) or cargo_empty)
+        )
+        if cycle_restarted:
+            # A fully depleted legacy or raided mine can still be restarted by
+            # an explicit collection attempt, even if there is no cargo left.
+            mine.daily_produced_minutes = 0
+            mine.last_collected_at = datetime.now(UTC)
         if any(amounts):
-            if mine.daily_produced_minutes >= self.config.mine_max_catchup_minutes:
-                mine.daily_produced_minutes = 0
-                mine.last_collected_at = datetime.now(UTC)
             mine.collection_count += 1
             await DailyQuestService().record_event(
                 session,
@@ -212,6 +220,7 @@ class MineService:
                 today_diamond=mine.today_diamond,
                 today_banana=mine.today_banana,
                 daily_produced_minutes=mine.daily_produced_minutes or 0,
+                cycle_restarted=cycle_restarted,
             ),
             amounts,
         )

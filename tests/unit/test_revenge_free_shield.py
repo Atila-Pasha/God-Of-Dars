@@ -84,6 +84,20 @@ async def test_free_shield_expires_at_its_deadline() -> None:
     assert not await shield.has_free_shield(session, 12, now=now + timedelta(seconds=1))
 
 
+def test_outgoing_attacks_spend_twenty_minutes_of_free_shield() -> None:
+    now = datetime.now(UTC)
+    attacker = SimpleNamespace(free_shield_until=now + timedelta(hours=1))
+    shield = ShieldService()
+
+    assert shield.shorten_free_shield_for_outgoing_attack(attacker, now=now)
+    assert attacker.free_shield_until == now + timedelta(minutes=40)
+    assert shield.shorten_free_shield_for_outgoing_attack(attacker, now=now)
+    assert attacker.free_shield_until == now + timedelta(minutes=20)
+    assert shield.shorten_free_shield_for_outgoing_attack(attacker, now=now)
+    assert attacker.free_shield_until == now
+    assert not shield.shorten_free_shield_for_outgoing_attack(attacker, now=now)
+
+
 @pytest.mark.asyncio
 async def test_free_shield_absorbs_all_damage_without_a_purchased_shield() -> None:
     session = SimpleNamespace(

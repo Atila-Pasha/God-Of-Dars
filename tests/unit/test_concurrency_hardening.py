@@ -158,7 +158,9 @@ def test_mine_does_not_start_new_cycle_before_utc_midnight() -> None:
 
 
 @pytest.mark.asyncio
-async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -> None:
+async def test_empty_full_mine_collection_restarts_without_daily_quest(
+    monkeypatch,
+) -> None:
     now = datetime.now(UTC)
     mine = Mine(
         id=9,
@@ -190,11 +192,12 @@ async def test_empty_mine_collection_does_not_advance_daily_quest(monkeypatch) -
     record_event = AsyncMock()
     monkeypatch.setattr(DailyQuestService, "record_event", record_event)
 
-    _, amounts = await MineService(config=game_config).collect(session, 1)
+    snapshot, amounts = await MineService(config=game_config).collect(session, 1)
 
     assert amounts == (0, 0, 0)
     assert mine.collection_count == 0
-    assert mine.daily_produced_minutes == game_config.mine_max_catchup_minutes
+    assert mine.daily_produced_minutes == 0
+    assert snapshot.cycle_restarted is True
     record_event.assert_not_awaited()
 
 
