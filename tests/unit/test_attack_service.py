@@ -226,17 +226,58 @@ def test_destroyed_castle_still_yields_bounded_wallet_loot():
 
 
 @pytest.mark.asyncio
-async def test_destroyed_castle_ignores_equipped_shield():
+async def test_destroyed_castle_still_respects_equipped_shield():
     service = AttackService()
     service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=0))
-    service.castle_service.shield_service.active_shield = AsyncMock()
+    service.castle_service.shield_service.active_shield = AsyncMock(
+        return_value=SimpleNamespace(name="سپر دژ", sticker=None)
+    )
     service.castle_service.shield_service.has_free_shield = AsyncMock(
         return_value=False
     )
 
-    await service._ensure_target_attackable(SimpleNamespace(), 7)
+    with pytest.raises(TargetProtectedByShield):
+        await service._ensure_target_attackable(SimpleNamespace(), 7)
 
-    service.castle_service.shield_service.active_shield.assert_not_awaited()
+    service.castle_service.shield_service.active_shield.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_kazemi_shield_waits_for_selected_teacher_names() -> None:
+    service = AttackService()
+    shields = service.castle_service.shield_service
+    shields.has_free_shield = AsyncMock(return_value=False)
+    shields.active_shield = AsyncMock(
+        side_effect=lambda _session, _target, names=None: (
+            None
+            if names and "موسوی" in names
+            else SimpleNamespace(name="سپر کاظمی", sticker=None)
+        )
+    )
+
+    await service._ensure_target_attackable(SimpleNamespace(), 7)
+    await service._ensure_target_attackable(SimpleNamespace(), 7, ("موسوی",))
+    with pytest.raises(TargetProtectedByShield):
+        await service._ensure_target_attackable(SimpleNamespace(), 7, ("محمدی",))
+
+
+@pytest.mark.asyncio
+async def test_purchased_shield_blocks_damage_even_after_castle_is_destroyed() -> None:
+    castle = SimpleNamespace(strength=0)
+    service = CastleService()
+    service.repository = SimpleNamespace(get_by_user=AsyncMock(return_value=castle))
+    service.shield_service.consume_for_attack = AsyncMock(
+        return_value=SimpleNamespace(
+            incoming_damage=100, blocked_damage=100, remaining_damage=0
+        )
+    )
+
+    result = await service.receive_attack_damage(
+        SimpleNamespace(flush=AsyncMock()), 7, 100
+    )
+
+    assert result.blocked_damage == 100
+    service.shield_service.consume_for_attack.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

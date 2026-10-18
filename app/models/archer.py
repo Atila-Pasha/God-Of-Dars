@@ -62,7 +62,7 @@ class UserArcher(Base):
     __table_args__ = (
         Index("uq_user_archers_user", "user_id", unique=True),
         Index("uq_user_archers_user_archer", "user_id", "archer_id", unique=True),
-        CheckConstraint("level >= 1", name="ck_user_archers_level"),
+        CheckConstraint("level >= 1 AND current_hp >= 0", name="ck_user_archers_level"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -78,6 +78,10 @@ class UserArcher(Base):
     is_equipped: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+    current_hp: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=100, server_default="100"
+    )
+    recovery_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -79,8 +79,8 @@ class ShieldService:
     @staticmethod
     def _kazemi_bypassed(shield: Shield, teacher_names: tuple[str, ...] | None) -> bool:
         return shield.name == "سپر کاظمی" and (
-            teacher_names is None
-            or any("موسوی" in name or "قلمچی" in name for name in teacher_names)
+            teacher_names is not None
+            and any("موسوی" in name or "قلمچی" in name for name in teacher_names)
         )
 
     async def has_active_shield(

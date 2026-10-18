@@ -1,10 +1,12 @@
 """MarkdownV2 copy for the archer pages in school and the buffet."""
 
+from datetime import UTC, datetime
 from math import ceil
 
 from app.bot.banners import bold, emoji, escape, rich_plain
 from app.core.enums import ResourceType
 from app.models.archer import Archer, ArrowPack, UserArcher, UserArrow
+from app.services.archer_service import ArcherService
 
 BOW = "5314526780416092636"
 ARCHER = "6034940654499400541"
@@ -52,10 +54,26 @@ def school_overview(
     owned: UserArcher | None, arrows: list[UserArrow], power: int
 ) -> str:
     if owned:
+        recovery_until = getattr(owned, "recovery_until", None)
+        recovering = recovery_until is not None and recovery_until > datetime.now(UTC)
+        state = (
+            "ریکاوری"
+            if recovering
+            else "فعال"
+            if getattr(owned, "is_equipped", True)
+            and getattr(owned, "current_hp", 1) > 0
+            else "غیرفعال"
+        )
+        recovery_line = ""
+        if recovering and recovery_until is not None:
+            remaining = ceil((recovery_until - datetime.now(UTC)).total_seconds() / 60)
+            recovery_line = f"● بازگشت تا {escape(remaining)} دقیقهٔ دیگر\n"
         archer_section = (
             f"{emoji(ARCHER, '🏹')} کماندار: {archer_name(owned.archer.name, owned.archer.emoji)}\n\n"
-            f"● وضعیت: {escape('فعال' if getattr(owned, 'is_equipped', True) else 'غیرفعال')}\n"
+            f"● وضعیت: {escape(state)}\n"
             f"● سطح: {escape(owned.level)}\n"
+            f"● جان: {escape(getattr(owned, 'current_hp', ArcherService.max_hp(owned)))} / {escape(ArcherService.max_hp(owned))} HP\n"
+            f"{recovery_line}"
             f"● قدرت:\n{quote(f'{escape(power)} DMG {emoji(TARGET, "🎯")}')}"
         )
     else:
@@ -82,7 +100,7 @@ def buffet_entry() -> str:
         f"{emoji(SHOP, '💞')} {bold('دفاع دژ')}\n\n"
         + quote(
             escape(
-                "کماندار با تیر و شوالیه با شمشیر از دژ دفاع می‌کنند. تیر کماندار را جداگانه تهیه کن؛ شوالیه تیر مصرف نمی‌کند و با صفرشدن جانش از دست می‌رود."
+                "کماندار با تیر و شوالیه با شمشیر از دژ دفاع می‌کنند. هر دو با صفر شدن جان، ۵ ساعت ریکاوری می‌کنند و سپس برمی‌گردند."
             )
         )
         + "\n\n"

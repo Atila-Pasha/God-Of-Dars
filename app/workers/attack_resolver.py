@@ -181,7 +181,10 @@ async def resolve_due_archer_shots(
                             hit.emoji,
                             hit.damage,
                             knight=hit.arrow_name == "شمشیر",
-                            knight_died=getattr(hit, "died", False),
+                            knight_died=hit.arrow_name == "شمشیر"
+                            and getattr(hit, "died", False),
+                            archer_recovering=hit.arrow_name != "شمشیر"
+                            and getattr(hit, "died", False),
                         ),
                         "parse_mode": MARKDOWN_V2,
                         **reply,
@@ -292,7 +295,16 @@ async def _command_result(session, result):
         )
         and result.blocked_by_shield,
         archer_hits=archer_hits,
-        knight_died=any(getattr(row, "guard_died_snapshot", False) for row in records),
+        knight_died=any(
+            getattr(row, "guard_died_snapshot", False)
+            and row.arrow_name_snapshot == "شمشیر"
+            for row in records
+        ),
+        archer_recovering=any(
+            getattr(row, "guard_died_snapshot", False)
+            and row.arrow_name_snapshot != "شمشیر"
+            for row in records
+        ),
         archer_stickers=tuple(
             dict.fromkeys(
                 row.archer_sticker_snapshot

@@ -387,6 +387,7 @@ async def _archers_view(target: CallbackQuery, session: AsyncSession) -> None:
             getattr(owned[0], "id", None) if owned else None,
             has_arrows=bool(arrows),
             equipped=getattr(owned[0], "is_equipped", True) if owned else True,
+            alive=owned[0].current_hp > 0 if owned else True,
         ),
         parse_mode=MARKDOWN_V2,
     )

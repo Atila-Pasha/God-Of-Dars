@@ -60,11 +60,15 @@ def school_keyboard() -> InlineKeyboardMarkup:
 
 
 def school_archers_keyboard(
-    owned_id: int | None = None, *, has_arrows: bool = False, equipped: bool = True
+    owned_id: int | None = None,
+    *,
+    has_arrows: bool = False,
+    equipped: bool = True,
+    alive: bool = True,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if owned_id is not None:
-        if not equipped:
+        if not equipped and alive:
             rows.append(
                 [
                     InlineKeyboardButton(

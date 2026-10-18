@@ -298,6 +298,7 @@ def archer_midway_banner(
     *,
     knight: bool = False,
     knight_died: bool = False,
+    archer_recovering: bool = False,
 ) -> str:
     if knight:
         icon = (
@@ -307,7 +308,7 @@ def archer_midway_banner(
         )
         line = f"{icon} {escape('شوالیه')} {escape(archer_name)} {emoji(SWORD_EMOJI_ID, '⚔️')} {escape('به دبیر')} {escape(teacher_name)} {escape(damage)} HP {escape('آسیب زد.')}"
         return line + (
-            f"\n{emoji(KNIGHT_EMOJI_ID, '⚔️')} {escape('جان شوالیه به صفر رسید و از مدرسه حذف شد.')}"
+            f"\n{emoji(KNIGHT_EMOJI_ID, '⚔️')} {escape('جان شوالیه به صفر رسید؛ ۵ ساعت در ریکاوری است.')}"
             if knight_died
             else ""
         )
@@ -328,7 +329,11 @@ def archer_midway_banner(
             _ARCHER_SHOT_LINES[attack_id % len(_ARCHER_SHOT_LINES)]
         )
     )
-    return line
+    return line + (
+        f"\n{emoji(ARCHER_EMOJI_ID, '🏹')} {escape('جان کماندار به صفر رسید؛ ۵ ساعت در ریکاوری است.')}"
+        if archer_recovering
+        else ""
+    )
 
 
 def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -> str:
@@ -429,8 +434,13 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         else ""
     )
     knight_death_note = (
-        f"{emoji(KNIGHT_EMOJI_ID, '⚔️')} {escape('شوالیه در این نبرد جان باخت و از مدرسه حذف شد.')}\n\n"
+        f"{emoji(KNIGHT_EMOJI_ID, '⚔️')} {escape('شوالیه ۵ ساعت به ریکاوری رفت.')}\n\n"
         if result.knight_died
+        else ""
+    )
+    archer_recovery_note = (
+        f"{emoji(ARCHER_EMOJI_ID, '🏹')} {escape('کماندار ۵ ساعت به ریکاوری رفت.')}\n\n"
+        if getattr(result, "archer_recovering", False)
         else ""
     )
     return (
@@ -447,7 +457,7 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{HEAL} آسیب واردشده به دبیر:\n"
         f"> {escape(result.teacher_injury)} HP {HEAL}\n\n"
         f"{archer_note}"
-        f"{knight_death_note}"
+        f"{knight_death_note}{archer_recovery_note}"
         f"{LOOT} {loot_label}:\n"
         f"{COIN} طلا: {escape(coin_amount)}\n"
         f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"

@@ -213,10 +213,6 @@ class CastleService:
         mitigation = (
             ShieldMitigation(incoming_damage, 0, incoming_damage)
             if ignore_shield
-            or (
-                castle.strength == 0
-                and not await self.shield_service.has_free_shield(session, user_id)
-            )
             else await self.shield_service.consume_for_attack(
                 session, user_id, incoming_damage, teacher_names=teacher_names
             )

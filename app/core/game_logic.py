@@ -261,6 +261,8 @@ class GameConfig:
     mine_coin_growth: float = 1.10
     mine_diamond_growth: float = 1.08
     mine_cost_growth: float = 1.18
+    mine_coin_step: int = 4
+    mine_cost_step: int = 200
     level_progression: LevelProgression = field(default_factory=LevelProgression)
     buildings: dict[str, dict[int, dict[str, int]]] = field(default_factory=dict)
     study_packs: dict[str, StudyPack] = field(default_factory=dict)
@@ -374,6 +376,8 @@ class GameConfig:
             < 1
         ):
             raise ValueError("mine progression is invalid")
+        if min(self.mine_coin_step, self.mine_cost_step) < 1:
+            raise ValueError("mine progression steps must be positive")
         if (
             self.castle_repair.diamond_cost_per_100_strength < 0
             or self.castle_repair.minimum_diamond_cost < 0
@@ -679,7 +683,7 @@ class GameConfig:
                 # upgrade do nothing. Diamonds retain their slower curve to
                 # preserve the existing shield and progression economy.
                 coin_per_minute=max(
-                    base.coin_per_minute + steps,
+                    base.coin_per_minute + steps * self.mine_coin_step,
                     round(base.coin_per_minute * self.mine_coin_growth**steps),
                 ),
                 diamond_per_minute=max(
@@ -687,9 +691,13 @@ class GameConfig:
                 ),
                 banana_per_minute=base.banana_per_minute,
                 diamond_cost=max(
-                    1, round((base.diamond_cost or 1) * self.mine_cost_growth**steps)
+                    (base.diamond_cost or 1) + steps * self.mine_cost_step,
+                    round((base.diamond_cost or 1) * self.mine_cost_growth**steps),
                 ),
-                required_player_level=level,
+                required_player_level=min(
+                    self.level_progression.max_level,
+                    max(level, base.required_player_level + steps),
+                ),
             )
 
     def mine_upgrade(self, level: int, player_level: int) -> MineLevel:
@@ -942,6 +950,8 @@ class GameConfig:
             mine_coin_growth=float(mine_data.get("coin_growth", 1.10)),
             mine_diamond_growth=float(mine_data.get("diamond_growth", 1.08)),
             mine_cost_growth=float(mine_data.get("cost_growth", 1.18)),
+            mine_coin_step=int(mine_data.get("coin_step", 4)),
+            mine_cost_step=int(mine_data.get("cost_step", 200)),
             level_progression=LevelProgression(
                 xp_by_level=xp_by_level,
                 upgrade_cost_by_level=upgrade_cost_by_level,

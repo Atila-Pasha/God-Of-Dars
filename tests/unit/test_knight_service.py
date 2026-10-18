@@ -14,6 +14,7 @@ def _knight(*, hp: int = 30, equipped: bool = True):
         id=4,
         level=1,
         current_hp=hp,
+        recovery_until=None,
         is_equipped=equipped,
         knight=SimpleNamespace(
             name="نگهبان",
@@ -44,13 +45,17 @@ async def test_knight_strikes_without_ammunition_and_loses_health() -> None:
 
 
 @pytest.mark.asyncio
-async def test_only_one_guard_is_equipped() -> None:
+async def test_only_one_guard_is_equipped(monkeypatch) -> None:
     service = KnightService()
-    archer = SimpleNamespace(is_equipped=True)
+    archer = SimpleNamespace(is_equipped=True, current_hp=100)
     knight = _knight(equipped=False)
     session = SimpleNamespace(scalar=AsyncMock(return_value=archer), flush=AsyncMock())
     service._buyer = AsyncMock(return_value=(object(), object()))
     service.owned = AsyncMock(return_value=knight)
+    monkeypatch.setattr(
+        "app.services.archer_service.ArcherService.owned",
+        AsyncMock(return_value=[archer]),
+    )
 
     await service.equip(session, 1, "knight")
     assert knight.is_equipped and not archer.is_equipped
@@ -83,4 +88,4 @@ def test_knight_school_and_attack_banners_use_requested_emojis() -> None:
     death = archer_midway_banner(
         1, "دبیر", "نگهبان", None, 8, knight=True, knight_died=True
     )
-    assert "از مدرسه حذف شد" in death
+    assert "۵ ساعت در ریکاوری" in death

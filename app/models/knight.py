@@ -78,6 +78,7 @@ class UserKnight(Base):
         Integer, nullable=False, default=1, server_default="1"
     )
     current_hp: Mapped[int] = mapped_column(Integer, nullable=False)
+    recovery_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_equipped: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

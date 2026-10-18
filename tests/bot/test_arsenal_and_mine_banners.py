@@ -121,5 +121,6 @@ def test_kazemi_shield_exception_only_applies_to_named_teachers() -> None:
 
     assert ShieldService._kazemi_bypassed(kazemi, ("موسوی",))
     assert ShieldService._kazemi_bypassed(kazemi, ("کاظم قلمچی",))
+    assert not ShieldService._kazemi_bypassed(kazemi, None)
     assert not ShieldService._kazemi_bypassed(kazemi, ("قضاتی",))
     assert not ShieldService._kazemi_bypassed(stronger, ("موسوی",))

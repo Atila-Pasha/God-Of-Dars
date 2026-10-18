@@ -11,6 +11,8 @@ async def test_counterfire_uses_one_equipped_arrow_and_caps_damage() -> None:
     service = ArcherService()
     archer = SimpleNamespace(
         level=3,
+        current_hp=116,
+        recovery_until=None,
         archer=SimpleNamespace(name="محسنی", power=8, emoji="123", sticker="sticker"),
     )
     equipped = SimpleNamespace(
@@ -41,7 +43,14 @@ async def test_counterfire_uses_one_equipped_arrow_and_caps_damage() -> None:
 async def test_counterfire_stops_when_equipped_pack_is_empty() -> None:
     service = ArcherService()
     service.owned = AsyncMock(
-        return_value=[SimpleNamespace(level=1, archer=SimpleNamespace(power=4))]
+        return_value=[
+            SimpleNamespace(
+                level=1,
+                current_hp=100,
+                recovery_until=None,
+                archer=SimpleNamespace(power=4),
+            )
+        ]
     )
     service.ammunition = AsyncMock(
         return_value=[SimpleNamespace(quantity=5, is_equipped=False)]

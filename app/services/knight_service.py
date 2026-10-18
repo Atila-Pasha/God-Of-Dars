@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.enums import ResourceType
-from app.models.archer import UserArcher
 from app.models.knight import Knight, UserKnight
 from app.models.resource import Resource
 from app.models.user import User
 from app.services.archer_service import ArcherError
+from app.services.guard_recovery import restore_if_ready, take_damage
 from app.services.resource_service import ResourceService
 
 
@@ -63,7 +63,10 @@ class KnightService:
         )
         if lock:
             query = query.with_for_update(of=UserKnight)
-        return await session.scalar(query)
+        owned = await session.scalar(query)
+        if owned is not None:
+            restore_if_ready(owned, self.max_hp(owned))
+        return owned
 
     async def active(
         self, session: AsyncSession, user_id: int, *, lock: bool = False
@@ -97,9 +100,10 @@ class KnightService:
             )
         if knight.purchase_resource not in (ResourceType.COIN, ResourceType.DIAMOND):
             raise ArcherError("ارز خرید نامعتبر است.")
-        archer = await session.scalar(
-            select(UserArcher).where(UserArcher.user_id == user_id).with_for_update()
-        )
+        from app.services.archer_service import ArcherService
+
+        archers = await ArcherService().owned(session, user_id, lock=True)
+        archer = archers[0] if archers else None
         owned = UserKnight(
             user_id=user_id,
             knight_id=knight_id,
@@ -123,9 +127,10 @@ class KnightService:
 
     async def equip(self, session: AsyncSession, user_id: int, kind: str) -> None:
         await self._buyer(session, user_id)
-        archer = await session.scalar(
-            select(UserArcher).where(UserArcher.user_id == user_id).with_for_update()
-        )
+        from app.services.archer_service import ArcherService
+
+        archers = await ArcherService().owned(session, user_id, lock=True)
+        archer = archers[0] if archers else None
         knight = await self.owned(session, user_id, lock=True)
         if kind == "knight":
             if knight is None or knight.current_hp <= 0:
@@ -134,8 +139,8 @@ class KnightService:
             if archer:
                 archer.is_equipped = False
         elif kind == "archer":
-            if archer is None:
-                raise ArcherError("کمانداری برای فعال‌سازی ندارید.")
+            if archer is None or archer.current_hp <= 0:
+                raise ArcherError("کماندار تا پایان ریکاوری قابل فعال‌سازی نیست.")
             archer.is_equipped = True
             if knight:
                 knight.is_equipped = False
@@ -196,10 +201,11 @@ class KnightService:
                 reference_id=owned.id,
             )
         await session.delete(owned)
-        archer = await session.scalar(
-            select(UserArcher).where(UserArcher.user_id == user_id).with_for_update()
-        )
-        if archer:
+        from app.services.archer_service import ArcherService
+
+        archers = await ArcherService().owned(session, user_id, lock=True)
+        archer = archers[0] if archers else None
+        if archer and archer.current_hp > 0:
             archer.is_equipped = True
         await session.flush()
         return knight.name, refund, knight.purchase_resource
@@ -221,9 +227,7 @@ class KnightService:
             return None
         damage = min(teacher_hp, self.power(knight), max(1, ceil(teacher_max_hp * 0.3)))
         reduction = min(40, self.power(knight) * 2)
-        knight.current_hp = max(
-            0, knight.current_hp - max(1, ceil(incoming_power * 0.25))
-        )
+        fell = take_damage(knight, max(1, ceil(incoming_power * 0.25)))
         hit = KnightHit(
             knight.knight.name,
             knight.knight.emoji,
@@ -231,9 +235,6 @@ class KnightService:
             "شمشیر",
             damage,
             reduction,
-            knight.current_hp == 0,
+            fell,
         )
-        if hit.died:
-            await session.delete(knight)
-            await session.flush()
         return hit

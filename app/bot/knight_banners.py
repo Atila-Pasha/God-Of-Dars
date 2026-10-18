@@ -1,5 +1,8 @@
 """MarkdownV2 banners for the knight guard."""
 
+from datetime import UTC, datetime
+from math import ceil
+
 from app.bot.archer_banners import (
     CHECK,
     COST,
@@ -35,10 +38,26 @@ def school_overview(owned: UserKnight | None) -> str:
     else:
         power = KnightService.power(owned)
         reduction = min(40, power * 2)
+        recovery_until = getattr(owned, "recovery_until", None)
+        recovering = recovery_until is not None and recovery_until > datetime.now(UTC)
+        status = (
+            "ریکاوری"
+            if recovering
+            else "فعال"
+            if owned.is_equipped and owned.current_hp
+            else "غیرفعال"
+        )
+        recovery_detail: tuple[str, ...] = ()
+        if recovering and recovery_until is not None:
+            remaining = ceil((recovery_until - datetime.now(UTC)).total_seconds() / 60)
+            recovery_detail = (
+                f"{escape('بازگشت تا')} {escape(remaining)} {escape('دقیقهٔ دیگر')}",
+            )
         detail = f"{name(owned.knight.name, owned.knight.emoji)}\n" + quote(
-            f"{escape('وضعیت:')} {escape('فعال' if owned.is_equipped and owned.current_hp else 'غیرفعال')}",
+            f"{escape('وضعیت:')} {escape(status)}",
             f"{escape('سطح:')} {escape(owned.level)}",
             f"{escape('جان:')} {escape(owned.current_hp)} / {escape(KnightService.max_hp(owned))} HP",
+            *recovery_detail,
             f"{escape('قدرت شمشیر:')} {escape(power)} DMG {emoji(SWORD, '⚔️')}",
             f"{escape('کاهش تخریب دژ و غارت منابع:')} {escape(reduction)}٪",
         )
@@ -46,7 +65,7 @@ def school_overview(owned: UserKnight | None) -> str:
         f"{emoji(KNIGHT, '⚔️')} {bold('شوالیهٔ دژ')}\n\n{detail}\n\n"
         + quote(
             escape(
-                "شوالیهٔ فعال به دبیرهای مهاجم ضربه می‌زند و با هر دفاع جان از دست می‌دهد. اگر جانش صفر شود، می‌میرد و از مدرسه حذف می‌شود."
+                "شوالیهٔ فعال به دبیرهای مهاجم ضربه می‌زند و با هر دفاع جان از دست می‌دهد. با صفر شدن جان، ۵ ساعت ریکاوری می‌کند و با جان کامل برمی‌گردد."
             )
         )
         + f"\n\n{escape('خرید شوالیه از بوفه ← دفاع دژ.')}"
@@ -56,7 +75,7 @@ def school_overview(owned: UserKnight | None) -> str:
 def buffet_entry() -> str:
     return f"{emoji(KNIGHT, '⚔️')} {bold('خرید شوالیه')}\n\n" + quote(
         escape(
-            "شوالیه بدون تیر از دژ دفاع می‌کند. قدرتش به دبیرهای مهاجم آسیب می‌زند و درصد تخریب و غارت را کم می‌کند. جانش درمان نمی‌شود و با رسیدن به صفر برای همیشه از دست می‌رود."
+            "شوالیه بدون تیر از دژ دفاع می‌کند. قدرتش به دبیرهای مهاجم آسیب می‌زند و درصد تخریب و غارت را کم می‌کند. با صفر شدن جان، ۵ ساعت ریکاوری می‌کند."
         )
     )
 
@@ -64,7 +83,7 @@ def buffet_entry() -> str:
 def catalog() -> str:
     return f"{emoji(KNIGHT, '⚔️')} {bold('فهرست شوالیه‌ها')}\n" + quote(
         escape(
-            "هر فرمانده یک شوالیه می‌تواند داشته باشد. برای تعویض، شوالیهٔ قبلی را بفروشید؛ شوالیهٔ مرده خودکار از مدرسه حذف می‌شود."
+            "هر فرمانده یک شوالیه می‌تواند داشته باشد. برای تعویض، شوالیهٔ قبلی را بفروشید؛ شوالیهٔ بی‌جان پس از ۵ ساعت برمی‌گردد."
         )
     )
 
@@ -80,7 +99,7 @@ def purchase(item: Knight) -> str:
             f"{escape('سطح بازشدن:')} {escape(item.unlock_level)}",
             f"{escape('قیمت:')} {price(item.purchase_price, item.purchase_resource)}",
         )
-        + f"\n\n{escape('جان شوالیه درمان نمی‌شود و در جان صفر از دست می‌رود. خرید را تأیید می‌کنید؟')}"
+        + f"\n\n{escape('با صفر شدن جان، شوالیه ۵ ساعت ریکاوری می‌کند. خرید را تأیید می‌کنید؟')}"
     )
 
 

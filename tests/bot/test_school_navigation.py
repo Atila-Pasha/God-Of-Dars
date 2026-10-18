@@ -90,6 +90,8 @@ async def test_school_archers_shows_owned_archer_and_selected_ammo(monkeypatch) 
     owned = SimpleNamespace(
         id=17,
         level=2,
+        current_hp=108,
+        recovery_until=None,
         archer=SimpleNamespace(name="محسنی", power=4, emoji=None),
     )
     stock = SimpleNamespace(

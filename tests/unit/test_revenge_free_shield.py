@@ -11,6 +11,7 @@ from app.bot.callbacks import RevengeCallback
 from app.bot.handlers import battle
 from app.bot.keyboards.revenge import revenge_keyboard
 from app.core.enums import AttackStatus
+from app.core.game_logic import ShieldMitigation
 from app.services.attack_service import AttackService
 from app.services.school_errors import TargetProtectedByShield
 from app.services.shield_service import ShieldService
@@ -73,6 +74,39 @@ async def test_free_shield_blocks_even_when_castle_is_destroyed() -> None:
     service.castle_service.shield_service.has_free_shield = AsyncMock(return_value=True)
     with pytest.raises(TargetProtectedByShield):
         await service._ensure_target_attackable(SimpleNamespace(), 12)
+
+
+@pytest.mark.asyncio
+async def test_purchased_shield_blocks_attack_when_castle_is_destroyed() -> None:
+    service = AttackService()
+    service.castle_service.shield_service.has_free_shield = AsyncMock(
+        return_value=False
+    )
+    service.castle_service.shield_service.active_shield = AsyncMock(
+        return_value=SimpleNamespace(name="سپر خسروپناه", sticker=None)
+    )
+
+    with pytest.raises(TargetProtectedByShield):
+        await service._ensure_target_attackable(SimpleNamespace(), 12)
+
+    service.castle_service.shield_service.active_shield.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_purchased_shield_mitigates_direct_damage_at_zero_castle_hp() -> None:
+    service = AttackService()
+    service.castle_service.repository.get_by_user = AsyncMock(
+        return_value=SimpleNamespace(strength=0)
+    )
+    consume = AsyncMock(return_value=ShieldMitigation(80, 80, 0))
+    service.castle_service.shield_service.consume_for_attack = consume
+    session = SimpleNamespace(flush=AsyncMock())
+
+    result = await service.castle_service.receive_attack_damage(session, 12, 80)
+
+    assert result.blocked_damage == 80
+    assert result.applied_damage == 0
+    consume.assert_awaited_once()
 
 
 @pytest.mark.asyncio

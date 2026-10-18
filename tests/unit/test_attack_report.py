@@ -147,4 +147,4 @@ def test_knight_hit_uses_sword_and_knight_name() -> None:
     assert "شوالیه نگهبان" in report
     assert "کماندار نگهبان" not in report
     assert "tg://emoji?id=5825961702088254236" in report
-    assert "شوالیه در این نبرد جان باخت" in report
+    assert "شوالیه ۵ ساعت به ریکاوری رفت" in report

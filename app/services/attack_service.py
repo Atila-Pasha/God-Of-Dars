@@ -79,6 +79,7 @@ class AttackResult:
     archer_hits: tuple[tuple[str, str | None, str, str, str | None, int], ...] = ()
     archer_stickers: tuple[str, ...] = ()
     knight_died: bool = False
+    archer_recovering: bool = False
 
 
 @dataclass(frozen=True)
@@ -1031,7 +1032,10 @@ class AttackService:
             archer_stickers=(archer_hit.sticker,)
             if archer_hit and archer_hit.sticker
             else (),
-            knight_died=attack.guard_died_snapshot,
+            knight_died=attack.guard_died_snapshot
+            and attack.arrow_name_snapshot == "شمشیر",
+            archer_recovering=attack.guard_died_snapshot
+            and attack.arrow_name_snapshot != "شمشیر",
         )
 
     async def _selection_for_update(
@@ -1635,7 +1639,14 @@ class AttackService:
                     if row[0].archer_sticker_snapshot
                 )
             ),
-            knight_died=any(row[0].guard_died_snapshot for row in teacher_results),
+            knight_died=any(
+                row[0].guard_died_snapshot and row[0].arrow_name_snapshot == "شمشیر"
+                for row in teacher_results
+            ),
+            archer_recovering=any(
+                row[0].guard_died_snapshot and row[0].arrow_name_snapshot != "شمشیر"
+                for row in teacher_results
+            ),
         )
 
     async def _ensure_target_attackable(
@@ -1644,17 +1655,22 @@ class AttackService:
         target_id: int,
         teacher_names: tuple[str, ...] | None = None,
     ) -> None:
-        castle = await self.castles.get_by_user(session, target_id)
         shield_service = self.castle_service.shield_service
         if await shield_service.has_free_shield(session, target_id):
             raise TargetProtectedByShield("سپر رایگان یک‌ساعته")
-        if castle is not None and castle.strength == 0:
-            return
         active_shield = (
             await shield_service.active_shield(session, target_id)
             if teacher_names is None
             else await shield_service.active_shield(session, target_id, teacher_names)
         )
+        # The Kazemi shield depends on the selected teachers. Keep target
+        # discovery open and decide after the attack team has been selected.
+        if (
+            teacher_names is None
+            and active_shield
+            and active_shield.name == "سپر کاظمی"
+        ):
+            return
         if active_shield is not None:
             raise TargetProtectedByShield(active_shield.name, active_shield.sticker)
 

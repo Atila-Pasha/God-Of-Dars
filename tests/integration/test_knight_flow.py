@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -87,14 +88,33 @@ async def test_knight_and_archer_selection_and_persistent_health() -> None:
                 assert final_hit is not None
             assert final_hit.died
             assert owned_knight.current_hp == 0
-            assert await knights.owned(session, user.id) is None
+            assert await knights.owned(session, user.id) is owned_knight
+            assert (
+                datetime.now(UTC) + timedelta(hours=4, minutes=59)
+                < owned_knight.recovery_until
+            )
             assert await archers.fire(session, user.id, 80, 80, 0, 20) is None
             assert await knights.reduction(session, user.id) == 0
             assert stock.quantity == 2
 
             await knights.equip(session, user.id, "archer")
             assert owned_archer.is_equipped
-            replacement = await knights.buy(session, user.id, knight.id)
-            assert replacement.current_hp == 20 and not replacement.is_equipped
+            archer_hit = await archers.fire(session, user.id, 80, 80, 0, 400)
+            assert archer_hit is not None and archer_hit.died
+            assert owned_archer.current_hp == 0
+            assert stock.quantity == 1
+            assert await archers.fire(session, user.id, 80, 80, 0, 400) is None
+            assert stock.quantity == 1
+
+            owned_archer.recovery_until = datetime.now(UTC) - timedelta(seconds=1)
+            assert (await archers.owned(session, user.id))[
+                0
+            ].current_hp == archers.max_hp(owned_archer)
+            owned_knight.recovery_until = datetime.now(UTC) - timedelta(seconds=1)
+            assert (await knights.owned(session, user.id)).current_hp == knights.max_hp(
+                owned_knight
+            )
+            await knights.equip(session, user.id, "knight")
+            assert owned_knight.is_equipped and not owned_archer.is_equipped
         finally:
             await session.rollback()

@@ -1,5 +1,7 @@
+import pytest
+
 from app.core.enums import ResourceType
-from app.core.game_logic import game_config
+from app.core.game_logic import GameConfigurationError, game_config
 
 
 def test_progression_is_defined_and_bounded_through_level_500() -> None:
@@ -63,8 +65,23 @@ def test_every_high_level_mine_upgrade_increases_production() -> None:
     for level in range(6, game_config.mine_max_level):
         before = game_config.mine_level(level)
         after = game_config.mine_level(level + 1)
-        assert after.coin_per_minute >= before.coin_per_minute + 1
+        assert after.coin_per_minute >= before.coin_per_minute + 4
         assert after.diamond_per_minute >= before.diamond_per_minute
+        assert after.diamond_cost >= before.diamond_cost + 200
+        assert after.required_player_level >= before.required_player_level
+
+
+def test_seventh_mine_level_has_meaningful_unlock_and_price() -> None:
+    seventh = game_config.mine_level(7)
+    assert (
+        seventh.coin_per_minute,
+        seventh.diamond_per_minute,
+        seventh.diamond_cost,
+        seventh.required_player_level,
+    ) == (36, 8, 13_200, 11)
+    with pytest.raises(GameConfigurationError, match="locked"):
+        game_config.mine_upgrade(6, 10)
+    assert game_config.mine_upgrade(6, 11) == seventh
 
 
 def test_diamond_teacher_sale_refunds_equivalent_coin_value() -> None:
