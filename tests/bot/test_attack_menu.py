@@ -34,8 +34,8 @@ def test_main_menu_attack_button_has_custom_sword_icon() -> None:
 def test_main_menu_groups_actions_in_balanced_rows() -> None:
     rows = main_menu_keyboard().keyboard
     assert [[button.text for button in row] for row in rows] == [
-        ["حمله", "معدن منابع"],
-        ["بوفه", "مدرسه من"],
+        ["حمله", "مدرسه من"],
+        ["بوفه", "معدن منابع"],
         ["کتابخانه", "فعالیت‌های روزانه"],
         ["گروه بازی", "پروفایل"],
     ]
