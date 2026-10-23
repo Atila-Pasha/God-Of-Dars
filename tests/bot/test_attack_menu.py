@@ -31,13 +31,13 @@ def test_main_menu_attack_button_has_custom_sword_icon() -> None:
     assert attack_button.icon_custom_emoji_id == "5823192436024813346"
 
 
-def test_main_menu_rows_follow_requested_order() -> None:
+def test_main_menu_groups_actions_in_balanced_rows() -> None:
     rows = main_menu_keyboard().keyboard
     assert [[button.text for button in row] for row in rows] == [
-        ["مدرسه من", "کتابخانه", "معدن منابع"],
-        ["فعالیت‌های روزانه", "بوفه", "پروفایل"],
-        ["حمله"],
-        ["گروه بازی"],
+        ["حمله", "معدن منابع"],
+        ["بوفه", "مدرسه من"],
+        ["کتابخانه", "فعالیت‌های روزانه"],
+        ["گروه بازی", "پروفایل"],
     ]
     assert rows[-1][0].icon_custom_emoji_id == "5453957997418004470"
 
