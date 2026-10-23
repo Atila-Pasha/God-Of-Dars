@@ -163,9 +163,12 @@ async def test_attack_preview_rejects_a_target_with_an_active_shield():
     service = AttackService()
     service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=100))
     service.castle_service.shield_service = SimpleNamespace(
-        has_free_shield=AsyncMock(return_value=False),
-        active_shield=AsyncMock(
-            return_value=SimpleNamespace(name="سپر آبی", sticker="file-id")
+        free_shield_expiry=AsyncMock(return_value=None),
+        active_protection=AsyncMock(
+            return_value=SimpleNamespace(
+                shield=SimpleNamespace(name="سپر آبی", sticker="file-id"),
+                active_until=None,
+            )
         ),
     )
 
@@ -178,7 +181,9 @@ async def test_attack_preview_rejects_a_target_with_an_active_shield():
         )
 
     assert (error.value.shield_name, error.value.sticker) == ("سپر آبی", "file-id")
-    service.castle_service.shield_service.active_shield.assert_awaited_once_with(ANY, 2)
+    service.castle_service.shield_service.active_protection.assert_awaited_once_with(
+        ANY, 2
+    )
 
 
 def test_loot_is_capped_by_teacher_power_not_target_wealth():
@@ -229,29 +234,35 @@ def test_destroyed_castle_still_yields_bounded_wallet_loot():
 async def test_destroyed_castle_still_respects_equipped_shield():
     service = AttackService()
     service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=0))
-    service.castle_service.shield_service.active_shield = AsyncMock(
-        return_value=SimpleNamespace(name="سپر دژ", sticker=None)
+    service.castle_service.shield_service.active_protection = AsyncMock(
+        return_value=SimpleNamespace(
+            shield=SimpleNamespace(name="سپر دژ", sticker=None),
+            active_until=None,
+        )
     )
-    service.castle_service.shield_service.has_free_shield = AsyncMock(
-        return_value=False
+    service.castle_service.shield_service.free_shield_expiry = AsyncMock(
+        return_value=None
     )
 
     with pytest.raises(TargetProtectedByShield):
         await service._ensure_target_attackable(SimpleNamespace(), 7)
 
-    service.castle_service.shield_service.active_shield.assert_awaited_once()
+    service.castle_service.shield_service.active_protection.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_kazemi_shield_waits_for_selected_teacher_names() -> None:
     service = AttackService()
     shields = service.castle_service.shield_service
-    shields.has_free_shield = AsyncMock(return_value=False)
-    shields.active_shield = AsyncMock(
+    shields.free_shield_expiry = AsyncMock(return_value=None)
+    shields.active_protection = AsyncMock(
         side_effect=lambda _session, _target, names=None: (
             None
             if names and "موسوی" in names
-            else SimpleNamespace(name="سپر کاظمی", sticker=None)
+            else SimpleNamespace(
+                shield=SimpleNamespace(name="سپر کاظمی", sticker=None),
+                active_until=None,
+            )
         )
     )
 

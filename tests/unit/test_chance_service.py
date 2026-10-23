@@ -96,6 +96,19 @@ def test_relative_time_uses_a_live_telegram_entity_inside_spoiler() -> None:
     assert text == "||![5 دقیقه](tg://time?unix=1791461100&format=r)||"
 
 
+def test_relative_time_can_show_visible_detailed_shield_timer() -> None:
+    now = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+    text = remaining_time(
+        now + timedelta(hours=2, minutes=15),
+        now=now,
+        spoiler=False,
+        detailed=True,
+    )
+
+    assert text.startswith("![2 ساعت و 15 دقیقه](tg://time?unix=")
+    assert text.endswith("&format=r)")
+
+
 @pytest.mark.asyncio
 async def test_wrong_card_answer_consumes_the_only_attempt() -> None:
     card = SimpleNamespace(

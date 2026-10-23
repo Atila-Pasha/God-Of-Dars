@@ -1,3 +1,6 @@
+from datetime import datetime
+
+
 class SchoolError(RuntimeError):
     """Base class for user-facing My School domain errors."""
 
@@ -132,11 +135,15 @@ class TargetProtectedByShield(SchoolError):
     """The target cannot be attacked while their timed shield is active."""
 
     def __init__(
-        self, shield_name: str = "سپر فعال", sticker: str | None = None
+        self,
+        shield_name: str = "سپر فعال",
+        sticker: str | None = None,
+        active_until: datetime | None = None,
     ) -> None:
         super().__init__(shield_name)
         self.shield_name = shield_name
         self.sticker = sticker
+        self.active_until = active_until
 
 
 class MineNotFound(SchoolError):

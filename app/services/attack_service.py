@@ -1667,23 +1667,30 @@ class AttackService:
         teacher_names: tuple[str, ...] | None = None,
     ) -> None:
         shield_service = self.castle_service.shield_service
-        if await shield_service.has_free_shield(session, target_id):
-            raise TargetProtectedByShield("سپر رایگان یک‌ساعته")
-        active_shield = (
-            await shield_service.active_shield(session, target_id)
+        free_until = await shield_service.free_shield_expiry(session, target_id)
+        if free_until is not None:
+            raise TargetProtectedByShield("سپر رایگان یک‌ساعته", active_until=free_until)
+        protection = (
+            await shield_service.active_protection(session, target_id)
             if teacher_names is None
-            else await shield_service.active_shield(session, target_id, teacher_names)
+            else await shield_service.active_protection(
+                session, target_id, teacher_names
+            )
         )
         # The Kazemi shield depends on the selected teachers. Keep target
         # discovery open and decide after the attack team has been selected.
         if (
             teacher_names is None
-            and active_shield
-            and active_shield.name == "سپر کاظمی"
+            and protection
+            and protection.shield.name == "سپر کاظمی"
         ):
             return
-        if active_shield is not None:
-            raise TargetProtectedByShield(active_shield.name, active_shield.sticker)
+        if protection is not None:
+            raise TargetProtectedByShield(
+                protection.shield.name,
+                protection.shield.sticker,
+                active_until=protection.active_until,
+            )
 
     async def _raid_mine(
         self,

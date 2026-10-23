@@ -39,6 +39,7 @@ from app.bot.keyboards.school import (
     confirmation_keyboard,
     teacher_catalog_page_keyboard,
 )
+from app.bot.relative_time import remaining_time
 from app.bot.shield_presentation import shield_icon, shield_plain_icon
 from app.bot.states import BuffetStates
 from app.bot.teacher_lookup import matching_teachers
@@ -457,7 +458,13 @@ async def _conversion_view(target: CallbackQuery, session: AsyncSession) -> None
     )
 
 
-def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str:
+def _shield_catalog_banner(
+    player_level: int,
+    owned: list,
+    catalog: list,
+    *,
+    free_shield_until: datetime | None = None,
+) -> str:
     header_icon = emoji("5915888842568638290", "🤩")
     time_icon = emoji("6039539366177541657", "⏳")
     level_icon = emoji("5825727141039317043", "🎖️")
@@ -465,15 +472,17 @@ def _shield_catalog_banner(player_level: int, owned: list, catalog: list) -> str
         f"{header_icon} {bold('زرادخانه سپرها')} {header_icon}",
         f"{level_icon} سطح فرمانده: {bold(player_level)}",
     ]
-    if owned:
+    now = datetime.now(UTC)
+    if owned or (free_shield_until is not None and free_shield_until > now):
         for item in owned:
-            remaining = max(
-                0, int((item.active_until - datetime.now(UTC)).total_seconds())
-            )
-            minutes = (remaining + 59) // 60
             lines.append(
                 f"● وضعیت دفاعی شما: {shield_icon(item.shield)} {bold(item.shield.name)}\n"
-                f"{time_icon} زمان باقی‌مانده: {escape(minutes)} دقیقه"
+                f"{time_icon} زمان باقی‌مانده: {remaining_time(item.active_until, now=now, spoiler=False, detailed=True)}"
+            )
+        if free_shield_until is not None and free_shield_until > now:
+            lines.append(
+                "● وضعیت دفاعی شما: 🛡️ *سپر رایگان یک‌ساعته*\n"
+                f"{time_icon} زمان باقی‌مانده: {remaining_time(free_shield_until, now=now, spoiler=False, detailed=True)}"
             )
     else:
         lines.append("● وضعیت دفاعی شما :  « هنوز سپر فعالی نداری »")
@@ -533,11 +542,19 @@ async def _shields_view(target: Message | CallbackQuery, session: AsyncSession) 
     )
     owned = await shield_service.list_owned(session, user.id)
     catalog = await shield_service.catalog(session, player_level=None)
-    text = _shield_catalog_banner(user.level, owned, catalog)
+    active = bool(owned) or (
+        user.free_shield_until is not None
+        and user.free_shield_until > datetime.now(UTC)
+    )
+    text = _shield_catalog_banner(
+        user.level, owned, catalog, free_shield_until=user.free_shield_until
+    )
     reply_markup = (
-        shield_catalog_keyboard(catalog, owned, player_level=user.level)
+        shield_catalog_keyboard(
+            catalog, owned, player_level=user.level, show_refresh=active
+        )
         if catalog
-        else shield_inventory_keyboard(owned)
+        else shield_inventory_keyboard(owned, show_refresh=active)
     )
     if isinstance(target, CallbackQuery) and target.message is not None:
         await safe_edit_text(
@@ -618,6 +635,8 @@ async def shield_callback(
         )
         if callback_data.action == "back":
             await _buffet_menu_view(callback, session)
+        elif callback_data.action == "refresh":
+            await _shields_view(callback, session)
         elif callback_data.action == "equip":
             item = await shield_service.equip(session, user.id, callback_data.shield_id)
             await _shields_view(callback, session)
@@ -699,6 +718,7 @@ async def shield_purchase_callback(
         await callback.message.answer(
             f"{shield_icon(purchase.shield)} {bold(f'سپر «{purchase.shield.name}» خریداری شد')}\\.\n"
             f"مدت محافظت: {escape(purchase.shield.duration_minutes)} دقیقه\n"
+            f"زمان باقی‌مانده: {remaining_time(purchase.active_until, spoiler=False, detailed=True)}\n"
             "سپر شما همین حالا فعال شد\\.",
             reply_to_message_id=(
                 source_message.message_id if source_message is not None else None

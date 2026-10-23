@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -11,7 +12,7 @@ from app.bot.handlers.buffet import (
     _resource_text,
     _shield_catalog_banner,
 )
-from app.bot.keyboards.buffet import buffet_keyboard
+from app.bot.keyboards.buffet import buffet_keyboard, shield_inventory_keyboard
 from app.core.enums import ResourceType
 from app.core.game_logic import BuffetConversion
 
@@ -177,6 +178,32 @@ def test_shield_catalog_banner_uses_rich_text_and_escapes_descriptions() -> None
     assert "> *اثر:* جلوگیری کامل از حمله\n> حفاظت ویژه \\[قوی\\]" in text
     assert "150" in text
     assert "45 دقیقه" in text
+
+
+def test_shield_catalog_shows_purchased_and_free_shield_timers() -> None:
+    purchased_until = datetime.now(UTC) + timedelta(hours=2)
+    free_until = datetime.now(UTC) + timedelta(minutes=30)
+    owned = [
+        SimpleNamespace(
+            shield=SimpleNamespace(name="سپر آبی", emoji=None),
+            active_until=purchased_until,
+        )
+    ]
+
+    text = _shield_catalog_banner(3, owned, [], free_shield_until=free_until)
+
+    assert "سپر آبی" in text
+    assert "سپر رایگان یک‌ساعته" in text
+    assert text.count("زمان باقی‌مانده:") == 2
+    assert f"tg://time?unix={int(purchased_until.timestamp())}&format=r" in text
+    assert f"tg://time?unix={int(free_until.timestamp())}&format=r" in text
+
+
+def test_active_shield_has_timer_refresh_button() -> None:
+    keyboard = shield_inventory_keyboard([], show_refresh=True)
+
+    assert keyboard.inline_keyboard[0][0].text == "🔄 به‌روزرسانی زمان سپر"
+    assert keyboard.inline_keyboard[0][0].callback_data == "shield:refresh:0"
 
 
 def test_shield_banner_shows_daily_limits_and_supplied_emoji_ids() -> None:

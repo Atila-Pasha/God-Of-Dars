@@ -101,6 +101,16 @@ class ShieldService:
         teacher_names: tuple[str, ...] | None = None,
     ) -> Shield | None:
         """Return the equipped protection that actually blocks this attack."""
+        active = await self.active_protection(session, user_id, teacher_names)
+        return active.shield if active is not None else None
+
+    async def active_protection(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        teacher_names: tuple[str, ...] | None = None,
+    ) -> UserShield | None:
+        """Return the blocking shield together with its expiration time."""
         now = datetime.now(UTC)
         result = await session.execute(
             select(UserShield)
@@ -116,15 +126,22 @@ class ShieldService:
         active = result.scalar_one_or_none()
         if active is None or self._kazemi_bypassed(active.shield, teacher_names):
             return None
-        return active.shield
+        return active
+
+    async def free_shield_expiry(
+        self, session: AsyncSession, user_id: int, *, now: datetime | None = None
+    ) -> datetime | None:
+        until = await session.scalar(
+            select(User.free_shield_until).where(User.id == user_id)
+        )
+        return (
+            until if until is not None and until > (now or datetime.now(UTC)) else None
+        )
 
     async def has_free_shield(
         self, session: AsyncSession, user_id: int, *, now: datetime | None = None
     ) -> bool:
-        until = await session.scalar(
-            select(User.free_shield_until).where(User.id == user_id)
-        )
-        return until is not None and until > (now or datetime.now(UTC))
+        return await self.free_shield_expiry(session, user_id, now=now) is not None
 
     async def get_shield(self, session: AsyncSession, shield_id: int) -> Shield | None:
         result = await session.execute(select(Shield).where(Shield.id == shield_id))

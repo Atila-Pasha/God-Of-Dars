@@ -190,7 +190,7 @@ class BuffetMenuCallback(CallbackData, prefix="buffet_menu"):
 
 
 class ShieldCallback(CallbackData, prefix="shield"):
-    action: Literal["buy", "equip", "back"]
+    action: Literal["buy", "equip", "refresh", "back"]
     shield_id: int
 
 

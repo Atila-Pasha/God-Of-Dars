@@ -71,25 +71,32 @@ async def test_blocked_attack_does_not_advance_free_shield_counter() -> None:
 async def test_free_shield_blocks_even_when_castle_is_destroyed() -> None:
     service = AttackService()
     service.castles.get_by_user = AsyncMock(return_value=SimpleNamespace(strength=0))
-    service.castle_service.shield_service.has_free_shield = AsyncMock(return_value=True)
-    with pytest.raises(TargetProtectedByShield):
+    expires_at = datetime.now(UTC) + timedelta(minutes=30)
+    service.castle_service.shield_service.free_shield_expiry = AsyncMock(
+        return_value=expires_at
+    )
+    with pytest.raises(TargetProtectedByShield) as error:
         await service._ensure_target_attackable(SimpleNamespace(), 12)
+    assert error.value.active_until == expires_at
 
 
 @pytest.mark.asyncio
 async def test_purchased_shield_blocks_attack_when_castle_is_destroyed() -> None:
     service = AttackService()
-    service.castle_service.shield_service.has_free_shield = AsyncMock(
-        return_value=False
+    service.castle_service.shield_service.free_shield_expiry = AsyncMock(
+        return_value=None
     )
-    service.castle_service.shield_service.active_shield = AsyncMock(
-        return_value=SimpleNamespace(name="سپر خسروپناه", sticker=None)
+    service.castle_service.shield_service.active_protection = AsyncMock(
+        return_value=SimpleNamespace(
+            shield=SimpleNamespace(name="سپر خسروپناه", sticker=None),
+            active_until=datetime.now(UTC) + timedelta(minutes=15),
+        )
     )
 
     with pytest.raises(TargetProtectedByShield):
         await service._ensure_target_attackable(SimpleNamespace(), 12)
 
-    service.castle_service.shield_service.active_shield.assert_awaited_once()
+    service.castle_service.shield_service.active_protection.assert_awaited_once()
 
 
 @pytest.mark.asyncio

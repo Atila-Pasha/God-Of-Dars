@@ -103,6 +103,7 @@ def shield_catalog_keyboard(
     owned: list[UserShield] | None = None,
     *,
     player_level: int = 1,
+    show_refresh: bool = False,
 ) -> InlineKeyboardMarkup:
     rows = [
         [
@@ -117,6 +118,15 @@ def shield_catalog_keyboard(
         for shield in shields
         if shield.unlock_level <= player_level
     ]
+    if show_refresh:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🔄 به‌روزرسانی زمان سپر",
+                    callback_data=ShieldCallback(action="refresh", shield_id=0).pack(),
+                )
+            ]
+        )
     rows.append(
         [
             InlineKeyboardButton(
@@ -151,8 +161,19 @@ def shield_purchase_confirmation(shield: Shield) -> InlineKeyboardMarkup:
     )
 
 
-def shield_inventory_keyboard(shields: list[UserShield]) -> InlineKeyboardMarkup:
+def shield_inventory_keyboard(
+    shields: list[UserShield], *, show_refresh: bool = False
+) -> InlineKeyboardMarkup:
     rows = []
+    if show_refresh:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="🔄 به‌روزرسانی زمان سپر",
+                    callback_data=ShieldCallback(action="refresh", shield_id=0).pack(),
+                )
+            ]
+        )
     rows.append(
         [
             InlineKeyboardButton(

@@ -37,6 +37,7 @@ from app.bot.callbacks import (
 from app.bot.custom_emojis import reset_persist_group_message, set_persist_group_message
 from app.bot.keyboards.main_menu import section_back_keyboard
 from app.bot.rank_banners import rank_status_banner
+from app.bot.relative_time import remaining_time
 from app.bot.states import AttackMenuStates
 from app.bot.utils.telegram import safe_edit_text
 from app.core.enums import AttackStatus
@@ -548,8 +549,15 @@ async def _report_error(message: Message, error: Exception) -> None:
         if error.sticker:
             with suppress(TelegramAPIError):
                 await _send_shield_sticker(message, error.sticker)
+        timer = (
+            f"\n⏳ زمان باقی‌مانده: {remaining_time(error.active_until, spoiler=False, detailed=True)}"
+            if error.active_until is not None
+            else ""
+        )
         await message.answer(
-            f"🛡️ این بازیکن از سپر «{error.shield_name}» برخوردار است و فعلاً نمی‌توانید به او حمله کنید."
+            f"🛡️ این بازیکن سپر «{bold(error.shield_name)}» دارد و فعلاً نمی‌توانید به او حمله کنید\\."
+            + timer,
+            parse_mode=MARKDOWN_V2,
         )
     elif isinstance(error, ShieldAlreadyActive):
         await message.answer(

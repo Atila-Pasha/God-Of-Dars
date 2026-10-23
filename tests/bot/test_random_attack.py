@@ -89,7 +89,7 @@ async def test_shield_rejection_sends_sticker_before_named_message() -> None:
         side_effect=lambda sticker: order.append(("sticker", sticker))
     )
     target.answer = AsyncMock(
-        side_effect=lambda content: order.append(("message", content))
+        side_effect=lambda content, **_kwargs: order.append(("message", content))
     )
 
     await battle._report_error(
@@ -100,6 +100,23 @@ async def test_shield_rejection_sends_sticker_before_named_message() -> None:
     assert order[1][0] == "message"
     assert "سپر کاظمی" in order[1][1]
     assert "نمی‌توانید به او حمله کنید" in order[1][1]
+
+
+@pytest.mark.asyncio
+async def test_shield_rejection_shows_live_remaining_time() -> None:
+    target = message()
+    expires_at = datetime.now(UTC) + timedelta(minutes=25)
+
+    await battle._report_error(
+        target,
+        TargetProtectedByShield("سپر [آبی]", active_until=expires_at),
+    )
+
+    text = target.answer.await_args.args[0]
+    assert "سپر \\[آبی\\]" in text
+    assert "زمان باقی‌مانده:" in text
+    assert f"tg://time?unix={int(expires_at.timestamp())}&format=r" in text
+    assert target.answer.await_args.kwargs["parse_mode"] == "MarkdownV2"
 
 
 @pytest.mark.asyncio
