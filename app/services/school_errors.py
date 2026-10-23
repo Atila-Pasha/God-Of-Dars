@@ -18,10 +18,6 @@ class CannotAttackSelf(SchoolError):
     pass
 
 
-class RandomOpponentNotFound(SchoolError):
-    pass
-
-
 class RandomAttackSelectionExpired(SchoolError):
     """The durable random-opponent preview is no longer usable."""
 
@@ -86,6 +82,14 @@ class HospitalUpgradeUnavailable(SchoolError):
 
 class AttackInProgress(SchoolError):
     """The player must wait for the currently active attack to finish."""
+
+
+class RankDailyLimitReached(SchoolError):
+    """The player has used all ranked attacks for the local day."""
+
+
+class RandomOpponentNotFound(SchoolError):
+    """No attackable real player exists in any rank."""
 
 
 class CastleNotFound(SchoolError):

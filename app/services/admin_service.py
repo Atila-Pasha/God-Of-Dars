@@ -43,7 +43,11 @@ class AdminService:
 
     async def list_broadcast_recipients(self, session: AsyncSession) -> list[int]:
         """Return every registered Telegram account, including inactive users."""
-        result = await session.execute(select(User.telegram_user_id).order_by(User.id))
+        result = await session.execute(
+            select(User.telegram_user_id)
+            .where(User.telegram_user_id > 0)
+            .order_by(User.id)
+        )
         return [int(user_id) for user_id in result.scalars().all()]
 
     async def get_user(self, session: AsyncSession, user_id: int) -> User | None:

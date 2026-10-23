@@ -68,15 +68,53 @@ async def test_attack_button_replaces_main_menu_with_back_and_attack_types() -> 
     assert back_keyboard.keyboard[0][0].text == "بازگشت به منو اصلی"
     type_keyboard = message.answer.await_args_list[1].kwargs["reply_markup"]
     labels = [button.text for button in type_keyboard.inline_keyboard[0]]
-    assert labels == ["حمله رندوم", "حمله با آیدی"]
+    assert labels == ["حمله سراسری", "حمله با آیدی"]
     assert (
         type_keyboard.inline_keyboard[0][1].icon_custom_emoji_id
         == "5879898257873702573"
     )
     assert (
         type_keyboard.inline_keyboard[0][0].icon_custom_emoji_id
-        == "5825935099060822018"
+        == "5915888842568638290"
     )
+
+
+@pytest.mark.asyncio
+async def test_global_attack_menu_is_available_in_groups(monkeypatch) -> None:
+    show = AsyncMock()
+    monkeypatch.setattr(battle, "_show_teacher_selection", show)
+    state = SimpleNamespace(clear=AsyncMock(), update_data=AsyncMock())
+    message = SimpleNamespace(
+        chat=SimpleNamespace(type="supergroup"),
+        message_id=45,
+        answer=AsyncMock(),
+    )
+
+    await battle.random_attack_menu_handler(message, AsyncMock(), state)
+
+    state.update_data.assert_awaited_once_with(mode="random", selected_teacher_ids=[])
+    show.assert_awaited_once_with(
+        message, ANY, state, mode="random", reply_to_message_id=45
+    )
+    message.answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_group_global_attack_with_teacher_uses_ranked_match(monkeypatch) -> None:
+    prepare = AsyncMock(side_effect=RuntimeError("ranked selection reached"))
+    monkeypatch.setattr(battle.attack_service, "prepare_random_preview", prepare)
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=42),
+        chat=SimpleNamespace(type="supergroup"),
+        text="حمله سراسری افلاطون",
+        reply_to_message=None,
+        answer=AsyncMock(),
+    )
+
+    with pytest.raises(RuntimeError, match="ranked selection reached"):
+        await battle.attack_message(message, AsyncMock(), SimpleNamespace())
+
+    assert prepare.await_args.kwargs["teacher_name"] == "افلاطون"
 
 
 @pytest.mark.asyncio

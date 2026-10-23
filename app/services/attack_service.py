@@ -25,6 +25,7 @@ from app.services.daily_quest_service import DailyQuestService
 from app.services.knight_service import KnightHit, KnightService
 from app.services.lock_order import lock_attack_dependencies, lock_users_ordered
 from app.services.mine_service import MineService
+from app.services.rank_service import RankService
 from app.services.resource_service import ResourceService
 from app.services.school_errors import (
     AttackerNotRegistered,
@@ -80,6 +81,8 @@ class AttackResult:
     archer_stickers: tuple[str, ...] = ()
     knight_died: bool = False
     archer_recovering: bool = False
+    rank_delta: tuple[int, int] | None = None
+    rank_reward: tuple[int, int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -413,6 +416,7 @@ class AttackService:
         )
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
+        await RankService.assert_available(session, attacker.id)
         # Random-selection locks always precede the user row. Confirm and
         # reroll follow this order too, avoiding a cross-path deadlock.
         selection = await self._selection_for_update(session, attacker.id)
@@ -439,7 +443,11 @@ class AttackService:
                 # Keep a valid choice stable; replace it without a fee if it
                 # became protected or lost its castle after selection.
                 preview = await self._preview(session, attacker, target, teacher_name)
-            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+            except (
+                TargetProtectedByShield,
+                AttackTargetNotRegistered,
+                CastleNotFound,
+            ):
                 pass
             else:
                 if selection.teacher_ids != preview.teacher_ids:
@@ -495,6 +503,7 @@ class AttackService:
         )
         if attacker is None or not attacker.is_active:
             raise AttackerNotRegistered
+        await RankService.assert_available(session, attacker.id)
         selection = await self._selection_for_update(session, attacker.id)
         attacker = await self.users.get_by_telegram_user_id(
             session, attacker_telegram_id, for_update=True
@@ -511,21 +520,33 @@ class AttackService:
             raise RandomAttackSelectionExpired
         current_target = await self.users.get_active_by_id(session, selection.target_id)
         current_attackable = current_target is not None
+        current_preview = None
         if current_target is not None:
             try:
-                await self._preview_by_teacher_ids(
+                current_preview = await self._preview_by_teacher_ids(
                     session, attacker, current_target, selection.teacher_ids
                 )
-            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+            except (
+                TargetProtectedByShield,
+                AttackTargetNotRegistered,
+                CastleNotFound,
+            ):
                 current_attackable = False
         recent_ids = self._selection_recent_ids(selection)
-        target, preview = await self._find_random_preview(
-            session,
-            attacker,
-            teacher_ids=selection.teacher_ids,
-            recent_target_ids=recent_ids,
-            exclude_target_ids={selection.target_id},
-        )
+        try:
+            target, preview = await self._find_random_preview(
+                session,
+                attacker,
+                teacher_ids=selection.teacher_ids,
+                recent_target_ids=recent_ids,
+                exclude_target_ids={selection.target_id},
+            )
+        except RandomOpponentNotFound:
+            # If this is the only attackable real player, keep the existing
+            # selection and leave the player's coins untouched.
+            if current_attackable and current_preview is not None:
+                return self._random_preview(selection, current_preview)
+            raise
         if current_attackable:
             await ResourceService.debit_coin(
                 session,
@@ -576,6 +597,7 @@ class AttackService:
             attacker_telegram_id=attacker_telegram_id,
             target_id=selection.target_id,
             teacher_ids=teacher_ids,
+            ranked=True,
             source_chat_id=source_chat_id,
         )
         # Retain the short opponent history for the next random attack. The
@@ -632,6 +654,7 @@ class AttackService:
         teacher_ids: list[int],
         duration: timedelta = timedelta(minutes=2),
         source_chat_id: int | None = None,
+        ranked: bool = False,
     ) -> AttackLaunch:
         attacker = await self.users.get_by_telegram_user_id(
             session, attacker_telegram_id
@@ -675,6 +698,8 @@ class AttackService:
             session, target.id, tuple(item.teacher.name for item in teachers)
         )
         castle = await self.castle_service.battle_snapshot(session, target.id)
+        if ranked:
+            await RankService.reserve_attack(session, attacker)
         await self.castle_service.shield_service.apply_outgoing_attack_time_penalty(
             session, attacker.id, duration
         )
@@ -693,6 +718,7 @@ class AttackService:
                 resolve_at=resolve_at,
                 attack_command_id=attack_command_id,
                 source_chat_id=source_chat_id,
+                is_ranked=ranked,
                 teacher_name_snapshot=teacher.teacher.name,
                 teacher_emoji_snapshot=teacher.teacher.emoji,
                 teacher_ability_snapshot=teacher.teacher.ability_text,
@@ -1055,30 +1081,12 @@ class AttackService:
         exclude_target_ids: set[int] | None = None,
         recent_target_ids: tuple[int, ...] = (),
     ):
-        levels = await self.users.list_active_levels_by_proximity(
-            session, level=attacker.level, exclude_user_id=attacker.id
+        return await RankService.match(
+            session,
+            attacker,
+            excluded=exclude_target_ids or set(),
+            recent=recent_target_ids,
         )
-        hard_excluded = exclude_target_ids or set()
-        nearby = [level for level in levels if abs(level - attacker.level) <= 2]
-        distant = [level for level in levels if abs(level - attacker.level) > 2]
-        # Keep matchups close in level. Within that range, prefer fresh people;
-        # only widen the level gap when every nearby opponent is unavailable.
-        for candidate_levels, exclusions in (
-            (nearby, hard_excluded | set(recent_target_ids)),
-            (nearby, hard_excluded),
-            (distant, hard_excluded | set(recent_target_ids)),
-            (distant, hard_excluded),
-        ):
-            for level in candidate_levels:
-                target = await self.users.pick_random_active_at_level(
-                    session,
-                    level=level,
-                    exclude_user_id=attacker.id,
-                    exclude_target_ids=exclusions,
-                )
-                if target is not None:
-                    return target
-        raise RandomOpponentNotFound
 
     async def _find_random_preview(
         self,
@@ -1093,7 +1101,7 @@ class AttackService:
         if teacher_ids is None and teacher_name is None:
             raise TeacherNotOwned
         excluded = set(exclude_target_ids or ())
-        for _ in range(5):
+        while True:
             target = await self._pick_random_target(
                 session,
                 attacker,
@@ -1110,13 +1118,16 @@ class AttackService:
                     preview = await self._preview(
                         session, attacker, target, teacher_name
                     )
-            except (TargetProtectedByShield, AttackTargetNotRegistered, CastleNotFound):
+            except (
+                TargetProtectedByShield,
+                AttackTargetNotRegistered,
+                CastleNotFound,
+            ):
                 # A shield can activate after the candidate query. Try another
-                # eligible opponent before reporting that the pool is empty.
+                # eligible real opponent, even when several candidates race.
                 excluded.add(target.id)
                 continue
             return target, preview
-        raise RandomOpponentNotFound
 
     @staticmethod
     def _selection_recent_ids(

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.repositories.leaderboard import LeaderboardRecord, LeaderboardRepository
+from app.services.rank_service import season_start
 
 LeaderboardKind = Literal["commander", "student", "fighter"]
 LeaderboardPeriod = Literal["daily", "weekly", "monthly"]
@@ -54,10 +55,16 @@ class LeaderboardService:
             raise ValueError("unsupported leaderboard kind")
         if period not in {"daily", "weekly", "monthly"}:
             raise ValueError("unsupported leaderboard period")
+        if kind == "fighter":
+            period = "monthly"
         if limit < 1 or limit > 50:
             raise ValueError("leaderboard limit must be between 1 and 50")
 
-        since = self.period_start(period, now=now)
+        since = (
+            season_start(now)
+            if kind == "fighter"
+            else self.period_start(period, now=now)
+        )
         cache_key = (kind, period, limit, int(since.timestamp()))
         cached = self._cache.get(cache_key)
         clock_now = monotonic()
@@ -97,10 +104,14 @@ class LeaderboardService:
             raise ValueError("unsupported leaderboard kind")
         if period not in {"daily", "weekly", "monthly"}:
             raise ValueError("unsupported leaderboard period")
+        if kind == "fighter":
+            period = "monthly"
         result = await getattr(self.repository, f"{kind}_position")(
             session,
             user_id=user_id,
-            since=self.period_start(period, now=now),
+            since=season_start(now)
+            if kind == "fighter"
+            else self.period_start(period, now=now),
         )
         if result is None:
             return None

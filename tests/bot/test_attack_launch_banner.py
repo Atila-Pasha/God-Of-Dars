@@ -29,5 +29,5 @@ def test_countdown_button_carries_command_id_and_custom_icon() -> None:
 
 def test_rich_plain_escapes_text_and_preserves_custom_emoji() -> None:
     content = rich_plain("📚 درس [یک].")
-    assert "tg://emoji?id=5825629907274703191" in content
+    assert "tg://emoji?id=5918211539407478280" in content
     assert "\\[یک\\]\\." in content

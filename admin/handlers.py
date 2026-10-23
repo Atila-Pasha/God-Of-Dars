@@ -1070,7 +1070,11 @@ async def chance_card_send(
             while True:
                 result = await session.execute(
                     select(User.id, User.telegram_user_id)
-                    .where(User.is_active.is_(True), User.id > last_user_id)
+                    .where(
+                        User.is_active.is_(True),
+                        User.telegram_user_id > 0,
+                        User.id > last_user_id,
+                    )
                     .order_by(User.id)
                     .limit(batch_size)
                 )
@@ -1342,7 +1346,9 @@ async def broadcast_send(
         await message.answer("فقط پیام متنی یا عکس همراه کپشن قابل ارسال است.")
         return
 
-    total_recipients = await session.scalar(select(func.count(User.id)))
+    total_recipients = await session.scalar(
+        select(func.count(User.id)).where(User.telegram_user_id > 0)
+    )
     if not total_recipients:
         await state.clear()
         await message.answer(
@@ -1380,7 +1386,7 @@ async def broadcast_send(
         while True:
             result = await session.execute(
                 select(User.id, User.telegram_user_id)
-                .where(User.id > last_user_id)
+                .where(User.id > last_user_id, User.telegram_user_id > 0)
                 .order_by(User.id)
                 .limit(batch_size)
             )
@@ -1451,17 +1457,26 @@ async def bot_user_stats(
     if not allowed(message):
         return
     await state.clear()
-    total = await session.scalar(select(func.count(User.id))) or 0
+    total = (
+        await session.scalar(
+            select(func.count(User.id)).where(User.telegram_user_id > 0)
+        )
+        or 0
+    )
     active = (
         await session.scalar(
-            select(func.count(User.id)).where(User.is_active.is_(True))
+            select(func.count(User.id)).where(
+                User.is_active.is_(True), User.telegram_user_id > 0
+            )
         )
         or 0
     )
     today = datetime.now(UTC).date()
     new_today = (
         await session.scalar(
-            select(func.count(User.id)).where(func.date(User.created_at) == today)
+            select(func.count(User.id)).where(
+                func.date(User.created_at) == today, User.telegram_user_id > 0
+            )
         )
         or 0
     )

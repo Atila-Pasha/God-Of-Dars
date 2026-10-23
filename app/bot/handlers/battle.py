@@ -36,6 +36,7 @@ from app.bot.callbacks import (
 )
 from app.bot.custom_emojis import reset_persist_group_message, set_persist_group_message
 from app.bot.keyboards.main_menu import section_back_keyboard
+from app.bot.rank_banners import rank_status_banner
 from app.bot.states import AttackMenuStates
 from app.bot.utils.telegram import safe_edit_text
 from app.core.enums import AttackStatus
@@ -47,6 +48,7 @@ from app.services.attack_service import (
     AttackService,
     RandomAttackPreview,
 )
+from app.services.rank_service import RankService
 from app.services.school_errors import (
     AttackerNotRegistered,
     AttackInProgress,
@@ -56,6 +58,7 @@ from app.services.school_errors import (
     InvalidTeacherState,
     RandomAttackSelectionExpired,
     RandomOpponentNotFound,
+    RankDailyLimitReached,
     SchoolError,
     SchoolUserNotFound,
     ShieldAlreadyActive,
@@ -233,15 +236,15 @@ def _attack_help_text(*, group: bool = False) -> str:
             "روی پیام حریف Reply بزن و «حمله» بنویس تا دبیرها رو انتخاب کنی؛ یا «حمله فراهانی» رو برای یک دبیر بفرست.\n\n"
             "👥 بدون Reply\n"
             "نام کاربری و دبیر رو با هم بنویس: حمله @player فراهانی\n\n"
-            "🎲 حریف تصادفی\n"
-            "برای حریف نزدیک به سطح خودت بنویس: حمله رندوم فراهانی"
+            "🏆 حمله سراسری\n"
+            "بنویس: حمله سراسری فراهانی؛ یا «حمله سراسری» را بفرست و دبیر را انتخاب کن. روزانه 20 نبرد رنکی مجاز است."
         )
     return rich_banner(
         "⚔️ راهنمای حمله در گفت‌وگوی خصوصی\n\n"
         "🎯 حمله به حریف\n"
         "از دکمهٔ حمله، حریف و دبیر آماده رو انتخاب کن؛ یا بنویس: حمله @player فراهانی\n\n"
-        "🎲 حملهٔ تصادفی\n"
-        "برای پیدا کردن حریف نزدیک به سطح خودت بنویس: حمله رندوم فراهانی\n\n"
+        "🏆 حملهٔ سراسری\n"
+        "برای پیدا کردن حریف بنویس: حمله سراسری فراهانی. با /rank جام و پاداش فصل را ببین.\n\n"
         "⏳ پیش از شروع\n"
         "پیش‌نمایش نبرد رو بخون. بعد از تأیید، نتیجه با پایان زمان حمله اعلام می‌شه."
     )
@@ -393,8 +396,8 @@ def _attack_type_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="حمله رندوم",
-                    icon_custom_emoji_id="5825935099060822018",
+                    text="حمله سراسری",
+                    icon_custom_emoji_id="5915888842568638290",
                     callback_data=AttackMenuCallback(
                         action="choose", mode="random"
                     ).pack(),
@@ -561,11 +564,17 @@ async def _report_error(message: Message, error: Exception) -> None:
             f"نمیتونی به خودت حمله کنی زرنگ {emoji('5920515596088250243', '😏')}",
             parse_mode=MARKDOWN_V2,
         )
+    elif isinstance(error, RankDailyLimitReached):
+        await message.answer(
+            "20 حملهٔ رنکی امروزت تمام شد. سهمیه در نیمه‌شب به وقت تهران تازه می‌شود."
+        )
     elif isinstance(error, RandomOpponentNotFound):
-        await message.answer("حریفی برای حمله پیدا نکردم.")
+        await message.answer(
+            "فعلاً هیچ بازیکن واقعیِ قابل حمله‌ای در رنک‌ها نیست؛ کمی بعد دوباره امتحان کن."
+        )
     elif isinstance(error, RandomAttackSelectionExpired):
         await message.answer(
-            "این انتخاب دیگر معتبر نیست؛ دوباره «حمله رندوم {اسم دبیر}» را بفرستید."
+            "این انتخاب دیگر معتبر نیست؛ دوباره «حمله سراسری {اسم دبیر}» را بفرستید."
         )
     elif isinstance(error, InsufficientCoins):
         await message.answer("برای دیدن حریف دیگر، سکه کافی ندارید.")
@@ -579,6 +588,21 @@ async def attack_help_handler(message: Message) -> None:
         _attack_help_text(group=message.chat.type in {"group", "supergroup"}),
         parse_mode=MARKDOWN_V2,
     )
+
+
+@router.message(Command("rank"))
+@router.message(F.chat.type == "private", F.text == "رنک")
+async def rank_status_handler(message: Message, session: AsyncSession) -> None:
+    if message.from_user is None:
+        return
+    user = await attack_service.users.get_by_telegram_user_id(
+        session, message.from_user.id
+    )
+    if user is None or not user.is_active:
+        await _report_error(message, AttackerNotRegistered())
+        return
+    view = await RankService.view(session, user.id)
+    await message.answer(rank_status_banner(view), parse_mode=MARKDOWN_V2)
 
 
 @router.message(F.chat.type == "private", F.text == "حمله")
@@ -596,16 +620,25 @@ async def attack_menu_handler(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.chat.type == "private", F.text == "حمله رندوم")
+@router.message(F.text.in_({"حمله سراسری", "حمله رنک", "حمله رندوم"}))
 async def random_attack_menu_handler(
     message: Message, session: AsyncSession, state: FSMContext
 ) -> None:
     await state.clear()
     await state.update_data(mode="random", selected_teacher_ids=[])
-    await message.answer(
-        "برای بازگشت، دکمه زیر را بزنید.", reply_markup=section_back_keyboard()
+    if message.chat.type == "private":
+        await message.answer(
+            "برای بازگشت، دکمه زیر را بزنید.", reply_markup=section_back_keyboard()
+        )
+    await _show_teacher_selection(
+        message,
+        session,
+        state,
+        mode="random",
+        reply_to_message_id=(
+            message.message_id if message.chat.type in {"group", "supergroup"} else None
+        ),
     )
-    await _show_teacher_selection(message, session, state, mode="random")
 
 
 @router.message(F.chat.type == "private", F.text == "حمله با آیدی")
@@ -849,11 +882,12 @@ async def attack_message(
         return
     try:
         random_selection: RandomAttackPreview | None = None
-        if arguments.casefold().startswith("رندوم"):
-            random_teacher = arguments[len("رندوم") :].strip()
+        prefix = arguments.split(maxsplit=1)[0]
+        if prefix in {"سراسری", "رنک", "رندوم"}:
+            random_teacher = arguments[len(prefix) :].strip()
             if not random_teacher:
                 await message.answer(
-                    "برای حمله رندوم نام دبیر را هم بنویسید؛ مثال: حمله رندوم افلاطون"
+                    "برای حمله سراسری نام دبیر را هم بنویسید؛ مثال: حمله سراسری افلاطون"
                 )
                 return
             random_selection = await attack_service.prepare_random_preview(

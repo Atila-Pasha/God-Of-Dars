@@ -48,6 +48,15 @@ def profile_keyboard(
             [
                 [
                     InlineKeyboardButton(
+                        text="رنک من",
+                        icon_custom_emoji_id="5915888842568638290",
+                        callback_data=ProfileCallback(
+                            action="rank", owner_id=owner_id
+                        ).pack(),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
                         text="⬆️ ارتقای سطح",
                         style="success",
                         callback_data=ProfileCallback(

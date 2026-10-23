@@ -50,6 +50,11 @@ def test_group_policy_allows_leaderboard_phrases() -> None:
         assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
 
 
+def test_group_policy_allows_global_ranked_attack() -> None:
+    for text in ("حمله سراسری", "حمله سراسری افلاطون"):
+        assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text=text))
+
+
 def test_group_policy_ignores_unrelated_plain_text() -> None:
     assert not GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="تهران"))
     assert not GroupAccessMiddleware._message_is_allowed(

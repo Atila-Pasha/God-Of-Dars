@@ -34,7 +34,7 @@ def leaderboard_keyboard(
             ),
         ],
     ]
-    if active_kind is not None:
+    if active_kind is not None and active_kind != "fighter":
         periods: tuple[tuple[LeaderboardPeriod, str], ...] = (
             ("daily", "روزانه"),
             ("weekly", "هفتگی"),

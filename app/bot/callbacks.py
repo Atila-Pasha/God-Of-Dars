@@ -140,6 +140,7 @@ class ProfileCallback(CallbackData, prefix="profile"):
         "info",
         "profile",
         "war",
+        "rank",
         "assets",
         "knowledge",
         "upgrade",

@@ -205,6 +205,8 @@ class Attack(Base):
         BigInteger, nullable=False, default=0, server_default="0"
     )
     is_successful: Mapped[bool | None] = mapped_column(nullable=True)
+    is_ranked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    rank_settled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     attacker: Mapped[User] = relationship(
         "User",

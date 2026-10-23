@@ -15,6 +15,7 @@ from app.models.mine import Mine
 from app.models.notification import Notification
 from app.models.question import Question
 from app.models.random_attack_selection import RandomAttackSelection
+from app.models.rank_profile import RankProfile
 from app.models.recovery import Recovery
 from app.models.required_channel import RequiredChannel
 from app.models.resource import Resource
@@ -51,6 +52,7 @@ __all__ = [
     "UserKnight",
     "Notification",
     "Question",
+    "RankProfile",
     "RandomAttackSelection",
     "Recovery",
     "RequiredChannel",

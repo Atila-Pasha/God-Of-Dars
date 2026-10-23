@@ -47,9 +47,17 @@ _GROUP_PERIOD_SUFFIXES: tuple[tuple[str, LeaderboardPeriod], ...] = (
     ("ماهانه", "monthly"),
 )
 for _phrase, _kind in _GROUP_CATEGORY_PHRASES.items():
-    GROUP_LEADERBOARD_PHRASES[_phrase] = (_kind, "weekly")
+    GROUP_LEADERBOARD_PHRASES[_phrase] = (
+        _kind,
+        "monthly" if _kind == "fighter" else "weekly",
+    )
     for _suffix, _period in _GROUP_PERIOD_SUFFIXES:
-        GROUP_LEADERBOARD_PHRASES[f"{_phrase} {_suffix}"] = (_kind, _period)
+        if _kind == "fighter" and _period != "monthly":
+            continue
+        GROUP_LEADERBOARD_PHRASES[f"{_phrase} {_suffix}"] = (
+            _kind,
+            "monthly" if _kind == "fighter" else _period,
+        )
 
 
 def _is_group_leaderboard(message: Message) -> bool:
@@ -89,7 +97,7 @@ def _table(kind: LeaderboardKind, entries: tuple[LeaderboardEntry, ...]) -> str:
     primary_header, secondary_header = {
         "commander": ("امتیاز", "سطح"),
         "student": ("صحیح", "دقت"),
-        "fighter": ("برد", "آسیب"),
+        "fighter": ("جام", "برد"),
     }[kind]
     account_width = max(
         10,
@@ -120,7 +128,7 @@ def _markdown_table(
     primary_header, secondary_header = {
         "commander": ("امتیاز", "سطح"),
         "student": ("صحیح", "دقت"),
-        "fighter": ("برد", "آسیب"),
+        "fighter": ("جام", "برد"),
     }[kind]
     lines = [
         f"| رتبه | اکانت | {primary_header} | {secondary_header} |",
@@ -149,6 +157,8 @@ def leaderboard_content(
     viewer: LeaderboardEntry | None = None,
     period: LeaderboardPeriod = "weekly",
 ) -> Text:
+    if kind == "fighter":
+        period = "monthly"
     title = {
         "commander": "👑 برترین فرمانده‌ها",
         "student": "📚 برترین دانش‌آموزها",
@@ -157,7 +167,7 @@ def leaderboard_content(
     criterion = {
         "commander": "معیار: موز کسب‌شده در بازه، سپس سطح فرمانده",
         "student": "معیار: پاسخ صحیح، سپس دقت پاسخ‌ها",
-        "fighter": "معیار: فرمان حملهٔ موفق، سپس مجموع آسیب",
+        "fighter": "معیار: جام فصل رنک، سپس تعداد برد",
     }[kind]
     if not entries:
         return Text(
@@ -184,7 +194,7 @@ def leaderboard_content(
         primary_label, secondary_label = {
             "commander": ("امتیاز", "سطح"),
             "student": ("پاسخ صحیح", "دقت"),
-            "fighter": ("پیروزی", "آسیب"),
+            "fighter": ("جام", "برد"),
         }[kind]
         body.extend(
             [
@@ -205,6 +215,8 @@ def leaderboard_markdown(
     viewer: LeaderboardEntry | None = None,
     period: LeaderboardPeriod = "weekly",
 ) -> str:
+    if kind == "fighter":
+        period = "monthly"
     title = {
         "commander": "👑 برترین فرمانده‌ها",
         "student": "📚 برترین دانش‌آموزها",
@@ -213,7 +225,7 @@ def leaderboard_markdown(
     criterion = {
         "commander": "معیار: موز کسب‌شده در بازه، سپس سطح فرمانده",
         "student": "معیار: پاسخ صحیح، سپس دقت پاسخ‌ها",
-        "fighter": "معیار: فرمان حملهٔ موفق، سپس مجموع آسیب",
+        "fighter": "معیار: جام فصل رنک، سپس تعداد برد",
     }[kind]
     heading = f"# 🏆 Leaderboard\n## {title} — {_period_title(period)}"
     if not entries:
@@ -234,7 +246,7 @@ def leaderboard_markdown(
         primary_label, secondary_label = {
             "commander": ("امتیاز", "سطح"),
             "student": ("پاسخ صحیح", "دقت"),
-            "fighter": ("پیروزی", "آسیب"),
+            "fighter": ("جام", "برد"),
         }[kind]
         parts.extend(
             [
@@ -280,6 +292,8 @@ async def _show_board(
     period: LeaderboardPeriod,
     with_keyboard: bool,
 ) -> None:
+    if kind == "fighter":
+        period = "monthly"
     entries = await leaderboards.top(session, kind, period=period)
     viewer = None
     if target.from_user is not None:

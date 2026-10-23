@@ -62,6 +62,22 @@ async def test_leaderboard_returns_viewer_position() -> None:
     assert entry.username == "ali"
 
 
+@pytest.mark.asyncio
+async def test_fighter_board_uses_monthly_rank_season_even_with_weekly_request() -> (
+    None
+):
+    now = datetime(2026, 10, 23, 8, tzinfo=UTC)
+
+    class Repository:
+        async def fighters(self, session, *, limit, since):
+            assert limit == 10
+            assert since == datetime(2026, 9, 30, 20, 30, tzinfo=UTC)
+            return []
+
+    service = LeaderboardService(Repository())
+    assert await service.top(SimpleNamespace(), "fighter", now=now) == ()
+
+
 def test_leaderboard_periods_use_tehran_calendar_boundaries() -> None:
     now = datetime(2026, 9, 16, 8, 30, tzinfo=UTC)
 

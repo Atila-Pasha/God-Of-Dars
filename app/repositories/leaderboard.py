@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import String, case, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import AttackStatus, ResourceType
+from app.core.enums import ResourceType
 from app.models.answer import Answer
-from app.models.attack import Attack
+from app.models.rank_profile import RankProfile
 from app.models.transaction import Transaction
 from app.models.user import User
 
@@ -106,18 +106,8 @@ class LeaderboardRepository:
     async def fighters(
         self, session: AsyncSession, *, limit: int, since: datetime
     ) -> list[LeaderboardRecord]:
-        # A multi-teacher attack creates multiple Attack rows. All rows share
-        # attack_command_id, so count the command once. Legacy rows without a
-        # command id use their own database id as a stable fallback.
-        command_key = case(
-            (
-                Attack.attack_command_id.is_not(None),
-                Attack.attack_command_id,
-            ),
-            else_=cast(Attack.id, String),
-        )
-        successful_commands = func.count(func.distinct(command_key))
-        total_damage = func.coalesce(func.sum(Attack.result_damage), 0)
+        from app.services.rank_service import season_start
+
         rows = (
             await session.execute(
                 select(
@@ -125,25 +115,18 @@ class LeaderboardRepository:
                     User.first_name,
                     User.last_name,
                     User.username,
-                    successful_commands,
-                    total_damage,
+                    RankProfile.cups,
+                    RankProfile.wins,
                 )
-                .join(Attack, Attack.attacker_id == User.id)
+                .join(RankProfile, RankProfile.user_id == User.id)
                 .where(
                     User.is_active.is_(True),
-                    Attack.status == AttackStatus.RESOLVED,
-                    Attack.is_successful.is_(True),
-                    Attack.resolved_at >= since,
-                )
-                .group_by(
-                    User.id,
-                    User.first_name,
-                    User.last_name,
-                    User.username,
+                    RankProfile.season_start == season_start(),
+                    (RankProfile.wins + RankProfile.losses) > 0,
                 )
                 .order_by(
-                    successful_commands.desc(),
-                    total_damage.desc(),
+                    RankProfile.cups.desc(),
+                    RankProfile.wins.desc(),
                     User.id.asc(),
                 )
                 .limit(limit)
@@ -254,33 +237,22 @@ class LeaderboardRepository:
     async def fighter_position(
         self, session: AsyncSession, *, user_id: int, since: datetime
     ) -> tuple[int, LeaderboardRecord] | None:
-        command_key = case(
-            (Attack.attack_command_id.is_not(None), Attack.attack_command_id),
-            else_=cast(Attack.id, String),
-        )
-        successful_commands = func.count(func.distinct(command_key))
-        total_damage = func.coalesce(func.sum(Attack.result_damage), 0)
+        from app.services.rank_service import season_start
+
         stats = (
             select(
                 User.id.label("user_id"),
                 User.first_name.label("first_name"),
                 User.last_name.label("last_name"),
                 User.username.label("username"),
-                successful_commands.label("primary_value"),
-                total_damage.label("secondary_value"),
+                RankProfile.cups.label("primary_value"),
+                RankProfile.wins.label("secondary_value"),
             )
-            .join(Attack, Attack.attacker_id == User.id)
+            .join(RankProfile, RankProfile.user_id == User.id)
             .where(
                 User.is_active.is_(True),
-                Attack.status == AttackStatus.RESOLVED,
-                Attack.is_successful.is_(True),
-                Attack.resolved_at >= since,
-            )
-            .group_by(
-                User.id,
-                User.first_name,
-                User.last_name,
-                User.username,
+                RankProfile.season_start == season_start(),
+                (RankProfile.wins + RankProfile.losses) > 0,
             )
             .cte("fighter_stats")
         )

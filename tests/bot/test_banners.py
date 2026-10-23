@@ -149,6 +149,34 @@ def test_attack_report_differs_for_defender_and_uses_total_damage() -> None:
     assert "tg://emoji?id=5902520589356113908) موز: 0" in defender
 
 
+def test_rank_reward_is_separate_from_loot_and_only_attacker_sees_it() -> None:
+    result = AttackResult(
+        attack=SimpleNamespace(id=1),
+        attacker_telegram_id=1,
+        attacker_name="آرش",
+        target_name="نگار",
+        target_telegram_id=2,
+        teacher_name="فراهانی",
+        ability_text=None,
+        castle_damage=30,
+        teacher_injury=0,
+        castle_strength_after=70,
+        loot_coin=4,
+        loot_diamond=0,
+        loot_banana=0,
+        rank_delta=(25, -12),
+        rank_reward=(50, 2, 0),
+    )
+
+    attacker = attack_result_banner(result)
+    defender = attack_result_banner(result, recipient="defender")
+
+    assert "پاداش رنک این حمله" in attacker
+    assert "50 طلا" in attacker and "2 موز" in attacker
+    assert "\u2002\u2002" in attacker
+    assert "پاداش رنک این حمله" not in defender
+
+
 def test_empty_target_bonus_is_visible_only_to_attacker_and_not_a_defender_loss() -> (
     None
 ):

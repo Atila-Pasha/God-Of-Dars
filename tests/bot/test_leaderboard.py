@@ -47,6 +47,7 @@ def test_group_contract_contains_only_requested_leaderboard_categories() -> None
         "fighter",
         "monthly",
     )
+    assert "برترین مبارز هفتگی" not in GROUP_LEADERBOARD_PHRASES
 
 
 def test_fighter_board_renders_markdown_style_table_and_viewer_rank() -> None:
@@ -78,7 +79,7 @@ def test_fighter_board_renders_markdown_style_table_and_viewer_rank() -> None:
 
     markdown = leaderboard_markdown("fighter", (entry,), entry, "monthly")
     assert markdown.startswith("# 🏆 Leaderboard")
-    assert "| رتبه | اکانت | برد | آسیب |" in markdown
+    assert "| رتبه | اکانت | جام | برد |" in markdown
     assert "## ⚔️ برترین مبارزها — این ماه" in markdown
 
 

@@ -29,6 +29,7 @@ from app.repositories.user import UserRepository
 from app.services.attack_service import AttackService, TeacherInjury
 from app.services.level_service import LevelService
 from app.services.notification_service import NotificationService
+from app.services.rank_service import RankService
 from app.services.school_errors import OperationNotConfigured, SchoolError
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,10 @@ def _needs_repair_reminder(result) -> bool:
 
 async def _award_free_shield(session, result) -> bool:
     """Count a completed attack command once while the target row is locked."""
-    if result.blocked_by_shield or result.castle_damage + result.raid_damage <= 0:
+    if (
+        result.blocked_by_shield
+        or result.castle_damage + result.raid_damage <= 0
+    ):
         return False
     defender = await session.get(User, result.attack.target_id, with_for_update=True)
     if defender is None:
@@ -235,6 +239,18 @@ async def _command_result(session, result):
     )
     if not records or any(row.status is not AttackStatus.RESOLVED for row in records):
         return None
+    rank_delta = None
+    rank_reward = None
+    if getattr(records[0], "is_ranked", False):
+        attacker = await session.get(User, records[0].attacker_id)
+        target = await session.get(User, records[0].target_id)
+        if attacker is not None and target is not None:
+            settlement = await RankService.settle_command(
+                session, records, attacker, target
+            )
+            if settlement is not None:
+                rank_delta = settlement.delta
+                rank_reward = settlement.reward
     details = tuple(
         (
             row.teacher_name_snapshot
@@ -271,6 +287,8 @@ async def _command_result(session, result):
     )
     return replace(
         result,
+        rank_delta=rank_delta,
+        rank_reward=rank_reward,
         teacher_name="، ".join(name for name, _, _ in details),
         teacher_details=details,
         teacher_injuries=injuries,

@@ -18,6 +18,7 @@ from app.bot.keyboards.main_menu import (
     section_back_keyboard,
 )
 from app.bot.keyboards.profile import level_confirmation_keyboard, profile_keyboard
+from app.bot.rank_banners import rank_profile_banner
 from app.bot.shield_presentation import shield_icon
 from app.bot.utils.telegram import safe_edit_text
 from app.core.game_logic import game_config
@@ -26,6 +27,7 @@ from app.models.teacher import Teacher
 from app.repositories.profile import ProfileSnapshot
 from app.services.level_service import LevelService
 from app.services.profile_service import ProfileNotFound, ProfileService
+from app.services.rank_service import RankService, RankView
 from app.services.school_errors import (
     InsufficientCoins,
     MaxLevelReached,
@@ -164,11 +166,18 @@ def _profile_identity_text(snapshot: ProfileSnapshot) -> str:
     )
 
 
-def _profile_war_text(snapshot: ProfileSnapshot) -> str:
+def _profile_war_text(snapshot: ProfileSnapshot, rank: RankView | None = None) -> str:
+    rank_line = (
+        f"{emoji(rank.tier.emoji_id, rank.tier.icon)} رنک: {bold(rank.tier.name)} {escape(' | ')} {escape(rank.cups)} جام\n"
+        f"نبرد رنکی امروز: {escape(rank.attacks_left)} فرصت باقی‌مانده\n\n"
+        if rank
+        else ""
+    )
     return (
         f"{emoji('5918187663684280099', '⚔️')} {bold('کارنامهٔ میدان نبرد')}\n"
         "─────────────────────\n\n"
-        f"● حمله‌های انجام‌شده: {escape(_number(snapshot.attacks_sent))}\n"
+        + rank_line
+        + f"● حمله‌های انجام‌شده: {escape(_number(snapshot.attacks_sent))}\n"
         f"● حمله‌های موفق: {escape(_number(snapshot.successful_attacks))}\n"
         f"● حمله‌های در انتظار: {escape(_number(snapshot.pending_attacks))}\n"
         f"● حمله‌های دریافتی: {escape(_number(snapshot.attacks_received))}\n\n"
@@ -264,9 +273,15 @@ async def _show_profile_section(
     section: str,
 ) -> None:
     snapshot = await profile_service.snapshot(session, await _user_id(session, target))
+    rank = (
+        await RankService.view(session, snapshot.user.id)
+        if section in {"war", "rank"}
+        else None
+    )
     text = {
         "profile": _profile_identity_text(snapshot),
-        "war": _profile_war_text(snapshot),
+        "war": _profile_war_text(snapshot, rank),
+        "rank": rank_profile_banner(rank) if rank else "",
         "assets": _profile_assets_text(snapshot),
         "knowledge": _profile_knowledge_text(snapshot),
     }[section]
@@ -502,7 +517,7 @@ async def profile_callback_handler(
             # Compatibility with older profile messages: the former single
             # "اطلاعات کاربری" button now opens only the profile section.
             await _show_profile_section(callback, session, "profile")
-        elif callback_data.action in {"profile", "war", "assets", "knowledge"}:
+        elif callback_data.action in {"profile", "war", "rank", "assets", "knowledge"}:
             await _show_profile_section(callback, session, callback_data.action)
         else:
             await _show_profile_menu(callback)

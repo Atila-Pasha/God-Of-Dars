@@ -443,6 +443,27 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         if getattr(result, "archer_recovering", False)
         else ""
     )
+    rank_note = ""
+    if result.rank_delta is not None:
+        change = result.rank_delta[1 if recipient == "defender" else 0]
+        rank_note = f"{emoji('5823430604846276719', '🏆')} تغییر جام رنک: {escape(f'{change:+d}')}\n\n"
+        if recipient != "defender" and result.rank_reward is not None:
+            coin, banana, diamond = result.rank_reward
+            reward_parts = [
+                f"{icon}\u2002\u2002{escape(f'{amount} {unit}')}"
+                for icon, amount, unit in (
+                    (COIN, coin, "طلا"),
+                    (BANANA, banana, "موز"),
+                    (DIAMOND, diamond, "الماس"),
+                )
+                if amount
+            ]
+            if reward_parts:
+                rank_note += (
+                    f"{LOOT} {bold('پاداش رنک این حمله:')}\n"
+                    + "\n".join(reward_parts)
+                    + "\n\n"
+                )
     return (
         f"{FINISH} {bold(headline)} {FINISH}\n\n"
         f"{REPORT} {bold('گزارش نتیجهٔ نبرد:')}\n"
@@ -462,6 +483,7 @@ def attack_result_banner(result: AttackResult, *, recipient: str = "attacker") -
         f"{COIN} طلا: {escape(coin_amount)}\n"
         f"{DIAMOND} الماس: {escape(result.loot_diamond)}\n"
         f"{BANANA} موز: {escape(banana_amount)}\n\n"
+        f"{rank_note}"
         f"{bonus_note}"
         f"{mine_note}"
         f"{closing}"
