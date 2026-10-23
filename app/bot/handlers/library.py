@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import suppress
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -12,15 +13,20 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot import archer_banners as ab
+from app.bot import knight_banners as kb
 from app.bot.banners import MARKDOWN_V2, bold, emoji, escape, teacher_icon
 from app.bot.callbacks import (
     LibraryCallback,
+    LibraryGuardCallback,
     LibraryShieldCallback,
     LibraryTeacherCallback,
     StudyCallback,
 )
 from app.bot.keyboards.library import (
     answer_keyboard,
+    guard_library_detail_keyboard,
+    guard_library_keyboard,
     library_keyboard,
     shield_library_detail_keyboard,
     shield_library_keyboard,
@@ -33,6 +39,8 @@ from app.bot.middlewares.subscription import refresh_channels, subscription_serv
 from app.bot.shield_presentation import shield_icon
 from app.bot.teacher_lookup import matching_teachers
 from app.bot.utils.telegram import safe_edit_text
+from app.services.archer_service import ArcherService
+from app.services.knight_service import KnightService
 from app.services.library_errors import (
     DuplicateAnswer,
     LibraryError,
@@ -59,6 +67,8 @@ user_service = UserService()
 study_service = StudyService()
 teacher_service = TeacherService()
 shield_service = ShieldService()
+archer_service = ArcherService()
+knight_service = KnightService()
 logger = logging.getLogger(__name__)
 
 RESOURCE_LABELS = {
@@ -188,7 +198,7 @@ async def _show_library(target: Message | CallbackQuery) -> None:
 
     text = (
         f"{emoji('5825629907274703191', '📚')} {bold('کتابخانهٔ دانش')}\n\n"
-        f"{emoji('5877214659227946561', '📖')} سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها و سپرها رو بشناس\\."
+        f"{emoji('5877214659227946561', '📖')} سؤال حل کن، مطالعه کن و قبل از نبرد دبیرها، سپرها و نگهبان‌ها رو بشناس\\."
     )
     if isinstance(target, CallbackQuery):
         if target.message is not None:
@@ -300,6 +310,9 @@ def _shield_library_detail_text(shield) -> str:
         f"{icon} {bold(shield.name)}\n\n"
         f"{emoji('5825699618888884083', '🎖️')} سطح بازشدن: {escape(shield.unlock_level)}\n"
         f"{emoji('6039539366177541657', '⏳')} مدت محافظت: {escape(shield.duration_minutes)} دقیقه\n"
+        f"کاهش خسارت: {escape(getattr(shield, 'reduction_percent', 0))}٪\n"
+        f"جذب ثابت: {escape(getattr(shield, 'flat_absorption', 0))}\n"
+        f"سقف خرید روزانه: {escape(getattr(shield, 'daily_limit', None) or 'نامحدود')}\n"
         f"{emoji('5825753314570018832' if currency == 'الماس' else '5825699971076202989', '💎' if currency == 'الماس' else '🪙')} "
         f"قیمت: {escape(shield.purchase_price)} {escape(currency)}\n\n"
         f"{bold('اثر سپر:')} {escape(shield.description or 'جلوگیری از حمله به دژ')}"
@@ -317,27 +330,202 @@ async def _show_shield_list(callback: CallbackQuery, session: AsyncSession) -> N
         )
 
 
+def _guard_detail_content(item, *, kind: str) -> str:
+    description = item.description or "توضیحی ثبت نشده است."
+    quoted_description = "\n".join(f"> {escape(line)}" for line in description.splitlines())
+    if kind == "archer":
+        title = f"{ab.archer_name(item.name, item.emoji)} {bold('پروندهٔ کماندار')}"
+        details = (
+            f"قدرت پایه: {escape(item.power)} DMG\n"
+            f"جان پایه: {escape(max(100, item.power * 5))} HP\n"
+            f"سطح بازشدن: {escape(item.unlock_level)}\n"
+            f"قیمت خرید: {ab.price(item.purchase_price, item.purchase_resource)}\n"
+            f"هزینهٔ ارتقای پایه: {escape(item.upgrade_price)} الماس"
+        )
+        role = "با تیر انتخاب‌شده از دژ دفاع می‌کند؛ هر دبیر مهاجم حداکثر یک تیر می‌خورد."
+    else:
+        title = f"{kb.name(item.name, item.emoji)} {bold('پروندهٔ شوالیه')}"
+        details = (
+            f"قدرت پایه: {escape(item.power)} DMG\n"
+            f"جان پایه: {escape(item.max_hp)} HP\n"
+            f"کاهش تخریب و غارت: {escape(min(40, item.power * 2))}٪\n"
+            f"سطح بازشدن: {escape(item.unlock_level)}\n"
+            f"قیمت خرید: {ab.price(item.purchase_price, item.purchase_resource)}\n"
+            f"هزینهٔ ارتقای پایه: {escape(item.upgrade_price)} الماس"
+        )
+        role = "بدون تیر از دژ دفاع می‌کند و به دبیرهای مهاجم آسیب می‌زند."
+    return (
+        f"{title}\n─────────────────────\n\n{details}\n\n"
+        f"{escape(role)}\n{escape('با صفر شدن جان، 5 ساعت در ریکاوری می‌ماند.')}\n\n"
+        f"{bold('توضیحات:')}\n{quoted_description}"
+    )
+
+
+async def _show_guard_list(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    *,
+    kind: Literal["archer", "knight"],
+) -> None:
+    items = (
+        await archer_service.catalog(session)
+        if kind == "archer"
+        else await knight_service.catalog(session)
+    )
+    title = "کماندارها" if kind == "archer" else "شوالیه‌ها"
+    icon = emoji(ab.ARCHER, "🏹") if kind == "archer" else emoji(kb.KNIGHT, "⚔️")
+    if callback.message is not None:
+        await safe_edit_text(
+            cast(Message, callback.message),
+            f"{icon} {bold(f'دانشنامهٔ {title}')}\n\n"
+            f"{escape('برای دیدن پروندهٔ کامل، یک نگهبان را انتخاب کن.')}",
+            reply_markup=guard_library_keyboard(items, kind=kind),
+            parse_mode=MARKDOWN_V2,
+        )
+
+
+def _normalized_intro(value: str) -> str:
+    return " ".join(
+        value.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").split()
+    ).casefold()
+
+
+def _catalog_matches(items: list[Any], query: str, *, kind: str) -> list[Any]:
+    search = _normalized_intro(query)
+    if not search:
+        return []
+    singular = {"shield": "سپر", "archer": "کماندار", "knight": "شوالیه"}[kind]
+    def names(item: Any) -> set[str]:
+        full = _normalized_intro(item.name)
+        short = full.removeprefix(f"{singular} ")
+        return {
+            full,
+            short,
+            re.sub(r"\s*\([^)]*\)$", "", full).strip(),
+            re.sub(r"\s*\([^)]*\)$", "", short).strip(),
+        }
+
+    exact = [item for item in items if search in names(item)]
+    if exact:
+        return exact
+    return [
+        item
+        for item in items
+        if len(search.split()) == 1
+        and any(candidate.split()[-1] == search for candidate in names(item) if candidate)
+    ]
+
+
+async def _introduction_catalog(session: AsyncSession, kind: str) -> list[Any]:
+    if kind == "teacher":
+        return list(await teacher_service.public_teachers(session))
+    if kind == "shield":
+        return list(await shield_service.catalog(session, player_level=None))
+    if kind == "archer":
+        return list(await archer_service.catalog(session))
+    return list(await knight_service.catalog(session))
+
+
+def _introduction_detail(kind: str, item: Any) -> str:
+    if kind == "teacher":
+        return _teacher_detail_content(item)
+    if kind == "shield":
+        return _shield_library_detail_text(item)
+    return _guard_detail_content(item, kind=kind)
+
+
 @router.message(
     F.chat.type.in_({"group", "supergroup"}),
     F.text.regexp(r"^معرفی(?:\s+.+)?$"),
 )
 async def group_teacher_introduction(message: Message, session: AsyncSession) -> None:
-    name = (message.text or "")[len("معرفی") :].strip()
-    if not name:
-        await message.answer("فرمت صحیح: معرفی نام دبیر")
-        return
-    teachers = await teacher_service.public_teachers(session)
-    matches = matching_teachers(teachers, name)
-    if not matches:
-        await message.answer("دبیری با این نام پیدا نشد.")
-        return
-    if len(matches) > 1:
+    query = _normalized_intro((message.text or "")[len("معرفی") :])
+    if not query:
         await message.answer(
-            "چند دبیر با این نام پیدا شد؛ اسم کامل دبیر را بنویسید: "
-            + "، ".join(teacher.name for teacher in matches)
+            "برای دیدن پرونده بنویس: معرفی نام دبیر، معرفی سپر نام، معرفی کماندار نام یا معرفی شوالیه نام."
         )
         return
-    await message.answer(_teacher_detail_content(matches[0]), parse_mode=MARKDOWN_V2)
+    aliases = {
+        "دبیر": "teacher",
+        "دبیرها": "teacher",
+        "دبیر ها": "teacher",
+        "سپر": "shield",
+        "سپرها": "shield",
+        "سپر ها": "shield",
+        "کماندار": "archer",
+        "کماندارها": "archer",
+        "کماندار ها": "archer",
+        "شوالیه": "knight",
+        "شوالیه ها": "knight",
+        "شوالیه‌ها": "knight",
+    }
+    explicit = next(
+        ((alias, alias_kind) for alias, alias_kind in aliases.items() if query == alias),
+        None,
+    )
+    if explicit is None:
+        explicit = next(
+            (
+                (alias, alias_kind)
+                for alias, alias_kind in aliases.items()
+                if query.startswith(f"{alias} ")
+            ),
+            None,
+        )
+    kind = explicit[1] if explicit else None
+    name = query[len(explicit[0]) :].strip() if explicit else query
+    if kind is None:
+        teachers = await teacher_service.public_teachers(session)
+        teacher_matches = matching_teachers(teachers, name)
+        if teacher_matches:
+            if len(teacher_matches) > 1:
+                await message.answer(
+                    "چند دبیر با این نام پیدا شد؛ اسم کامل دبیر را بنویسید: "
+                    + "، ".join(teacher.name for teacher in teacher_matches)
+                )
+            else:
+                await message.answer(
+                    _teacher_detail_content(teacher_matches[0]),
+                    parse_mode=MARKDOWN_V2,
+                )
+            return
+    kinds = (kind,) if kind else ("shield", "archer", "knight")
+    catalogs = [(item_kind, await _introduction_catalog(session, item_kind)) for item_kind in kinds]
+    if kind and not name:
+        items = catalogs[0][1]
+        if not items:
+            await message.answer("فعلاً موردی برای معرفی وجود ندارد.")
+            return
+        label = {"teacher": "دبیرها", "shield": "سپرها", "archer": "کماندارها", "knight": "شوالیه‌ها"}[kind]
+        await message.answer(
+            f"{bold(f'فهرست {label}')}\n\n"
+            + "\n".join(f"• {escape(item.name)}" for item in items)
+            + f"\n\n{escape('برای دیدن جزئیات، معرفی نام را بفرست.')}",
+            parse_mode=MARKDOWN_V2,
+        )
+        return
+    matches = [
+        (item_kind, item)
+        for item_kind, items in catalogs
+        for item in (
+            matching_teachers(items, name)
+            if item_kind == "teacher"
+            else _catalog_matches(items, name, kind=item_kind)
+        )
+    ]
+    if not matches:
+        await message.answer("موردی با این نام پیدا نشد؛ نام کامل یا نوع آن را بنویس.")
+    elif len(matches) > 1:
+        labels = {"shield": "سپر", "archer": "کماندار", "knight": "شوالیه"}
+        names = "، ".join(
+            f"{item.name} ({labels[item_kind]})" for item_kind, item in matches
+        )
+        await message.answer(f"چند مورد پیدا شد؛ نوع و نام کامل را بنویس: {names}")
+    else:
+        item_kind, item = matches[0]
+        await message.answer(
+            _introduction_detail(item_kind, item), parse_mode=MARKDOWN_V2
+        )
 
 
 @router.message(F.text == LIBRARY_LABEL)
@@ -432,6 +620,10 @@ async def library_callback_handler(
             await _show_teacher_list(callback, session, 0)
         elif callback_data.action == "shields":
             await _show_shield_list(callback, session)
+        elif callback_data.action == "archers":
+            await _show_guard_list(callback, session, kind="archer")
+        elif callback_data.action == "knights":
+            await _show_guard_list(callback, session, kind="knight")
         elif callback_data.action == "cancel":
             await state.clear()
             if callback.message is not None:
@@ -469,6 +661,34 @@ async def library_shield_callback(
             cast(Message, callback.message),
             _shield_library_detail_text(shield),
             reply_markup=shield_library_detail_keyboard(),
+            parse_mode=MARKDOWN_V2,
+        )
+
+
+@router.callback_query(LibraryGuardCallback.filter())
+async def library_guard_callback(
+    callback: CallbackQuery,
+    callback_data: LibraryGuardCallback,
+    session: AsyncSession,
+) -> None:
+    await _safe_callback_answer(callback)
+    if callback_data.action == "back":
+        await _show_guard_list(callback, session, kind=callback_data.kind)
+        return
+    items = (
+        await archer_service.catalog(session)
+        if callback_data.kind == "archer"
+        else await knight_service.catalog(session)
+    )
+    item = next((row for row in items if row.id == callback_data.item_id), None)
+    if item is None:
+        await _notify_callback(callback, "این نگهبان در دسترس نیست.")
+        return
+    if callback.message is not None:
+        await safe_edit_text(
+            cast(Message, callback.message),
+            _guard_detail_content(item, kind=callback_data.kind),
+            reply_markup=guard_library_detail_keyboard(callback_data.kind),
             parse_mode=MARKDOWN_V2,
         )
 

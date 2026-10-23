@@ -38,6 +38,9 @@ def test_shield_library_shows_full_details_with_custom_emoji() -> None:
         purchase_price=120,
         unlock_level=1,
         duration_minutes=30,
+        reduction_percent=20,
+        flat_absorption=5,
+        daily_limit=2,
         description="محافظت کامل",
     )
     text = _shield_library_detail_text(shield)
@@ -45,6 +48,9 @@ def test_shield_library_shows_full_details_with_custom_emoji() -> None:
     assert "tg://emoji?id=5825861861278490879" in text
     assert "120 طلا" in text
     assert "30 دقیقه" in text
+    assert "20٪" in text
+    assert "جذب ثابت: 5" in text
+    assert "سقف خرید روزانه: 2" in text
     assert "محافظت کامل" in text
     assert "120 طلا" not in _shield_library_text()
     markup = shield_library_keyboard([shield])

@@ -1,15 +1,19 @@
 from collections.abc import Sequence
+from typing import Literal
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.callbacks import (
     LibraryCallback,
+    LibraryGuardCallback,
     LibraryShieldCallback,
     LibraryTeacherCallback,
     StudyCallback,
 )
 from app.bot.custom_emojis import premium_emoji_id
 from app.bot.shield_presentation import shield_button_label, shield_emoji_id
+from app.models.archer import Archer
+from app.models.knight import Knight
 from app.models.shield import Shield
 from app.models.study_pack import StudyPack
 from app.models.teacher import Teacher
@@ -22,25 +26,35 @@ def library_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="📅 سؤال روزانه",
                     callback_data=LibraryCallback(action="daily").pack(),
-                )
-            ],
-            [
+                ),
                 InlineKeyboardButton(
                     text="ثبت ساعت مطالعه",
                     icon_custom_emoji_id="5825736654391876714",
                     callback_data=LibraryCallback(action="study").pack(),
                 ),
+            ],
+            [
                 InlineKeyboardButton(
                     text="👨‍🏫 معرفی دبیرها",
                     callback_data=LibraryCallback(action="teachers").pack(),
                 ),
-            ],
-            [
                 InlineKeyboardButton(
                     text="معرفی سپرها",
                     icon_custom_emoji_id="5825861861278490879",
                     callback_data=LibraryCallback(action="shields").pack(),
-                )
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="معرفی کماندارها",
+                    icon_custom_emoji_id="5314526780416092636",
+                    callback_data=LibraryCallback(action="archers").pack(),
+                ),
+                InlineKeyboardButton(
+                    text="معرفی شوالیه‌ها",
+                    icon_custom_emoji_id="5372804525935567057",
+                    callback_data=LibraryCallback(action="knights").pack(),
+                ),
             ],
         ]
     )
@@ -79,6 +93,48 @@ def shield_library_detail_keyboard() -> InlineKeyboardMarkup:
                     text="بازگشت به فهرست سپرها",
                     icon_custom_emoji_id="5235864325540815679",
                     callback_data=LibraryShieldCallback(action="back").pack(),
+                )
+            ]
+        ]
+    )
+
+
+def guard_library_keyboard(
+    items: Sequence[Archer] | Sequence[Knight], *, kind: Literal["archer", "knight"]
+) -> InlineKeyboardMarkup:
+    icon_id = "5314526780416092636" if kind == "archer" else "5372804525935567057"
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=item.name,
+                icon_custom_emoji_id=premium_emoji_id(item.emoji) or icon_id,
+                callback_data=LibraryGuardCallback(
+                    action="view", kind=kind, item_id=item.id
+                ).pack(),
+            )
+        ]
+        for item in items
+    ]
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="بازگشت به کتابخانه",
+                icon_custom_emoji_id="5235864325540815679",
+                callback_data=LibraryCallback(action="back").pack(),
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def guard_library_detail_keyboard(kind: Literal["archer", "knight"]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="بازگشت به فهرست",
+                    icon_custom_emoji_id="5235864325540815679",
+                    callback_data=LibraryGuardCallback(action="back", kind=kind).pack(),
                 )
             ]
         ]

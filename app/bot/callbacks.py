@@ -112,7 +112,7 @@ class AttackCountdownCallback(CallbackData, prefix="attack_timer"):
 
 class LibraryCallback(CallbackData, prefix="library"):
     action: Literal[
-        "daily", "answer", "group", "study", "teachers", "shields", "back", "cancel"
+        "daily", "answer", "group", "study", "teachers", "shields", "archers", "knights", "back", "cancel"
     ]
 
 
@@ -125,6 +125,12 @@ class LibraryTeacherCallback(CallbackData, prefix="library_teacher"):
 class LibraryShieldCallback(CallbackData, prefix="library_shield"):
     action: Literal["view", "back"]
     shield_id: int = 0
+
+
+class LibraryGuardCallback(CallbackData, prefix="library_guard"):
+    action: Literal["view", "back"]
+    kind: Literal["archer", "knight"]
+    item_id: int = 0
 
 
 class StudyCallback(CallbackData, prefix="study"):
