@@ -56,15 +56,15 @@ async def test_membership_burst_is_coalesced_and_cache_evicts_only_one():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "role, attacks, notifications, cleanup",
+    "role, attacks, notifications, cleanup, rank_sweeps",
     [
-        ("combined", 2, 3, 1),
-        ("bot", 0, 3, 1),
-        ("attacks", 2, 0, 0),
+        ("combined", 2, 3, 1, 1),
+        ("bot", 0, 3, 1, 0),
+        ("attacks", 2, 0, 0, 1),
     ],
 )
 async def test_runtime_roles_do_not_duplicate_pollers_or_senders(
-    monkeypatch, role, attacks, notifications, cleanup
+    monkeypatch, role, attacks, notifications, cleanup, rank_sweeps
 ):
     from app.workers import runtime
 
@@ -74,13 +74,16 @@ async def test_runtime_roles_do_not_duplicate_pollers_or_senders(
     attack = AsyncMock()
     notification = AsyncMock()
     clean = AsyncMock()
+    rank = AsyncMock()
     monkeypatch.setattr(runtime, "_attack_worker", attack)
     monkeypatch.setattr(runtime, "run_notification_worker", notification)
     monkeypatch.setattr(runtime, "run_game_message_cleanup_worker", clean)
+    monkeypatch.setattr(runtime, "_rank_worker", rank)
     await runtime.run_workers(SimpleNamespace())
     assert attack.await_count == attacks
     assert notification.await_count == notifications
     assert clean.await_count == cleanup
+    assert rank.await_count == rank_sweeps
 
 
 @pytest.mark.asyncio
