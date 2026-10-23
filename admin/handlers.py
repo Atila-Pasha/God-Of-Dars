@@ -20,9 +20,11 @@ from aiogram.types import (
     Message,
 )
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin import keyboards
+from admin.broadcast import status_text
 from admin.states import (
     ArcherStates,
     BroadcastStates,
@@ -51,6 +53,7 @@ from app.bot.utils.telegram import safe_edit_reply_markup, safe_edit_text
 from app.core.config import settings
 from app.core.enums import ResourceType
 from app.models.archer import Archer, ArrowPack
+from app.models.broadcast_job import BroadcastJob
 from app.models.daily_quest import QUEST_TYPES
 from app.models.knight import Knight
 from app.models.study_pack import StudyPack
@@ -1325,15 +1328,44 @@ def user_teachers_text(user, teachers) -> str:
     return "\n\n".join(lines)
 
 
+@router.message(F.text.in_(button_labels("📊 وضعیت پیام همگانی")))
+async def broadcast_status(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message):
+        return
+    await state.clear()
+    job = await session.scalar(
+        select(BroadcastJob).order_by(BroadcastJob.id.desc()).limit(1)
+    )
+    await message.answer(
+        status_text(job) if job else "هنوز پیام همگانی ارسال نشده است.",
+        reply_markup=keyboards.publishing_menu(),
+    )
+
+
 @router.message(F.text.in_(button_labels("پیام همگانی", "📣 پیام همگانی")))
-async def broadcast_start(message: Message, state: FSMContext) -> None:
-    if allowed(message):
-        await state.clear()
-        await state.set_state(BroadcastStates.content)
+async def broadcast_start(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if not allowed(message):
+        return
+    active = await session.scalar(
+        select(BroadcastJob)
+        .where(BroadcastJob.status.in_(("PENDING", "RUNNING")))
+        .limit(1)
+    )
+    if active:
         await message.answer(
-            "پیام همگانی را بفرستید.\nمی‌توانید فقط متن، یا عکس همراه کپشن ارسال کنید.",
-            reply_markup=keyboards.cancel_keyboard(),
+            status_text(active), reply_markup=keyboards.publishing_menu()
         )
+        return
+    await state.clear()
+    await state.set_state(BroadcastStates.content)
+    await message.answer(
+        "پیام همگانی را بفرستید.\nمی‌توانید فقط متن، یا عکس همراه کپشن ارسال کنید.",
+        reply_markup=keyboards.cancel_keyboard(),
+    )
 
 
 @router.message(BroadcastStates.content)
@@ -1346,9 +1378,13 @@ async def broadcast_send(
         await message.answer("فقط پیام متنی یا عکس همراه کپشن قابل ارسال است.")
         return
 
-    total_recipients = await session.scalar(
-        select(func.count(User.id)).where(User.telegram_user_id > 0)
-    )
+    max_user_id, total_recipients = (
+        await session.execute(
+            select(func.max(User.id), func.count(User.id)).where(
+                User.telegram_user_id > 0
+            )
+        )
+    ).one()
     if not total_recipients:
         await state.clear()
         await message.answer(
@@ -1357,79 +1393,42 @@ async def broadcast_send(
         )
         return
 
-    await state.clear()
-    # Release the database connection before the potentially long Telegram
-    # broadcast. Recipient IDs are fetched page-by-page below.
-    await session.commit()
-    await message.answer(
-        f"📣 ارسال پیام برای {total_recipients} کاربر شروع شد؛ لطفاً صبر کنید...",
-        reply_markup=keyboards.publishing_menu(),
+    photo_data = None
+    if message.photo:
+        if message.bot is None:
+            raise RuntimeError("Telegram bot context is missing")
+        buffer = BytesIO()
+        await message.bot.download(message.photo[-1].file_id, destination=buffer)
+        photo_data = buffer.getvalue()
+    job = BroadcastJob(
+        admin_chat_id=message.chat.id,
+        text=message.text,
+        caption=message.caption if message.photo else None,
+        photo_data=photo_data,
+        max_user_id=max_user_id,
+        total=total_recipients,
     )
-
-    main_session = AiohttpSession(
-        proxy=settings.TELEGRAM_PROXY,
-        limit=settings.TELEGRAM_HTTP_LIMIT,
-    )
-    sent = 0
-    failed = 0
-    async with Bot(token=settings.BOT_TOKEN, session=main_session) as main_bot:
-        photo_file: BufferedInputFile | None = None
-        if message.photo:
-            buffer = BytesIO()
-            if message.bot is None:
-                raise RuntimeError("Telegram bot context is missing")
-            await message.bot.download(message.photo[-1].file_id, destination=buffer)
-            photo_file = BufferedInputFile(buffer.getvalue(), filename="broadcast.jpg")
-
-        last_user_id = 0
-        batch_size = max(1, settings.BROADCAST_BATCH_SIZE)
-        while True:
-            result = await session.execute(
-                select(User.id, User.telegram_user_id)
-                .where(User.id > last_user_id, User.telegram_user_id > 0)
-                .order_by(User.id)
-                .limit(batch_size)
-            )
-            recipients = result.all()
-            if not recipients:
-                break
-            await session.commit()
-            for _, telegram_user_id in recipients:
-                try:
-                    for attempt in range(2):
-                        try:
-                            if photo_file is not None:
-                                # A new BufferedInputFile is needed because the
-                                # Telegram client consumes the file stream during
-                                # each upload.
-                                await main_bot.send_photo(
-                                    chat_id=telegram_user_id,
-                                    photo=BufferedInputFile(
-                                        photo_file.data, filename="broadcast.jpg"
-                                    ),
-                                    caption=message.caption,
-                                )
-                            else:
-                                if message.text is None:
-                                    raise RuntimeError("Broadcast text is missing")
-                                await main_bot.send_message(
-                                    chat_id=telegram_user_id,
-                                    text=message.text,
-                                )
-                            break
-                        except TelegramRetryAfter as exc:
-                            if attempt == 1:
-                                raise
-                            await asyncio.sleep(exc.retry_after)
-                    sent += 1
-                except TelegramAPIError:
-                    failed += 1
-                await asyncio.sleep(max(0, settings.TELEGRAM_SEND_DELAY))
-            last_user_id = recipients[-1][0]
+    session.add(job)
+    try:
         await session.commit()
-
+    except IntegrityError:
+        await session.rollback()
+        active = await session.scalar(
+            select(BroadcastJob)
+            .where(BroadcastJob.status.in_(("PENDING", "RUNNING")))
+            .limit(1)
+        )
+        await state.clear()
+        await message.answer(
+            status_text(active) if active else "ارسال دیگری در حال انجام است.",
+            reply_markup=keyboards.publishing_menu(),
+        )
+        return
+    await state.clear()
     await message.answer(
-        f"✅ پیام همگانی تمام شد.\nموفق: {sent}\nناموفق: {failed}",
+        f"📣 ارسال به {total_recipients} کاربر شروع شد (شناسه {job.id}).\n"
+        "ربات ادمین در این مدت قابل استفاده است. گزارش نهایی خودکار می‌آید؛ "
+        "پیشرفت را هم از «وضعیت پیام همگانی» ببینید.",
         reply_markup=keyboards.publishing_menu(),
     )
 

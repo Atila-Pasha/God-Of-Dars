@@ -4,6 +4,7 @@ from contextlib import suppress
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 
+from admin.broadcast import run_broadcast_worker
 from admin.handlers import router
 from app.bot.custom_emojis import install as install_custom_emojis
 from app.bot.isolation import UserEventIsolation
@@ -45,24 +46,33 @@ async def run_admin_bot(stop_event: asyncio.Event | None = None) -> None:
                 ),
                 name="admin-polling",
             )
+            worker_task = asyncio.create_task(
+                run_broadcast_worker(bot, stop_event), name="admin-broadcast-worker"
+            )
             stop_task = (
                 asyncio.create_task(stop_event.wait(), name="admin-stop-waiter")
                 if stop_event is not None
                 else None
             )
             try:
-                if stop_task is None:
-                    await polling_task
-                else:
-                    done, _ = await asyncio.wait(
-                        (polling_task, stop_task),
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    if stop_task in done and not polling_task.done():
-                        await dispatcher.stop_polling()
-                    await polling_task
+                tasks: list[asyncio.Task] = [polling_task, worker_task]
+                if stop_task is not None:
+                    tasks.append(stop_task)
+                done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                if worker_task in done:
+                    await worker_task
+                    if stop_event is None or not stop_event.is_set():
+                        raise RuntimeError(
+                            "Admin broadcast worker stopped unexpectedly"
+                        )
+                if stop_task in done and not polling_task.done():
+                    await dispatcher.stop_polling()
+                await polling_task
                 await drain_updates(dispatcher)
             finally:
+                worker_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await worker_task
                 if stop_task is not None:
                     stop_task.cancel()
                     with suppress(asyncio.CancelledError):

@@ -2,6 +2,7 @@ from app.models.answer import Answer
 from app.models.archer import Archer, ArrowPack, UserArcher, UserArrow
 from app.models.attack import Attack
 from app.models.bot_settings import BotSettings
+from app.models.broadcast_job import BroadcastJob
 from app.models.castle import Castle
 from app.models.chance_box import ChanceBox
 from app.models.chance_box_attempt import ChanceBoxAttempt
@@ -37,6 +38,7 @@ __all__ = [
     "Answer",
     "Attack",
     "BotSettings",
+    "BroadcastJob",
     "Castle",
     "ChanceBox",
     "ChanceBoxAttempt",

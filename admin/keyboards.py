@@ -176,6 +176,7 @@ def publishing_menu() -> ReplyKeyboardMarkup:
     return _reply(
         [
             ["📣 پیام همگانی"],
+            ["📊 وضعیت پیام همگانی"],
             ["🎁 جعبه شانس", "🃏 کارت شانس"],
             ["🏠 منوی اصلی"],
         ],
