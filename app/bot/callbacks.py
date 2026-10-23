@@ -112,7 +112,16 @@ class AttackCountdownCallback(CallbackData, prefix="attack_timer"):
 
 class LibraryCallback(CallbackData, prefix="library"):
     action: Literal[
-        "daily", "answer", "group", "study", "teachers", "shields", "archers", "knights", "back", "cancel"
+        "daily",
+        "answer",
+        "group",
+        "study",
+        "teachers",
+        "shields",
+        "archers",
+        "knights",
+        "back",
+        "cancel",
     ]
 
 
@@ -160,6 +169,10 @@ class ProfileCallback(CallbackData, prefix="profile"):
 class LeaderboardCallback(CallbackData, prefix="leaderboard"):
     action: Literal["menu", "commander", "student", "fighter", "back"]
     period: Literal["daily", "weekly", "monthly"] = "weekly"
+
+
+class GlobalRankCallback(CallbackData, prefix="global_rank"):
+    page: int
 
 
 class LevelConfirmationCallback(CallbackData, prefix="level"):

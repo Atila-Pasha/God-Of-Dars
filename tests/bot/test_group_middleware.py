@@ -14,6 +14,9 @@ def test_group_policy_allows_profile_aliases_and_god() -> None:
     assert GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/attack@my_bot")
     )
+    assert GroupAccessMiddleware._message_is_allowed(
+        SimpleNamespace(text="/global@my_bot")
+    )
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/profile")
     )
@@ -78,6 +81,9 @@ def test_group_policy_allows_membership_check_callback() -> None:
         SimpleNamespace(data="attack_menu:toggle:id:5")
     )
     assert GroupAccessMiddleware._callback_is_allowed(SimpleNamespace(data="slogan:42"))
+    assert GroupAccessMiddleware._callback_is_allowed(
+        SimpleNamespace(data="global_rank:2")
+    )
 
 
 def test_group_callback_replies_to_original_user_command() -> None:

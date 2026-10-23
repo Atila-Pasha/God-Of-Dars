@@ -78,6 +78,28 @@ async def test_fighter_board_uses_monthly_rank_season_even_with_weekly_request()
     assert await service.top(SimpleNamespace(), "fighter", now=now) == ()
 
 
+@pytest.mark.asyncio
+async def test_fighter_pages_are_ten_at_a_time_and_clamped() -> None:
+    calls = []
+
+    class Repository:
+        async def fighter_count(self, session, *, since):
+            return 23
+
+        async def fighters(self, session, *, limit, offset, since):
+            calls.append((limit, offset))
+            return [LeaderboardRecord(offset + 1, "آرمان", None, "arman", 700, 2)]
+
+    service = LeaderboardService(Repository())
+    second = await service.fighter_page(SimpleNamespace(), 2)
+    beyond = await service.fighter_page(SimpleNamespace(), 99)
+
+    assert (second.page, second.pages, second.total) == (2, 3, 23)
+    assert second.entries[0].rank == 11
+    assert (beyond.page, beyond.entries[0].rank) == (3, 21)
+    assert calls == [(10, 10), (10, 20)]
+
+
 def test_leaderboard_periods_use_tehran_calendar_boundaries() -> None:
     now = datetime(2026, 9, 16, 8, 30, tzinfo=UTC)
 

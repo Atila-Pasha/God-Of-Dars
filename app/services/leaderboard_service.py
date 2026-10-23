@@ -27,6 +27,14 @@ class LeaderboardEntry:
     secondary_value: int
 
 
+@dataclass(frozen=True)
+class FighterPage:
+    entries: tuple[LeaderboardEntry, ...]
+    page: int
+    pages: int
+    total: int
+
+
 class LeaderboardService:
     def __init__(
         self,
@@ -117,6 +125,26 @@ class LeaderboardService:
             return None
         rank, record = result
         return self._entry(rank, record)
+
+    async def fighter_page(
+        self,
+        session: AsyncSession,
+        page: int = 1,
+        *,
+        now: datetime | None = None,
+    ) -> FighterPage:
+        since = season_start(now)
+        total = await self.repository.fighter_count(session, since=since)
+        pages = max(1, (total + 9) // 10)
+        page = min(max(page, 1), pages)
+        records = await self.repository.fighters(
+            session, limit=10, offset=(page - 1) * 10, since=since
+        )
+        entries = tuple(
+            self._entry((page - 1) * 10 + index, record)
+            for index, record in enumerate(records, start=1)
+        )
+        return FighterPage(entries=entries, page=page, pages=pages, total=total)
 
     @staticmethod
     def period_start(

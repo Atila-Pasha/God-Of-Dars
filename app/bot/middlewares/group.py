@@ -43,6 +43,7 @@ ALLOWED_GROUP_COMMANDS = frozenset(
         "war",
         "assets",
         "knowledge",
+        "global",
     }
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})
@@ -311,6 +312,7 @@ class GroupAccessMiddleware(BaseMiddleware):
                 "chance_box_answer:",
                 "library:",
                 "library_teacher:",
+                "global_rank:",
                 "slogan:",
             )
         )

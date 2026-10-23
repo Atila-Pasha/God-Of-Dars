@@ -16,9 +16,45 @@ from app.models.user import User
 from app.models.user_teacher import UserTeacher
 from app.repositories.leaderboard import LeaderboardRepository
 from app.services.attack_service import AttackService
+from app.services.leaderboard_service import LeaderboardService
 from app.services.rank_service import RankService, local_date, season_start
 from app.services.school_errors import RandomOpponentNotFound, RankDailyLimitReached
 from app.workers.attack_resolver import _command_result
+
+
+@pytest.mark.asyncio
+async def test_global_rank_pages_include_zero_battle_players() -> None:
+    async with AsyncSessionLocal() as session:
+        transaction = await session.begin()
+        try:
+            player_ids = []
+            for index in range(12):
+                player = User(
+                    telegram_user_id=uuid4().int % 2_000_000_000,
+                    first_name=f"rank-page-{index}",
+                )
+                session.add(player)
+                await session.flush()
+                player_ids.append(player.id)
+                session.add(
+                    RankProfile(
+                        user_id=player.id,
+                        season_start=season_start(),
+                        cups=1_000_012 - index,
+                        best_cups=1_000_012 - index,
+                    )
+                )
+            await session.flush()
+
+            service = LeaderboardService()
+            first = await service.fighter_page(session, 1)
+            second = await service.fighter_page(session, 2)
+
+            assert [entry.user_id for entry in first.entries] == player_ids[:10]
+            assert [entry.user_id for entry in second.entries[:2]] == player_ids[10:]
+            assert [entry.rank for entry in second.entries[:2]] == [11, 12]
+        finally:
+            await transaction.rollback()
 
 
 @pytest.mark.asyncio
@@ -91,7 +127,8 @@ async def test_ranked_match_daily_limit_and_monthly_rewards_in_database() -> Non
                 await RankService.match(
                     session,
                     attacker,
-                    excluded=existing_ids | {near.id, far.id, shielded.id, mismatched.id},
+                    excluded=existing_ids
+                    | {near.id, far.id, shielded.id, mismatched.id},
                     recent=(),
                 )
 

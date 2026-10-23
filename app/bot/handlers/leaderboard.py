@@ -10,16 +10,19 @@ from aiogram.utils.formatting import Bold, Italic, Pre, Text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import LeaderboardCallback
-from app.bot.keyboards.leaderboard import leaderboard_keyboard
+from app.bot.banners import emoji
+from app.bot.callbacks import GlobalRankCallback, LeaderboardCallback
+from app.bot.keyboards.leaderboard import global_rank_keyboard, leaderboard_keyboard
 from app.bot.keyboards.profile import profile_keyboard
 from app.bot.utils.telegram import safe_edit_text
 from app.services.leaderboard_service import (
+    FighterPage,
     LeaderboardEntry,
     LeaderboardKind,
     LeaderboardPeriod,
     LeaderboardService,
 )
+from app.services.rank_service import TIERS, tier_for
 from app.services.school_errors import SchoolUserNotFound
 from app.services.user_service import (
     UserInactiveError,
@@ -117,7 +120,7 @@ def _table(kind: LeaderboardKind, entries: tuple[LeaderboardEntry, ...]) -> str:
 
 
 def _markdown_escape(value: str) -> str:
-    for character in ("\\", "|", "*", "_", "[", "]", "<", ">"):
+    for character in ("\\", "|", "*", "_", "[", "]", "<", ">", "`", "!"):
         value = value.replace(character, f"\\{character}")
     return value
 
@@ -268,6 +271,194 @@ def leaderboard_text(
     return leaderboard_content(kind, entries, viewer, period).render()[0]
 
 
+def _global_rank_table(entries: tuple[LeaderboardEntry, ...]) -> str:
+    account_width = max(
+        10,
+        min(18, max((len(_account(entry)) for entry in entries), default=10)),
+    )
+    lines = [f"{'#':<4} │ {'مبارز':<{account_width}} │ {'جام':<6} │ رنک"]
+    for entry in entries:
+        tier = tier_for(entry.primary_value)
+        lines.append(
+            f"{entry.rank:<4} │ {_account(entry):<{account_width}} │ "
+            f"{_number(entry.primary_value):<6} │ {tier.icon} {tier.name}"
+        )
+    return "\n".join(lines)
+
+
+def _global_rank_markdown_table(entries: tuple[LeaderboardEntry, ...]) -> str:
+    lines = [
+        "| # | مبارز | جام | رنک |",
+        "|:---:|:---|---:|:---|",
+    ]
+    for entry in entries:
+        tier = tier_for(entry.primary_value)
+        lines.append(
+            f"| {_rank(entry)} | {_markdown_escape(_account(entry))} | "
+            f"{_number(entry.primary_value)} | "
+            f"{emoji(tier.emoji_id, tier.icon)} {tier.name} |"
+        )
+    return "\n".join(lines)
+
+
+def _global_rank_spotlight(page: FighterPage) -> str | None:
+    if page.page != 1 or not page.entries:
+        return None
+    champion = page.entries[0]
+    return (
+        f"👑 صدرنشین فصل: {_account(champion)} · {_number(champion.primary_value)} جام"
+    )
+
+
+def _global_rank_progress(viewer: LeaderboardEntry | None) -> str:
+    if viewer is None:
+        return "هنوز وارد رنک این فصل نشده‌ای. با /rank شروع کن."
+    tier = tier_for(viewer.primary_value)
+    next_tier = next(
+        (item for item in TIERS if item.minimum > viewer.primary_value), None
+    )
+    progress = (
+        f"تا {next_tier.name}: {_number(next_tier.minimum - viewer.primary_value)} جام"
+        if next_tier is not None
+        else "به بالاترین رنک رسیده‌ای؛ حالا برای صدر جدول بجنگ!"
+    )
+    return (
+        f"#{viewer.rank} · {tier.icon} {tier.name} · "
+        f"{_number(viewer.primary_value)} جام\n🚀 {progress}"
+    )
+
+
+def global_rank_content(page: FighterPage, viewer: LeaderboardEntry | None) -> Text:
+    body: list = [
+        "🏆 ",
+        Bold("تالار مبارزان سراسری"),
+        "\n⚔️ نبرد برای تاج رنک · فصل ماهانه",
+        f"\n👥 {_number(page.total)} مبارز  ·  صفحه {page.page}/{page.pages}",
+        "\n\n",
+    ]
+    spotlight = _global_rank_spotlight(page)
+    if spotlight is not None:
+        body.extend([Bold(spotlight), "\n\n"])
+    if page.entries:
+        body.append(Pre(_global_rank_table(page.entries)))
+    else:
+        body.append("هنوز مبارزی در رنک این فصل ثبت نشده است.")
+    body.extend(["\n\n", Bold("جایگاه تو")])
+    body.extend(["\n", _global_rank_progress(viewer)])
+    body.append("\n\nجام بیشتر، جایگاه بالاتر؛ در تساوی جام، برد بیشتر جلوتر است.")
+    return Text(*body)
+
+
+def global_rank_markdown(page: FighterPage, viewer: LeaderboardEntry | None) -> str:
+    heading = (
+        f"# {emoji('5823430604846276719', '🏆')} تالار مبارزان سراسری\n"
+        f"## {emoji('5825697157872623308', '⚔️')} "
+        "نبرد برای تاج رنک · فصل ماهانه"
+    )
+    summary = f"**👥 {_number(page.total)} مبارز  ·  صفحه {page.page}/{page.pages}**"
+    table = (
+        _global_rank_markdown_table(page.entries)
+        if page.entries
+        else "هنوز مبارزی در رنک این فصل ثبت نشده است."
+    )
+    if viewer is None:
+        position = _global_rank_progress(None)
+    else:
+        tier = tier_for(viewer.primary_value)
+        next_tier = next(
+            (item for item in TIERS if item.minimum > viewer.primary_value), None
+        )
+        progress = (
+            f"تا {next_tier.name}: {_number(next_tier.minimum - viewer.primary_value)} جام"
+            if next_tier is not None
+            else "به بالاترین رنک رسیده‌ای؛ حالا برای صدر جدول بجنگ!"
+        )
+        position = (
+            f"**#{viewer.rank} · {emoji(tier.emoji_id, tier.icon)} "
+            f"{tier.name} · {_number(viewer.primary_value)} جام**\n"
+            f"🚀 {_markdown_escape(progress)}"
+        )
+    parts = [heading, summary]
+    spotlight = _global_rank_spotlight(page)
+    if spotlight is not None:
+        parts.append("**" + _markdown_escape(spotlight) + "**")
+    parts.extend(
+        [
+            table,
+            "## 🎖️ جایگاه تو\n" + position,
+            "*جام بیشتر، جایگاه بالاتر؛ در تساوی جام، برد بیشتر جلوتر است.*",
+        ]
+    )
+    return "\n\n".join(parts)
+
+
+async def _show_global_rank(
+    target: Message | CallbackQuery, session: AsyncSession, *, page: int = 1
+) -> None:
+    result = await leaderboards.fighter_page(session, page)
+    viewer = None
+    if target.from_user is not None:
+        try:
+            user = await users.get_active_by_telegram_user_id(
+                session, target.from_user.id
+            )
+            viewer = await leaderboards.position(
+                session, "fighter", user_id=user.id, period="monthly"
+            )
+        except (SchoolUserNotFound, UserInactiveError, UserInitializationError):
+            pass
+    rich_message = InputRichMessage(
+        markdown=global_rank_markdown(result, viewer), is_rtl=True
+    )
+    if isinstance(target, CallbackQuery):
+        if not isinstance(target.message, Message):
+            return
+        chat = target.message.chat
+    else:
+        chat = target.chat
+    markup = global_rank_keyboard(
+        result.page, result.pages, private=chat.type == "private"
+    )
+    if isinstance(target, CallbackQuery):
+        if not isinstance(target.message, Message):
+            return
+        editable_message = target.message
+        try:
+            await editable_message.edit_text(
+                text=None, rich_message=rich_message, reply_markup=markup
+            )
+            return
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return
+        content = global_rank_content(result, viewer)
+        rendered = content.as_kwargs()
+        text = rendered.pop("text")
+        await safe_edit_text(editable_message, text, reply_markup=markup, **rendered)
+        return
+    bot = target.bot
+    if bot is not None:
+        try:
+            reply = (
+                ReplyParameters(message_id=target.message_id)
+                if chat.type in {"group", "supergroup"}
+                else None
+            )
+            await bot.send_rich_message(
+                chat_id=chat.id,
+                rich_message=rich_message,
+                reply_markup=markup,
+                reply_parameters=reply,
+            )
+            return
+        except TelegramBadRequest:
+            pass
+    content = global_rank_content(result, viewer)
+    rendered = content.as_kwargs()
+    text = rendered.pop("text")
+    await target.answer(text, reply_markup=markup, **rendered)
+
+
 async def _show_menu(target: Message | CallbackQuery) -> None:
     if isinstance(target, CallbackQuery):
         if target.message is None:
@@ -364,6 +555,24 @@ async def leaderboard_command_handler(message: Message) -> None:
     await _show_menu(message)
 
 
+@router.message(Command("global"))
+async def global_rank_command_handler(message: Message, session: AsyncSession) -> None:
+    try:
+        await _show_global_rank(message, session)
+    except SQLAlchemyError:
+        await message.answer("جدول سراسری رنک فعلاً در دسترس نیست.")
+
+
+@router.message(
+    F.chat.type == "private",
+    F.text.in_({"برترین مبارز", "برترین مبارز ماهانه"}),
+)
+async def private_fighter_board_handler(
+    message: Message, session: AsyncSession
+) -> None:
+    await global_rank_command_handler(message, session)
+
+
 @router.message(
     F.chat.type.in_({"group", "supergroup"}),
     _is_group_leaderboard,
@@ -374,15 +583,36 @@ async def group_leaderboard_handler(message: Message, session: AsyncSession) -> 
     phrase = message.text.strip()
     kind, period = GROUP_LEADERBOARD_PHRASES[phrase]
     try:
-        await _show_board(
-            message,
-            session,
-            kind,
-            period=period,
-            with_keyboard=False,
-        )
+        if kind == "fighter":
+            await _show_global_rank(message, session)
+        else:
+            await _show_board(
+                message,
+                session,
+                kind,
+                period=period,
+                with_keyboard=False,
+            )
     except SQLAlchemyError:
         await message.answer("اطلاعات برترین‌ها فعلاً در دسترس نیست.")
+
+
+@router.callback_query(GlobalRankCallback.filter())
+async def global_rank_callback_handler(
+    callback: CallbackQuery,
+    callback_data: GlobalRankCallback,
+    session: AsyncSession,
+) -> None:
+    if callback.message is None:
+        await callback.answer()
+        return
+    try:
+        await _show_global_rank(callback, session, page=callback_data.page)
+    except SQLAlchemyError:
+        await callback.answer("جدول سراسری رنک فعلاً در دسترس نیست.", show_alert=True)
+        return
+    with suppress(TelegramAPIError):
+        await callback.answer()
 
 
 @router.callback_query(LeaderboardCallback.filter())
@@ -411,6 +641,8 @@ async def leaderboard_callback_handler(
             )
         elif callback_data.action == "menu":
             await _show_menu(callback)
+        elif callback_data.action == "fighter":
+            await _show_global_rank(callback, session)
         else:
             await _show_board(
                 callback,

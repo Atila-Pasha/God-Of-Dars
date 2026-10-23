@@ -104,10 +104,8 @@ class LeaderboardRepository:
         return [self._record(row) for row in rows]
 
     async def fighters(
-        self, session: AsyncSession, *, limit: int, since: datetime
+        self, session: AsyncSession, *, limit: int, since: datetime, offset: int = 0
     ) -> list[LeaderboardRecord]:
-        from app.services.rank_service import season_start
-
         rows = (
             await session.execute(
                 select(
@@ -121,8 +119,7 @@ class LeaderboardRepository:
                 .join(RankProfile, RankProfile.user_id == User.id)
                 .where(
                     User.is_active.is_(True),
-                    RankProfile.season_start == season_start(),
-                    (RankProfile.wins + RankProfile.losses) > 0,
+                    RankProfile.season_start == since,
                 )
                 .order_by(
                     RankProfile.cups.desc(),
@@ -130,9 +127,23 @@ class LeaderboardRepository:
                     User.id.asc(),
                 )
                 .limit(limit)
+                .offset(offset)
             )
         ).all()
         return [self._record(row) for row in rows]
+
+    async def fighter_count(self, session: AsyncSession, *, since: datetime) -> int:
+        return int(
+            await session.scalar(
+                select(func.count(RankProfile.user_id))
+                .join(User, User.id == RankProfile.user_id)
+                .where(
+                    User.is_active.is_(True),
+                    RankProfile.season_start == since,
+                )
+            )
+            or 0
+        )
 
     async def commander_position(
         self, session: AsyncSession, *, user_id: int, since: datetime
@@ -237,8 +248,6 @@ class LeaderboardRepository:
     async def fighter_position(
         self, session: AsyncSession, *, user_id: int, since: datetime
     ) -> tuple[int, LeaderboardRecord] | None:
-        from app.services.rank_service import season_start
-
         stats = (
             select(
                 User.id.label("user_id"),
@@ -251,8 +260,7 @@ class LeaderboardRepository:
             .join(RankProfile, RankProfile.user_id == User.id)
             .where(
                 User.is_active.is_(True),
-                RankProfile.season_start == season_start(),
-                (RankProfile.wins + RankProfile.losses) > 0,
+                RankProfile.season_start == since,
             )
             .cte("fighter_stats")
         )

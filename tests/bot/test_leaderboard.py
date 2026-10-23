@@ -1,13 +1,21 @@
-from app.bot.callbacks import LeaderboardCallback
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app.bot.callbacks import GlobalRankCallback, LeaderboardCallback
+from app.bot.handlers import leaderboard as leaderboard_handler
 from app.bot.handlers.leaderboard import (
     GROUP_LEADERBOARD_PHRASES,
+    global_rank_content,
+    global_rank_markdown,
     leaderboard_content,
     leaderboard_markdown,
     leaderboard_text,
 )
-from app.bot.keyboards.leaderboard import leaderboard_keyboard
+from app.bot.keyboards.leaderboard import global_rank_keyboard, leaderboard_keyboard
 from app.bot.keyboards.profile import profile_keyboard
-from app.services.leaderboard_service import LeaderboardEntry
+from app.services.leaderboard_service import FighterPage, LeaderboardEntry
 
 
 def test_profile_keyboard_contains_private_leaderboard_button() -> None:
@@ -97,4 +105,78 @@ def test_leaderboard_keyboard_switches_category_and_period() -> None:
     )
     assert any(
         item.action == "fighter" and item.period == "daily" for item in callbacks
+    )
+
+
+def test_global_rank_banner_and_page_controls() -> None:
+    entry = LeaderboardEntry(11, 7, "آرمان", "arman", 1801, 3)
+    page = FighterPage(entries=(entry,), page=2, pages=3, total=23)
+    markdown = global_rank_markdown(page, entry)
+    text = global_rank_content(page, entry).render()[0]
+    keyboard = global_rank_keyboard(2, 3)
+    pages = [
+        GlobalRankCallback.unpack(button.callback_data).page
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert "| # | مبارز | جام | رنک |" in markdown
+    assert "tg://emoji?id=5915508067948051685" in markdown
+    assert "دیاموندی" in markdown
+    assert "1,801" in markdown
+    assert "صفحه 2/3" in text
+    assert "#11" in text
+    assert pages == [1, 3, 2]
+    assert [
+        GlobalRankCallback.unpack(button.callback_data).page
+        for row in global_rank_keyboard(1, 1).inline_keyboard
+        for button in row
+    ] == [1]
+
+
+@pytest.mark.asyncio
+async def test_group_fighter_phrase_opens_global_pages(monkeypatch) -> None:
+    show_global = AsyncMock()
+    monkeypatch.setattr(leaderboard_handler, "_show_global_rank", show_global)
+    message = SimpleNamespace(text="برترین مبارز", answer=AsyncMock())
+    session = SimpleNamespace()
+
+    await leaderboard_handler.group_leaderboard_handler(message, session)
+
+    show_global.assert_awaited_once_with(message, session)
+
+
+@pytest.mark.asyncio
+async def test_global_page_replies_in_group_with_navigation(monkeypatch) -> None:
+    page = FighterPage(
+        entries=(LeaderboardEntry(1, 7, "آرمان", "arman", 1801, 3),),
+        page=1,
+        pages=2,
+        total=11,
+    )
+    monkeypatch.setattr(
+        leaderboard_handler.leaderboards,
+        "fighter_page",
+        AsyncMock(return_value=page),
+    )
+    bot = SimpleNamespace(send_rich_message=AsyncMock())
+    message = SimpleNamespace(
+        from_user=None,
+        chat=SimpleNamespace(id=-99, type="supergroup"),
+        message_id=15,
+        bot=bot,
+        answer=AsyncMock(),
+    )
+
+    await leaderboard_handler._show_global_rank(message, SimpleNamespace())
+
+    kwargs = bot.send_rich_message.await_args.kwargs
+    assert kwargs["chat_id"] == -99
+    assert kwargs["reply_parameters"].message_id == 15
+    assert "tg://emoji?id=5915508067948051685" in kwargs["rich_message"].markdown
+    assert (
+        GlobalRankCallback.unpack(
+            kwargs["reply_markup"].inline_keyboard[0][0].callback_data
+        ).page
+        == 2
     )

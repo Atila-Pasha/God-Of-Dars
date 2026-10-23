@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.callbacks import LeaderboardCallback
+from app.bot.callbacks import GlobalRankCallback, LeaderboardCallback
 from app.services.leaderboard_service import LeaderboardKind, LeaderboardPeriod
 
 
@@ -59,4 +59,47 @@ def leaderboard_keyboard(
             )
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def global_rank_keyboard(
+    page: int, pages: int, *, private: bool = False
+) -> InlineKeyboardMarkup:
+    navigation = []
+    if page > 1:
+        navigation.append(
+            InlineKeyboardButton(
+                text="صفحه قبل",
+                icon_custom_emoji_id="5235864325540815679",
+                callback_data=GlobalRankCallback(page=page - 1).pack(),
+            )
+        )
+    if page < pages:
+        navigation.append(
+            InlineKeyboardButton(
+                text="صفحه بعد",
+                icon_custom_emoji_id="5823430604846276719",
+                callback_data=GlobalRankCallback(page=page + 1).pack(),
+            )
+        )
+    rows = [navigation] if navigation else []
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="تازه‌سازی جدول",
+                icon_custom_emoji_id="6039539366177541657",
+                callback_data=GlobalRankCallback(page=page).pack(),
+            )
+        ]
+    )
+    if private:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="بازگشت به برترین‌ها",
+                    icon_custom_emoji_id="5235864325540815679",
+                    callback_data=LeaderboardCallback(action="menu").pack(),
+                )
+            ]
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
