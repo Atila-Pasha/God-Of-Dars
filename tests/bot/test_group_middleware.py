@@ -17,6 +17,7 @@ def test_group_policy_allows_profile_aliases_and_god() -> None:
     assert GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/global@my_bot")
     )
+    assert GroupAccessMiddleware._message_is_allowed(SimpleNamespace(text="/rank"))
     assert not GroupAccessMiddleware._message_is_allowed(
         SimpleNamespace(text="/profile")
     )

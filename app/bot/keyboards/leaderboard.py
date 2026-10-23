@@ -26,8 +26,8 @@ def leaderboard_keyboard(
                 ).pack(),
             ),
             InlineKeyboardButton(
-                text=("✓ " if active_kind == "fighter" else "") + "مبارز",
-                icon_custom_emoji_id="5915633360734002967",
+                text=("✓ " if active_kind == "fighter" else "") + "سراسری",
+                icon_custom_emoji_id="5823430604846276719",
                 callback_data=LeaderboardCallback(
                     action="fighter", period=active_period
                 ).pack(),

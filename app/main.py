@@ -5,9 +5,11 @@ from contextlib import suppress
 
 from aiogram import Bot
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import text
 
 from app.bot import create_dispatcher
+from app.bot.commands import register_commands
 from app.bot.shutdown import drain_updates
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -34,6 +36,11 @@ async def run_main_bot(stop_event: asyncio.Event) -> None:
         else AiohttpSession(limit=settings.TELEGRAM_HTTP_LIMIT)
     )
     async with Bot(token=settings.BOT_TOKEN, session=bot_session) as bot:
+        if dispatcher is not None:
+            try:
+                await register_commands(bot)
+            except TelegramAPIError:
+                logger.exception("Could not update Telegram command menus")
         worker_task = asyncio.create_task(
             run_workers(bot),
             name="background-workers",
