@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ResourceType
@@ -106,6 +106,8 @@ class LeaderboardRepository:
     async def fighters(
         self, session: AsyncSession, *, limit: int, since: datetime, offset: int = 0
     ) -> list[LeaderboardRecord]:
+        cups = func.coalesce(RankProfile.cups, 0)
+        wins = func.coalesce(RankProfile.wins, 0)
         rows = (
             await session.execute(
                 select(
@@ -113,17 +115,23 @@ class LeaderboardRepository:
                     User.first_name,
                     User.last_name,
                     User.username,
-                    RankProfile.cups,
-                    RankProfile.wins,
+                    cups,
+                    wins,
                 )
-                .join(RankProfile, RankProfile.user_id == User.id)
+                .outerjoin(
+                    RankProfile,
+                    and_(
+                        RankProfile.user_id == User.id,
+                        RankProfile.season_start == since,
+                    ),
+                )
                 .where(
                     User.is_active.is_(True),
-                    RankProfile.season_start == since,
+                    User.telegram_user_id > 0,
                 )
                 .order_by(
-                    RankProfile.cups.desc(),
-                    RankProfile.wins.desc(),
+                    cups.desc(),
+                    wins.desc(),
                     User.id.asc(),
                 )
                 .limit(limit)
@@ -135,11 +143,9 @@ class LeaderboardRepository:
     async def fighter_count(self, session: AsyncSession, *, since: datetime) -> int:
         return int(
             await session.scalar(
-                select(func.count(RankProfile.user_id))
-                .join(User, User.id == RankProfile.user_id)
-                .where(
+                select(func.count(User.id)).where(
                     User.is_active.is_(True),
-                    RankProfile.season_start == since,
+                    User.telegram_user_id > 0,
                 )
             )
             or 0
@@ -248,19 +254,27 @@ class LeaderboardRepository:
     async def fighter_position(
         self, session: AsyncSession, *, user_id: int, since: datetime
     ) -> tuple[int, LeaderboardRecord] | None:
+        cups = func.coalesce(RankProfile.cups, 0)
+        wins = func.coalesce(RankProfile.wins, 0)
         stats = (
             select(
                 User.id.label("user_id"),
                 User.first_name.label("first_name"),
                 User.last_name.label("last_name"),
                 User.username.label("username"),
-                RankProfile.cups.label("primary_value"),
-                RankProfile.wins.label("secondary_value"),
+                cups.label("primary_value"),
+                wins.label("secondary_value"),
             )
-            .join(RankProfile, RankProfile.user_id == User.id)
+            .outerjoin(
+                RankProfile,
+                and_(
+                    RankProfile.user_id == User.id,
+                    RankProfile.season_start == since,
+                ),
+            )
             .where(
                 User.is_active.is_(True),
-                RankProfile.season_start == since,
+                User.telegram_user_id > 0,
             )
             .cte("fighter_stats")
         )

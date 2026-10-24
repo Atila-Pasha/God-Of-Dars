@@ -3,9 +3,53 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.methods import SendMessage
 
 from admin import broadcast, handlers, keyboards
 from app.models.broadcast_job import BroadcastJob
+
+
+@pytest.mark.asyncio
+async def test_broadcast_retries_telegram_rate_limit_without_losing_recipient(
+    monkeypatch,
+) -> None:
+    job = BroadcastJob(id=9, text="خبر")
+    bot = SimpleNamespace(
+        send_message=AsyncMock(
+            side_effect=[
+                TelegramRetryAfter(
+                    method=SendMessage(chat_id=123, text="خبر"),
+                    message="Flood control",
+                    retry_after=2,
+                ),
+                None,
+            ]
+        )
+    )
+    pause = AsyncMock()
+    monkeypatch.setattr(broadcast, "_pause", pause)
+
+    await broadcast._send_one(bot, job, 123, asyncio.Event())
+
+    assert bot.send_message.await_count == 2
+    pause.assert_awaited_once()
+    assert pause.await_args.args[0] >= 2
+
+
+@pytest.mark.asyncio
+async def test_broadcast_retries_temporary_network_error(monkeypatch) -> None:
+    job = BroadcastJob(id=10, text="خبر")
+    bot = SimpleNamespace(
+        send_message=AsyncMock(side_effect=[OSError("offline"), None])
+    )
+    pause = AsyncMock()
+    monkeypatch.setattr(broadcast, "_pause", pause)
+
+    await broadcast._send_one(bot, job, 123, asyncio.Event())
+
+    assert bot.send_message.await_count == 2
+    pause.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -99,7 +143,10 @@ async def test_broadcast_worker_persists_progress_and_sends_final_report(
 
     async def send_message(*, chat_id: int, text: str):
         if chat_id == 102:
-            raise OSError("network failure")
+            raise TelegramBadRequest(
+                method=SendMessage(chat_id=102, text=text),
+                message="chat not found",
+            )
 
     main_bot = SimpleNamespace(send_message=AsyncMock(side_effect=send_message))
     admin_bot = SimpleNamespace(send_message=AsyncMock())

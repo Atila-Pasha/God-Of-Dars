@@ -58,6 +58,50 @@ async def test_global_rank_pages_include_zero_battle_players() -> None:
 
 
 @pytest.mark.asyncio
+async def test_global_rank_includes_players_without_current_season_profile() -> None:
+    async with AsyncSessionLocal() as session:
+        transaction = await session.begin()
+        try:
+            baseline = await LeaderboardRepository().fighter_count(
+                session, since=season_start()
+            )
+            newcomer = User(
+                telegram_user_id=uuid4().int % 2_000_000_000,
+                first_name="newcomer",
+            )
+            previous = User(
+                telegram_user_id=uuid4().int % 2_000_000_000,
+                first_name="previous",
+            )
+            session.add_all((newcomer, previous))
+            await session.flush()
+            session.add(
+                RankProfile(
+                    user_id=previous.id,
+                    season_start=season_start() - timedelta(days=1),
+                    cups=2601,
+                    best_cups=2601,
+                )
+            )
+            await session.flush()
+
+            repository = LeaderboardRepository()
+            assert (
+                await repository.fighter_count(session, since=season_start())
+                == baseline + 2
+            )
+            for player in (newcomer, previous):
+                position = await repository.fighter_position(
+                    session, user_id=player.id, since=season_start()
+                )
+                assert position is not None
+                assert position[1].primary_value == 0
+                assert position[1].secondary_value == 0
+        finally:
+            await transaction.rollback()
+
+
+@pytest.mark.asyncio
 async def test_ranked_match_daily_limit_and_monthly_rewards_in_database() -> None:
     async with AsyncSessionLocal() as session:
         transaction = await session.begin()
@@ -119,6 +163,10 @@ async def test_ranked_match_daily_limit_and_monthly_rewards_in_database() -> Non
                 session, attacker, excluded=existing_ids, recent=()
             )
             assert target.id == near.id
+            target = await RankService.match(
+                session, attacker, excluded=existing_ids, recent=(near.id,)
+            )
+            assert target.id == far.id
             target = await RankService.match(
                 session, attacker, excluded=existing_ids | {near.id}, recent=()
             )

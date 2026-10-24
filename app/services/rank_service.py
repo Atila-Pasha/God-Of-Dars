@@ -242,7 +242,15 @@ class RankService:
             )
             .exists()
         )
-        base = (
+        tier_priority = case(
+            *[
+                (tier_index == candidate_tier, priority)
+                for priority, candidate_tier in enumerate(match_tier_order(own_index))
+            ],
+            else_=len(TIERS),
+        )
+        recent_priority = case((User.id.in_(recent), 1), else_=0)
+        target = await session.scalar(
             select(User)
             .outerjoin(RankProfile, RankProfile.user_id == User.id)
             .options(selectinload(User.resources))
@@ -254,25 +262,20 @@ class RankService:
                 ~active_shield,
                 select(Castle.id).where(Castle.user_id == User.id).exists(),
                 select(Resource.id).where(Resource.user_id == User.id).exists(),
+                User.id.not_in(excluded),
             )
             .order_by(
+                tier_priority,
+                recent_priority,
                 func.abs(effective_cups - cups),
                 func.abs(User.level - attacker.level),
                 func.random(),
             )
             .limit(1)
         )
-        for candidate_tier in match_tier_order(own_index):
-            for exclusions in (excluded | set(recent), excluded):
-                target = await session.scalar(
-                    base.where(
-                        tier_index == candidate_tier,
-                        User.id.not_in(exclusions),
-                    )
-                )
-                if target is not None:
-                    return target
-        raise RandomOpponentNotFound
+        if target is None:
+            raise RandomOpponentNotFound
+        return target
 
     @staticmethod
     async def settle_command(

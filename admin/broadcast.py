@@ -8,9 +8,15 @@ from datetime import UTC, datetime
 
 from aiogram import Bot
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+    TelegramServerError,
+)
 from aiogram.types import BufferedInputFile
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
@@ -54,7 +60,8 @@ async def _pause(seconds: float, stop_event: asyncio.Event) -> None:
 async def _send_one(
     main_bot: Bot, job: BroadcastJob, chat_id: int, stop_event: asyncio.Event
 ) -> str | None:
-    for attempt in range(3):
+    transient_failures = 0
+    while not stop_event.is_set():
         try:
             if job.photo_file_id is not None or job.photo_data is not None:
                 photo = job.photo_file_id or BufferedInputFile(
@@ -69,10 +76,28 @@ async def _send_one(
             await main_bot.send_message(chat_id=chat_id, text=job.text)
             return None
         except TelegramRetryAfter as exc:
-            if attempt == 2:
-                raise
-            await _pause(exc.retry_after + 0.5, stop_event)
-    return None
+            logger.info(
+                "Broadcast %s paused for Telegram rate limit (%s seconds)",
+                job.id,
+                exc.retry_after,
+            )
+            await _pause(max(1, exc.retry_after + 0.5), stop_event)
+        except (
+            TelegramNetworkError,
+            TelegramServerError,
+            OSError,
+            TimeoutError,
+        ) as exc:
+            transient_failures += 1
+            delay = min(60, 2 ** min(transient_failures, 6))
+            logger.warning(
+                "Broadcast %s temporary send error; retrying in %s seconds: %s",
+                job.id,
+                delay,
+                exc,
+            )
+            await _pause(delay, stop_event)
+    raise asyncio.CancelledError
 
 
 async def _process_page(main_bot: Bot, job_id: int, stop_event: asyncio.Event) -> None:
@@ -113,7 +138,7 @@ async def _process_page(main_bot: Bot, job_id: int, stop_event: asyncio.Event) -
             success = True
         except asyncio.CancelledError:
             raise
-        except (TelegramAPIError, OSError, TimeoutError, ValueError) as exc:
+        except (TelegramAPIError, ValueError) as exc:
             error = str(exc)
             logger.warning("Broadcast %s to %s failed: %s", job_id, telegram_id, exc)
         async with AsyncSessionLocal() as session:
@@ -186,8 +211,13 @@ async def run_broadcast_worker(
                 await _pause(2, stop_event)
             except asyncio.CancelledError:
                 break
+            except TelegramRetryAfter as exc:
+                await _pause(max(1, exc.retry_after + 0.5), stop_event)
             except TelegramAPIError:
                 logger.exception("Could not deliver broadcast completion report")
+                await _pause(5, stop_event)
+            except SQLAlchemyError:
+                logger.exception("Broadcast database error; retrying the job")
                 await _pause(5, stop_event)
             except Exception as exc:
                 logger.exception("Broadcast worker failed")
