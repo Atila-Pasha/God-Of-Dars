@@ -5,6 +5,7 @@ from contextlib import suppress
 
 from aiogram import Bot
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import text
 
@@ -28,13 +29,25 @@ async def verify_database() -> None:
 
 async def run_main_bot(stop_event: asyncio.Event) -> None:
     dispatcher = create_dispatcher() if settings.RUNTIME_ROLE != "attacks" else None
-    bot_session = (
-        AiohttpSession(
-            proxy=settings.TELEGRAM_PROXY, limit=settings.TELEGRAM_HTTP_LIMIT
+    beta_api = (
+        TelegramAPIServer(
+            base=f"{settings.TELEGRAM_WIDGET_API_BASE.rstrip('/')}/bot{{token}}/{{method}}",
+            file=f"{settings.TELEGRAM_WIDGET_API_BASE.rstrip('/')}/file/bot{{token}}/{{path}}",
         )
-        if settings.TELEGRAM_PROXY
-        else AiohttpSession(limit=settings.TELEGRAM_HTTP_LIMIT)
+        if settings.TELEGRAM_WIDGET_BETA_ENABLED
+        else None
     )
+    if beta_api is not None:
+        bot_session = AiohttpSession(
+            proxy=settings.TELEGRAM_PROXY,
+            limit=settings.TELEGRAM_HTTP_LIMIT,
+            api=beta_api,
+        )
+    else:
+        bot_session = AiohttpSession(
+            proxy=settings.TELEGRAM_PROXY,
+            limit=settings.TELEGRAM_HTTP_LIMIT,
+        )
     async with Bot(token=settings.BOT_TOKEN, session=bot_session) as bot:
         if dispatcher is not None:
             try:

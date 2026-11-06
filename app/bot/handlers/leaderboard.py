@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
+from datetime import datetime
+from time import monotonic
+from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
@@ -14,7 +18,13 @@ from app.bot.banners import emoji
 from app.bot.callbacks import GlobalRankCallback, LeaderboardCallback
 from app.bot.keyboards.leaderboard import global_rank_keyboard, leaderboard_keyboard
 from app.bot.keyboards.profile import profile_keyboard
+from app.bot.leaderboard_widget import (
+    global_rank_widget_html,
+    leaderboard_widget_html,
+    send_leaderboard_widget,
+)
 from app.bot.utils.telegram import safe_edit_text
+from app.core.config import settings
 from app.services.leaderboard_service import (
     FighterPage,
     LeaderboardEntry,
@@ -31,8 +41,44 @@ from app.services.user_service import (
 )
 
 router = Router(name="leaderboard")
-leaderboards = LeaderboardService()
+leaderboards = LeaderboardService(
+    cache_ttl_seconds=settings.LEADERBOARD_CACHE_TTL_SECONDS
+)
 users = UserService()
+_viewer_ids: dict[int, tuple[float, int | None]] = {}
+_viewer_ids_lock = asyncio.Lock()
+
+
+async def _viewer_user_id(session: AsyncSession, telegram_user_id: int) -> int | None:
+    cached = _viewer_ids.get(telegram_user_id)
+    if cached is not None and cached[0] > monotonic():
+        return cached[1]
+    async with _viewer_ids_lock:
+        cached = _viewer_ids.get(telegram_user_id)
+        if cached is not None and cached[0] > monotonic():
+            return cached[1]
+        try:
+            user = await users.get_active_by_telegram_user_id(session, telegram_user_id)
+        except (SchoolUserNotFound, UserInactiveError, UserInitializationError):
+            _viewer_ids[telegram_user_id] = (monotonic() + 60, None)
+            if len(_viewer_ids) > 20_000:
+                _viewer_ids.pop(next(iter(_viewer_ids)))
+            return None
+        _viewer_ids[telegram_user_id] = (
+            monotonic() + settings.LEADERBOARD_CACHE_TTL_SECONDS,
+            user.id,
+        )
+        if len(_viewer_ids) > 20_000:
+            _viewer_ids.pop(next(iter(_viewer_ids)))
+        return user.id
+
+
+def _updated_label(updated_at: datetime | None) -> str:
+    if updated_at is None:
+        return ""
+    local = updated_at.astimezone(ZoneInfo(settings.LEADERBOARD_TIMEZONE))
+    return f"آخرین به‌روزرسانی: {local:%Y/%m/%d، %H:%M}"
+
 
 LEADERBOARD_MENU_TEXT = (
     "🏆 تالار قهرمانان\n\nاسم چه کسی باید بالای جدول بدرخشه؟ دسته‌بندی رو انتخاب کن 👇"
@@ -159,6 +205,7 @@ def leaderboard_content(
     entries: tuple[LeaderboardEntry, ...],
     viewer: LeaderboardEntry | None = None,
     period: LeaderboardPeriod = "weekly",
+    updated_at: datetime | None = None,
 ) -> Text:
     if kind == "fighter":
         period = "monthly"
@@ -176,7 +223,7 @@ def leaderboard_content(
         return Text(
             "🏆 Leaderboard\n",
             Bold(f"{title} — {_period_title(period)}"),
-            "\n\nهنوز رکوردی برای این بخش ثبت نشده است.",
+            f"\n{_updated_label(updated_at)}\n\nهنوز رکوردی برای این بخش ثبت نشده است.",
         )
 
     body: list = [
@@ -185,8 +232,7 @@ def leaderboard_content(
         "\n",
         Italic(criterion),
         "\n\nبا بقیه رقابت کن و خودت را به صدر جدول برسان.\n",
-        Bold("آخرین بروزرسانی: "),
-        "امروز\n\n",
+        _updated_label(updated_at) + "\n\n",
         Pre(_table(kind, entries)),
     ]
     body.extend(["\n\n", Bold("رتبه شما")])
@@ -217,6 +263,7 @@ def leaderboard_markdown(
     entries: tuple[LeaderboardEntry, ...],
     viewer: LeaderboardEntry | None = None,
     period: LeaderboardPeriod = "weekly",
+    updated_at: datetime | None = None,
 ) -> str:
     if kind == "fighter":
         period = "monthly"
@@ -232,13 +279,13 @@ def leaderboard_markdown(
     }[kind]
     heading = f"# 🏆 Leaderboard\n## {title} — {_period_title(period)}"
     if not entries:
-        return f"{heading}\n\nهنوز رکوردی برای این بازه ثبت نشده است."
+        return f"{heading}\n\n{_updated_label(updated_at)}\n\nهنوز رکوردی برای این بازه ثبت نشده است."
 
     parts = [
         heading,
         f"*{criterion}*",
         "با بقیه رقابت کن، امتیاز جمع کن و خودت را به صدر جدول برسان.",
-        "**آخرین بروزرسانی:** امروز",
+        f"**{_updated_label(updated_at)}**",
         _markdown_table(kind, entries),
         "## رتبه شما",
     ]
@@ -334,6 +381,7 @@ def global_rank_content(page: FighterPage, viewer: LeaderboardEntry | None) -> T
         Bold("تالار مبارزان سراسری"),
         "\n⚔️ نبرد برای تاج رنک · فصل ماهانه",
         f"\n👥 {_number(page.total)} مبارز  ·  صفحه {page.page}/{page.pages}",
+        f"\n{_updated_label(page.updated_at)}",
         "\n\n",
     ]
     spotlight = _global_rank_spotlight(page)
@@ -355,7 +403,7 @@ def global_rank_markdown(page: FighterPage, viewer: LeaderboardEntry | None) -> 
         f"## {emoji('5825697157872623308', '⚔️')} "
         "نبرد برای تاج رنک · فصل ماهانه"
     )
-    summary = f"**👥 {_number(page.total)} مبارز  ·  صفحه {page.page}/{page.pages}**"
+    summary = f"**👥 {_number(page.total)} مبارز  ·  صفحه {page.page}/{page.pages}**\n{_updated_label(page.updated_at)}"
     table = (
         _global_rank_markdown_table(page.entries)
         if page.entries
@@ -398,15 +446,11 @@ async def _show_global_rank(
     result = await leaderboards.fighter_page(session, page)
     viewer = None
     if target.from_user is not None:
-        try:
-            user = await users.get_active_by_telegram_user_id(
-                session, target.from_user.id
-            )
+        user_id = await _viewer_user_id(session, target.from_user.id)
+        if user_id is not None:
             viewer = await leaderboards.position(
-                session, "fighter", user_id=user.id, period="monthly"
+                session, "fighter", user_id=user_id, period="monthly"
             )
-        except (SchoolUserNotFound, UserInactiveError, UserInitializationError):
-            pass
     rich_message = InputRichMessage(
         markdown=global_rank_markdown(result, viewer), is_rtl=True
     )
@@ -419,10 +463,40 @@ async def _show_global_rank(
     markup = global_rank_keyboard(
         result.page, result.pages, private=chat.type == "private"
     )
+    bot = target.bot
+    if bot is not None:
+        reply = (
+            ReplyParameters(message_id=target.message_id)
+            if isinstance(target, Message) and chat.type in {"group", "supergroup"}
+            else None
+        )
+        sent = await send_leaderboard_widget(
+            bot,
+            chat.id,
+            global_rank_widget_html(result, viewer),
+            caption=f"🏆 تالار مبارزان سراسری · صفحه {result.page}/{result.pages}\n{_updated_label(result.updated_at)}",
+            reply_markup=markup,
+            reply_parameters=reply,
+        )
+        if sent:
+            if isinstance(target, CallbackQuery) and isinstance(
+                target.message, Message
+            ):
+                with suppress(TelegramAPIError):
+                    await target.message.delete()
+            return
     if isinstance(target, CallbackQuery):
         if not isinstance(target.message, Message):
             return
         editable_message = target.message
+        if editable_message.text is None and editable_message.rich_message is None:
+            content = global_rank_content(result, viewer)
+            rendered = content.as_kwargs()
+            text = rendered.pop("text")
+            await editable_message.answer(text, reply_markup=markup, **rendered)
+            with suppress(TelegramAPIError):
+                await editable_message.delete()
+            return
         try:
             await editable_message.edit_text(
                 text=None, rich_message=rich_message, reply_markup=markup
@@ -436,7 +510,6 @@ async def _show_global_rank(
         text = rendered.pop("text")
         await safe_edit_text(editable_message, text, reply_markup=markup, **rendered)
         return
-    bot = target.bot
     if bot is not None:
         try:
             reply = (
@@ -463,6 +536,14 @@ async def _show_menu(target: Message | CallbackQuery) -> None:
     if isinstance(target, CallbackQuery):
         if target.message is None:
             return
+        if isinstance(target.message, Message) and target.message.text is None:
+            await target.message.answer(
+                LEADERBOARD_MENU_TEXT,
+                reply_markup=leaderboard_keyboard(),
+            )
+            with suppress(TelegramAPIError):
+                await target.message.delete()
+            return
         await safe_edit_text(
             target.message,
             LEADERBOARD_MENU_TEXT,
@@ -485,20 +566,19 @@ async def _show_board(
 ) -> None:
     if kind == "fighter":
         period = "monthly"
-    entries = await leaderboards.top(session, kind, period=period)
+    snapshot = await leaderboards.top_snapshot(session, kind, period=period)
+    entries = snapshot.entries
     viewer = None
     if target.from_user is not None:
-        try:
-            user = await users.get_active_by_telegram_user_id(
-                session, target.from_user.id
-            )
+        user_id = await _viewer_user_id(session, target.from_user.id)
+        if user_id is not None:
             viewer = await leaderboards.position(
-                session, kind, user_id=user.id, period=period
+                session, kind, user_id=user_id, period=period
             )
-        except (SchoolUserNotFound, UserInactiveError, UserInitializationError):
-            pass
     rich_message = InputRichMessage(
-        markdown=leaderboard_markdown(kind, entries, viewer, period),
+        markdown=leaderboard_markdown(
+            kind, entries, viewer, period, snapshot.updated_at
+        ),
         is_rtl=True,
     )
     markup = (
@@ -509,7 +589,46 @@ async def _show_board(
     if isinstance(target, CallbackQuery):
         if not isinstance(target.message, Message):
             return
+        chat_id = target.message.chat.id
+    else:
+        chat_id = target.chat.id
+    bot = target.bot
+    if bot is not None:
+        reply = (
+            ReplyParameters(message_id=target.message_id)
+            if isinstance(target, Message)
+            and target.chat.type in {"group", "supergroup"}
+            else None
+        )
+        sent = await send_leaderboard_widget(
+            bot,
+            chat_id,
+            leaderboard_widget_html(kind, entries, viewer, period, snapshot.updated_at),
+            caption=f"🏆 برترین‌های {_period_title(period)}\n{_updated_label(snapshot.updated_at)}",
+            reply_markup=markup,
+            reply_parameters=reply,
+        )
+        if sent:
+            if isinstance(target, CallbackQuery) and isinstance(
+                target.message, Message
+            ):
+                with suppress(TelegramAPIError):
+                    await target.message.delete()
+            return
+    if isinstance(target, CallbackQuery):
+        if not isinstance(target.message, Message):
+            return
         editable_message = target.message
+        if editable_message.text is None and editable_message.rich_message is None:
+            content = leaderboard_content(
+                kind, entries, viewer, period, snapshot.updated_at
+            )
+            rendered = content.as_kwargs()
+            text = rendered.pop("text")
+            await editable_message.answer(text, reply_markup=markup, **rendered)
+            with suppress(TelegramAPIError):
+                await editable_message.delete()
+            return
         try:
             await editable_message.edit_text(
                 text=None,
@@ -541,7 +660,7 @@ async def _show_board(
 
     # Compatibility fallback for an older self-hosted Bot API server. The
     # official API supports Rich Markdown, but a stale local server may not.
-    content = leaderboard_content(kind, entries, viewer, period)
+    content = leaderboard_content(kind, entries, viewer, period, snapshot.updated_at)
     rendered = content.as_kwargs()
     text = rendered.pop("text")
     if isinstance(target, CallbackQuery):
@@ -634,6 +753,14 @@ async def leaderboard_callback_handler(
     try:
         if callback_data.action == "back":
             owner_id = callback.from_user.id if callback.from_user else 0
+            if isinstance(callback.message, Message) and callback.message.text is None:
+                await callback.message.answer(
+                    "🧙 پروفایل فرمانده\n\nیکی از موارد زیر را انتخاب کن:",
+                    reply_markup=profile_keyboard(owner_id=owner_id),
+                )
+                with suppress(TelegramAPIError):
+                    await callback.message.delete()
+                return
             await safe_edit_text(
                 callback.message,
                 "🧙 پروفایل فرمانده\n\nیکی از موارد زیر را انتخاب کن:",

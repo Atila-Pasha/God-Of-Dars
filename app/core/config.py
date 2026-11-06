@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     ENVIRONMENT: str = "development"
     TELEGRAM_PROXY: str | None = None
+    TELEGRAM_WIDGET_BETA_ENABLED: bool = False
+    TELEGRAM_WIDGET_API_BASE: str = "https://api.telegram.org/beta"
     RUNTIME_ROLE: Literal["combined", "bot", "attacks"] = "combined"
     DB_STATEMENT_TIMEOUT_MS: int = Field(default=30000, ge=0)
     DB_LOCK_TIMEOUT_MS: int = Field(default=10000, ge=0)
@@ -50,6 +52,7 @@ class Settings(BaseSettings):
     GROUP_USER_CACHE_MAX_ENTRIES: int = Field(default=50_000, ge=100)
     DAILY_QUEST_TIMEZONE: str = "UTC"
     LEADERBOARD_TIMEZONE: str = "Asia/Tehran"
+    LEADERBOARD_CACHE_TTL_SECONDS: int = Field(default=3600, ge=1)
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

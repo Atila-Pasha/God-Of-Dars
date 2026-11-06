@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -110,7 +111,13 @@ def test_leaderboard_keyboard_switches_category_and_period() -> None:
 
 def test_global_rank_banner_and_page_controls() -> None:
     entry = LeaderboardEntry(11, 7, "آرمان", "arman", 1801, 3)
-    page = FighterPage(entries=(entry,), page=2, pages=3, total=23)
+    page = FighterPage(
+        entries=(entry,),
+        page=2,
+        pages=3,
+        total=23,
+        updated_at=datetime(2026, 11, 6, 10, 0, tzinfo=UTC),
+    )
     markdown = global_rank_markdown(page, entry)
     text = global_rank_content(page, entry).render()[0]
     keyboard = global_rank_keyboard(2, 3)
@@ -126,6 +133,7 @@ def test_global_rank_banner_and_page_controls() -> None:
     assert "1,801" in markdown
     assert "صفحه 2/3" in text
     assert "#11" in text
+    assert "آخرین به‌روزرسانی: 2026/11/06، 13:30" in text
     assert pages == [1, 3, 2]
     assert [
         GlobalRankCallback.unpack(button.callback_data).page

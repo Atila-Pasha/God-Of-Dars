@@ -36,6 +36,38 @@ async def test_leaderboard_assigns_ranks_and_caches_results() -> None:
 
 
 @pytest.mark.asyncio
+async def test_leaderboard_refreshes_snapshot_and_position_after_one_hour(
+    monkeypatch,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr("app.services.leaderboard_service.monotonic", lambda: clock[0])
+    calls = {"board": 0, "position": 0}
+
+    class Repository:
+        async def commanders(self, session, *, limit, since):
+            calls["board"] += 1
+            return [LeaderboardRecord(7, "علی", None, None, calls["board"], 0)]
+
+        async def commander_position(self, session, *, user_id, since):
+            calls["position"] += 1
+            return 1, LeaderboardRecord(7, "علی", None, None, calls["position"], 0)
+
+    service = LeaderboardService(Repository())
+    first = await service.top_snapshot(SimpleNamespace(), "commander")
+    await service.position(SimpleNamespace(), "commander", user_id=7)
+    clock[0] += 3599
+    assert await service.top_snapshot(SimpleNamespace(), "commander") is first
+    await service.position(SimpleNamespace(), "commander", user_id=7)
+    assert calls == {"board": 1, "position": 1}
+    clock[0] += 2
+    refreshed = await service.top_snapshot(SimpleNamespace(), "commander")
+    await service.position(SimpleNamespace(), "commander", user_id=7)
+    assert refreshed is not first
+    assert refreshed.entries[0].primary_value == 2
+    assert calls == {"board": 2, "position": 2}
+
+
+@pytest.mark.asyncio
 async def test_leaderboard_rejects_invalid_limits() -> None:
     service = LeaderboardService(SimpleNamespace())
 
@@ -81,9 +113,12 @@ async def test_fighter_board_uses_monthly_rank_season_even_with_weekly_request()
 @pytest.mark.asyncio
 async def test_fighter_pages_are_ten_at_a_time_and_clamped() -> None:
     calls = []
+    counts = 0
 
     class Repository:
         async def fighter_count(self, session, *, since):
+            nonlocal counts
+            counts += 1
             return 23
 
         async def fighters(self, session, *, limit, offset, since):
@@ -92,11 +127,14 @@ async def test_fighter_pages_are_ten_at_a_time_and_clamped() -> None:
 
     service = LeaderboardService(Repository())
     second = await service.fighter_page(SimpleNamespace(), 2)
+    again = await service.fighter_page(SimpleNamespace(), 2)
     beyond = await service.fighter_page(SimpleNamespace(), 99)
 
     assert (second.page, second.pages, second.total) == (2, 3, 23)
     assert second.entries[0].rank == 11
     assert (beyond.page, beyond.entries[0].rank) == (3, 21)
+    assert again is second
+    assert counts == 1
     assert calls == [(10, 10), (10, 20)]
 
 

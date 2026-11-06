@@ -74,6 +74,28 @@ python scripts/load_test.py --concurrency 100 --operations 5000 --users 1000
 python scripts/dispatcher_load_test.py --help
 ```
 
+## Leaderboard widget preview
+
+Telegram's [widget-sandbox](https://github.com/TelegramMessenger/widget-sandbox)
+uses the Bot API 10.4 beta `sendWidget` method. To test the HTML cards locally:
+
+```bash
+python -m scripts.preview_leaderboard_widget
+```
+
+Open `http://127.0.0.1:8765/` for sample commander, student, and global-rank
+cards. To send real widgets from a local bot, set
+`TELEGRAM_WIDGET_BETA_ENABLED=true` in `.env` and run `python -m app.main`.
+This switches that bot process to `https://api.telegram.org/beta`; use a bot
+token and chat that you intend to test there. Older Telegram clients may show
+only the widget caption. If the beta widget method rejects a message, the bot
+falls back to its existing leaderboard text.
+
+Leaderboard rows, pagination counts, and user positions are cached per bot
+process for one hour (`LEADERBOARD_CACHE_TTL_SECONDS=3600`). Cards show the
+snapshot's last update time in Tehran. The global rank widget embeds a compact
+sprite made from the rank tiers' Telegram custom emoji thumbnails.
+
 Notifications use an at-least-once outbox. A provider timeout after Telegram
 accepted a message can therefore produce a duplicate, but notifications are
 not silently lost.

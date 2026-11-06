@@ -33,6 +33,13 @@ class FighterPage:
     page: int
     pages: int
     total: int
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class LeaderboardSnapshot:
+    entries: tuple[LeaderboardEntry, ...]
+    updated_at: datetime
 
 
 class LeaderboardService:
@@ -40,13 +47,19 @@ class LeaderboardService:
         self,
         repository: LeaderboardRepository | None = None,
         *,
-        cache_ttl_seconds: float = 20.0,
+        cache_ttl_seconds: float = 3600.0,
     ) -> None:
         self.repository = repository or LeaderboardRepository()
         self.cache_ttl_seconds = cache_ttl_seconds
         self._cache: dict[
             tuple[LeaderboardKind, LeaderboardPeriod, int, int],
-            tuple[float, tuple[LeaderboardEntry, ...]],
+            tuple[float, LeaderboardSnapshot],
+        ] = {}
+        self._fighter_count_cache: dict[int, tuple[float, int]] = {}
+        self._fighter_page_cache: dict[tuple[int, int], tuple[float, FighterPage]] = {}
+        self._position_cache: dict[
+            tuple[LeaderboardKind, LeaderboardPeriod, int, int],
+            tuple[float, LeaderboardEntry | None],
         ] = {}
         self._cache_lock = asyncio.Lock()
 
@@ -59,6 +72,20 @@ class LeaderboardService:
         limit: int = 10,
         now: datetime | None = None,
     ) -> tuple[LeaderboardEntry, ...]:
+        snapshot = await self.top_snapshot(
+            session, kind, period=period, limit=limit, now=now
+        )
+        return snapshot.entries
+
+    async def top_snapshot(
+        self,
+        session: AsyncSession,
+        kind: LeaderboardKind,
+        *,
+        period: LeaderboardPeriod = "weekly",
+        limit: int = 10,
+        now: datetime | None = None,
+    ) -> LeaderboardSnapshot:
         if kind not in {"commander", "student", "fighter"}:
             raise ValueError("unsupported leaderboard kind")
         if period not in {"daily", "weekly", "monthly"}:
@@ -93,11 +120,12 @@ class LeaderboardService:
                 self._entry(rank, record)
                 for rank, record in enumerate(records, start=1)
             )
+            snapshot = LeaderboardSnapshot(entries, datetime.now(UTC))
             self._cache[cache_key] = (
-                clock_now + self.cache_ttl_seconds,
-                entries,
+                monotonic() + self.cache_ttl_seconds,
+                snapshot,
             )
-            return entries
+            return snapshot
 
     async def position(
         self,
@@ -114,17 +142,30 @@ class LeaderboardService:
             raise ValueError("unsupported leaderboard period")
         if kind == "fighter":
             period = "monthly"
-        result = await getattr(self.repository, f"{kind}_position")(
-            session,
-            user_id=user_id,
-            since=season_start(now)
+        since = (
+            season_start(now)
             if kind == "fighter"
-            else self.period_start(period, now=now),
+            else self.period_start(period, now=now)
         )
-        if result is None:
-            return None
-        rank, record = result
-        return self._entry(rank, record)
+        cache_key = (kind, period, user_id, int(since.timestamp()))
+        cached = self._position_cache.get(cache_key)
+        if cached is not None and cached[0] > monotonic():
+            return cached[1]
+        async with self._cache_lock:
+            cached = self._position_cache.get(cache_key)
+            if cached is not None and cached[0] > monotonic():
+                return cached[1]
+            result = await getattr(self.repository, f"{kind}_position")(
+                session, user_id=user_id, since=since
+            )
+            entry = self._entry(*result) if result is not None else None
+            self._position_cache[cache_key] = (
+                monotonic() + self.cache_ttl_seconds,
+                entry,
+            )
+            if len(self._position_cache) > 20_000:
+                self._position_cache.pop(next(iter(self._position_cache)))
+            return entry
 
     async def fighter_page(
         self,
@@ -134,17 +175,45 @@ class LeaderboardService:
         now: datetime | None = None,
     ) -> FighterPage:
         since = season_start(now)
-        total = await self.repository.fighter_count(session, since=since)
+        season_key = int(since.timestamp())
+        cached_count = self._fighter_count_cache.get(season_key)
+        if cached_count is not None and cached_count[0] > monotonic():
+            total = cached_count[1]
+        else:
+            async with self._cache_lock:
+                cached_count = self._fighter_count_cache.get(season_key)
+                if cached_count is None or cached_count[0] <= monotonic():
+                    total = await self.repository.fighter_count(session, since=since)
+                    self._fighter_count_cache[season_key] = (
+                        monotonic() + self.cache_ttl_seconds,
+                        total,
+                    )
+                    self._fighter_page_cache.clear()
+                else:
+                    total = cached_count[1]
         pages = max(1, (total + 9) // 10)
         page = min(max(page, 1), pages)
-        records = await self.repository.fighters(
-            session, limit=10, offset=(page - 1) * 10, since=since
-        )
-        entries = tuple(
-            self._entry((page - 1) * 10 + index, record)
-            for index, record in enumerate(records, start=1)
-        )
-        return FighterPage(entries=entries, page=page, pages=pages, total=total)
+        cache_key = (season_key, page)
+        cached_page = self._fighter_page_cache.get(cache_key)
+        if cached_page is not None and cached_page[0] > monotonic():
+            return cached_page[1]
+        async with self._cache_lock:
+            cached_page = self._fighter_page_cache.get(cache_key)
+            if cached_page is not None and cached_page[0] > monotonic():
+                return cached_page[1]
+            records = await self.repository.fighters(
+                session, limit=10, offset=(page - 1) * 10, since=since
+            )
+            entries = tuple(
+                self._entry((page - 1) * 10 + index, record)
+                for index, record in enumerate(records, start=1)
+            )
+            result = FighterPage(entries, page, pages, total, datetime.now(UTC))
+            self._fighter_page_cache[cache_key] = (
+                self._fighter_count_cache[season_key][0],
+                result,
+            )
+            return result
 
     @staticmethod
     def period_start(

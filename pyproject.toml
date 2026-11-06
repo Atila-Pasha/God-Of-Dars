@@ -33,7 +33,7 @@ build-backend = "setuptools.build_meta"
 include = ["app*", "admin*"]
 
 [tool.setuptools.package-data]
-"app.services" = ["assets/*.ttf", "assets/*.txt"]
+"app.services" = ["assets/*.ttf", "assets/*.txt", "assets/*.webp"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
