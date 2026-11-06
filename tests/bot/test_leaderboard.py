@@ -134,6 +134,11 @@ def test_global_rank_banner_and_page_controls() -> None:
     assert "صفحه 2/3" in text
     assert "#11" in text
     assert "آخرین به‌روزرسانی: 2026/11/06، 13:30" in text
+    assert any(
+        entity.type == "custom_emoji"
+        and entity.custom_emoji_id == "5915508067948051685"
+        for entity in global_rank_content(page, entry).as_kwargs()["entities"]
+    )
     assert pages == [1, 3, 2]
     assert [
         GlobalRankCallback.unpack(button.callback_data).page

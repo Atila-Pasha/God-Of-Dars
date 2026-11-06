@@ -10,7 +10,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InputRichMessage, Message, ReplyParameters
-from aiogram.utils.formatting import Bold, Italic, Pre, Text
+from aiogram.utils.formatting import Bold, CustomEmoji, Italic, Pre, Text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -318,21 +318,6 @@ def leaderboard_text(
     return leaderboard_content(kind, entries, viewer, period).render()[0]
 
 
-def _global_rank_table(entries: tuple[LeaderboardEntry, ...]) -> str:
-    account_width = max(
-        10,
-        min(18, max((len(_account(entry)) for entry in entries), default=10)),
-    )
-    lines = [f"{'#':<4} │ {'مبارز':<{account_width}} │ {'جام':<6} │ رنک"]
-    for entry in entries:
-        tier = tier_for(entry.primary_value)
-        lines.append(
-            f"{entry.rank:<4} │ {_account(entry):<{account_width}} │ "
-            f"{_number(entry.primary_value):<6} │ {tier.icon} {tier.name}"
-        )
-    return "\n".join(lines)
-
-
 def _global_rank_markdown_table(entries: tuple[LeaderboardEntry, ...]) -> str:
     lines = [
         "| # | مبارز | جام | رنک |",
@@ -388,11 +373,38 @@ def global_rank_content(page: FighterPage, viewer: LeaderboardEntry | None) -> T
     if spotlight is not None:
         body.extend([Bold(spotlight), "\n\n"])
     if page.entries:
-        body.append(Pre(_global_rank_table(page.entries)))
+        body.append(Bold("رتبه · مبارز · جام · رنک"))
+        for entry in page.entries:
+            tier = tier_for(entry.primary_value)
+            body.extend(
+                [
+                    f"\n{entry.rank}. {_account(entry)} · {_number(entry.primary_value)} جام · ",
+                    CustomEmoji(tier.icon, custom_emoji_id=tier.emoji_id),
+                    f" {tier.name}",
+                ]
+            )
     else:
         body.append("هنوز مبارزی در رنک این فصل ثبت نشده است.")
     body.extend(["\n\n", Bold("جایگاه تو")])
-    body.extend(["\n", _global_rank_progress(viewer)])
+    if viewer is None:
+        body.extend(["\n", _global_rank_progress(None)])
+    else:
+        tier = tier_for(viewer.primary_value)
+        next_tier = next(
+            (item for item in TIERS if item.minimum > viewer.primary_value), None
+        )
+        progress = (
+            f"تا {next_tier.name}: {_number(next_tier.minimum - viewer.primary_value)} جام"
+            if next_tier is not None
+            else "به بالاترین رنک رسیده‌ای؛ حالا برای صدر جدول بجنگ!"
+        )
+        body.extend(
+            [
+                f"\n#{viewer.rank} · ",
+                CustomEmoji(tier.icon, custom_emoji_id=tier.emoji_id),
+                f" {tier.name} · {_number(viewer.primary_value)} جام\n🚀 {progress}",
+            ]
+        )
     body.append("\n\nجام بیشتر، جایگاه بالاتر؛ در تساوی جام، برد بیشتر جلوتر است.")
     return Text(*body)
 
