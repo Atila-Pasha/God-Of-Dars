@@ -14,6 +14,8 @@ from app.bot.handlers.quick import router as quick_router
 from app.bot.handlers.referral import router as referral_router
 from app.bot.handlers.school import router as school_router
 from app.bot.handlers.start import router as start_router
+from app.bot.handlers.tic_tac_toe import handle_widget_query
+from app.bot.handlers.tic_tac_toe import router as tic_tac_toe_router
 from app.bot.isolation import UserEventIsolation
 from app.bot.middlewares.database import DatabaseSessionMiddleware
 from app.bot.middlewares.group import GroupAccessMiddleware
@@ -21,9 +23,18 @@ from app.bot.middlewares.navigation import NavigationStateMiddleware
 from app.bot.middlewares.subscription import SubscriptionMiddleware
 
 
+class GameDispatcher(Dispatcher):
+    async def _listen_update(self, update, **kwargs):
+        payload = (update.model_extra or {}).get("widget_query")
+        if payload is not None:
+            await handle_widget_query(payload, kwargs["bot"], kwargs["session"])
+            return None
+        return await super()._listen_update(update, **kwargs)
+
+
 def create_dispatcher() -> Dispatcher:
     install_custom_emojis()
-    dispatcher = Dispatcher(events_isolation=UserEventIsolation())
+    dispatcher = GameDispatcher(events_isolation=UserEventIsolation())
     dispatcher.update.outer_middleware(DatabaseSessionMiddleware())
     subscription_middleware = SubscriptionMiddleware()
     group_middleware = GroupAccessMiddleware()
@@ -39,6 +50,7 @@ def create_dispatcher() -> Dispatcher:
     # Explicit leaderboard commands and group phrases must win over generic
     # text handlers used by active FSM flows such as question answers.
     dispatcher.include_router(quick_router)
+    dispatcher.include_router(tic_tac_toe_router)
     dispatcher.include_router(leaderboard_router)
     dispatcher.include_router(school_router)
     dispatcher.include_router(buffet_router)

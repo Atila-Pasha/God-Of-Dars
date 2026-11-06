@@ -45,6 +45,7 @@ ALLOWED_GROUP_COMMANDS = frozenset(
         "knowledge",
         "global",
         "rank",
+        "game",
     }
 )
 ALLOWED_GROUP_CALLBACKS = frozenset({"library:group", "library:cancel"})

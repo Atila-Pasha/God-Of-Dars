@@ -102,6 +102,12 @@ class SubscriptionMiddleware(BaseMiddleware):
     @staticmethod
     def _is_bypassed(event: TelegramObject) -> bool:
         if isinstance(event, Message):
+            command = ((event.text or "").strip().split(maxsplit=1) or [""])[0]
+            if (
+                event.chat.type in GROUP_CHAT_TYPES
+                and command.split("@", 1)[0] == "/game"
+            ):
+                return True
             return event.chat.type in GROUP_CHAT_TYPES and not is_group_bot_command(
                 event
             )

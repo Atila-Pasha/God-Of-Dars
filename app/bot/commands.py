@@ -11,6 +11,7 @@ PRIVATE_COMMANDS = (
     BotCommand(command="start", description="شروع بازی و منوی اصلی"),
     BotCommand(command="global", description="جدول سراسری رنک"),
     BotCommand(command="rank", description="رنک، جام و پاداش‌های من"),
+    BotCommand(command="game", description="فهرست بازی‌ها و شروع بازی"),
     BotCommand(command="attack", description="راهنمای حمله و نبرد"),
     BotCommand(command="leaderboard", description="برترین فرمانده‌ها و دانش‌آموزها"),
     BotCommand(command="profile", description="منوی پروفایل"),

@@ -63,6 +63,8 @@ settings below; do not run multiple polling replicas with the same token.
 - `NOTIFICATION_SEND_CONCURRENCY`: concurrent notification sends per worker;
   keep this at or below `TELEGRAM_API_CONCURRENCY` unless the global Telegram
   limiter is intentionally serving as the final queue.
+- `TTT_TIMEOUT_BATCH_SIZE` / `TTT_TIMEOUT_CONCURRENCY`: expired games processed
+  per sweep and in parallel; keep concurrency below the available DB pool.
 - `GROUP_USER_CACHE_*`: bounded cache that avoids a user lookup for every group
   message.
 
@@ -95,6 +97,24 @@ Leaderboard rows, pagination counts, and user positions are cached per bot
 process for one hour (`LEADERBOARD_CACHE_TTL_SECONDS=3600`). Cards show the
 snapshot's last update time in Tehran. The global rank widget embeds a compact
 sprite made from the rank tiers' Telegram custom emoji thumbnails.
+
+## Tic-tac-toe
+
+Use `/game` in the bot's private chat. The menu offers tic-tac-toe against the
+computer or a real opponent. Human matches can be friendly or wagered in coins
+(gold) or diamonds. Enter an opponent's `@username` or numeric Telegram ID;
+they must have started the bot before they can receive an invitation.
+
+When a wagered invitation is accepted, both stakes move out of spendable
+balances into the match. The winner receives both stakes; a draw refunds both.
+Each turn has 60 seconds, measured on the server, and an expired turn loses.
+Invitations expire after five minutes. Match and escrow state are stored in
+PostgreSQL so restarts do not reset the deadline or stake.
+
+With `TELEGRAM_WIDGET_BETA_ENABLED=true`, a supporting Telegram client shows
+the interactive HTML game board inside the message. The bot uses inline buttons
+when widget sending is unavailable. The widget feature is in the beta API;
+use a compatible beta client to test the embedded board.
 
 Notifications use an at-least-once outbox. A provider timeout after Telegram
 accepted a message can therefore produce a duplicate, but notifications are

@@ -57,12 +57,10 @@ remain external or workload-dependent limits.
 
 ## Rollback on the configured server
 
-Pre-deployment code/config archive, database dump, and test evidence are kept
-under `/root/godofdars-capacity-backup`. The previous image is tagged
-`godofdars:before-capacity`. Stop the two attack containers before rolling back
-to the combined runtime. Restore the previous Compose files/environment and
-use the saved image for `bot`; do not restore the database dump unless data
-recovery is actually required. This release changes no database schema.
+Keep a pre-deployment database dump and the previous image before each release.
+The tic-tac-toe release adds `tic_tac_toe_games`; do not downgrade this table
+while active wagers exist. Restoring the previous image leaves the new table
+unused and is safer than restoring an old database over live player data.
 
 Configuration references: [aiogram polling concurrency](https://docs.aiogram.dev/en/latest/dispatcher/dispatcher.html)
 and [PostgreSQL resource settings](https://www.postgresql.org/docs/17/runtime-config-resource.html).

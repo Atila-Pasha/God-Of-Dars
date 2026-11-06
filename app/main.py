@@ -74,6 +74,11 @@ async def run_main_bot(stop_event: asyncio.Event) -> None:
         polling_task = asyncio.create_task(
             dispatcher.start_polling(
                 bot,
+                allowed_updates=(
+                    [*dispatcher.resolve_used_update_types(), "widget_query"]
+                    if settings.TELEGRAM_WIDGET_BETA_ENABLED
+                    else dispatcher.resolve_used_update_types()
+                ),
                 handle_signals=False,
                 close_bot_session=False,
                 tasks_concurrency_limit=settings.BOT_CONCURRENCY_LIMIT,

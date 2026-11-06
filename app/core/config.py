@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     NOTIFICATION_SEND_CONCURRENCY: int = Field(default=20, ge=1)
     WORKER_POLL_INTERVAL: float = Field(default=2.0, gt=0)
     WORKER_BATCH_SIZE: int = Field(default=100, ge=1)
+    TTT_TIMEOUT_BATCH_SIZE: int = Field(default=100, ge=1)
+    TTT_TIMEOUT_CONCURRENCY: int = Field(default=8, ge=1)
     ATTACK_MAX_RETRIES: int = Field(default=3, ge=0)
     ATTACK_RETRY_BASE_SECONDS: float = Field(default=5.0, gt=0)
     ATTACK_PROCESSING_TIMEOUT_SECONDS: float = Field(default=120.0, gt=0)

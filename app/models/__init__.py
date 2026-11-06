@@ -68,4 +68,6 @@ __all__ = [
     "User",
     "UserShield",
     "UserTeacher",
+    "TicTacToeGame",
 ]
+from app.models.tic_tac_toe import TicTacToeGame

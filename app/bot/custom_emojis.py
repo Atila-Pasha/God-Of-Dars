@@ -127,7 +127,7 @@ _persist_group_message: ContextVar[bool] = ContextVar(
 _telegram_api_semaphore: asyncio.Semaphore | None = None
 
 
-def _telegram_semaphore() -> asyncio.Semaphore:
+def telegram_api_semaphore() -> asyncio.Semaphore:
     global _telegram_api_semaphore
     if _telegram_api_semaphore is None:
         _telegram_api_semaphore = asyncio.Semaphore(settings.TELEGRAM_API_CONCURRENCY)
@@ -437,7 +437,7 @@ def install() -> None:
         for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
             try:
                 async with asyncio.timeout(settings.TELEGRAM_REQUEST_TIMEOUT_SECONDS):
-                    async with _telegram_semaphore():
+                    async with telegram_api_semaphore():
                         result = await original_call(self, method, *args, **kwargs)
                     sent_messages = result if isinstance(result, list) else (result,)
                     for sent in sent_messages:

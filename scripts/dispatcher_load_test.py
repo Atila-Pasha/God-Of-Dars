@@ -39,6 +39,7 @@ from app.models.user_teacher import UserTeacher
 
 SCENARIOS = (
     "start",
+    "game",
     "callback",
     "attack",
     "purchase",
@@ -178,6 +179,7 @@ def make_update(update_id: int, user: TelegramUser, scenario: str) -> Update:
         from_user=user,
         text={
             "start": "/start",
+            "game": "/game",
             "callback": "/profile",
             "attack": "/attack",
             "purchase": "خرید سپر",
