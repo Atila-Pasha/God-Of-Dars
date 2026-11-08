@@ -20,7 +20,10 @@ class TicTacToeGame(Base):
     __tablename__ = "tic_tac_toe_games"
     __table_args__ = (
         CheckConstraint("stake_amount >= 0", name="ck_ttt_stake_nonnegative"),
-        CheckConstraint("length(board) = 9", name="ck_ttt_board_length"),
+        CheckConstraint(
+            "(variant = 'classic' AND length(board) = 9) OR (variant = 'advanced' AND length(board) IN (100, 225))",
+            name="ck_ttt_board_length",
+        ),
         Index("ix_ttt_status_deadline", "status", "deadline_at"),
         Index("ix_ttt_challenger_status", "challenger_id", "status"),
         Index("ix_ttt_opponent_status", "opponent_id", "status"),
@@ -34,10 +37,12 @@ class TicTacToeGame(Base):
     mode: Mapped[str] = mapped_column(
         String(16), nullable=False
     )  # computer, friendly, wager
+    variant: Mapped[str] = mapped_column(String(16), nullable=False, default="classic")
     stake_type: Mapped[str | None] = mapped_column(String(16))  # coin or diamond
     stake_amount: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="invited")
-    board: Mapped[str] = mapped_column(String(9), nullable=False, default=".........")
+    board: Mapped[str] = mapped_column(String(225), nullable=False, default=".........")
+    last_move: Mapped[int | None] = mapped_column()
     turn_id: Mapped[int | None] = mapped_column(BigInteger)
     winner_id: Mapped[int | None] = mapped_column(BigInteger)
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

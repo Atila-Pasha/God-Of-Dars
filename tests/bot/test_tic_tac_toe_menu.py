@@ -6,6 +6,7 @@ import pytest
 from app.bot.handlers import tic_tac_toe
 from app.bot.handlers.tic_tac_toe import (
     amount_game,
+    cancel_callback,
     computer_game,
     currency_game,
     friendly_game,
@@ -15,13 +16,14 @@ from app.bot.handlers.tic_tac_toe import (
     invitation_text,
     result_text,
     select_game,
+    sent_invitation_keyboard,
     wager_game,
 )
 from app.models.tic_tac_toe import TicTacToeGame
 
 
 @pytest.mark.asyncio
-async def test_game_menu_has_requested_premium_emoji_and_only_tic_tac_toe() -> None:
+async def test_game_menu_has_both_tic_tac_toe_variants() -> None:
     message = SimpleNamespace(answer=AsyncMock())
     state = SimpleNamespace(clear=AsyncMock())
 
@@ -33,9 +35,67 @@ async def test_game_menu_has_requested_premium_emoji_and_only_tic_tac_toe() -> N
     assert len(call.kwargs["entities"]) == 1
     assert call.kwargs["entities"][0].custom_emoji_id == "4972415571384599106"
     rows = call.kwargs["reply_markup"].inline_keyboard
-    assert len(rows) == 1 and len(rows[0]) == 1
+    assert len(rows) == 2 and all(len(row) == 1 for row in rows)
     assert rows[0][0].text == "دوز"
     assert rows[0][0].icon_custom_emoji_id == "5222158908805632010"
+    assert rows[1][0].text == "دوز پیشرفته"
+    assert rows[1][0].callback_data == "ttt:select:advanced"
+
+
+@pytest.mark.asyncio
+async def test_advanced_selection_keeps_variant_through_human_flow(monkeypatch) -> None:
+    callback = _callback("ttt:select:advanced")
+    await select_game(callback)
+    buttons = [
+        row[0]
+        for row in callback.message.edit_text.await_args.kwargs[
+            "reply_markup"
+        ].inline_keyboard
+    ]
+    assert [button.callback_data for button in buttons] == [
+        "ttt:computer:advanced",
+        "ttt:human:advanced",
+    ]
+
+    callback.data = "ttt:human:advanced"
+    await human_game(callback)
+    buttons = [
+        row[0]
+        for row in callback.message.answer.await_args.kwargs[
+            "reply_markup"
+        ].inline_keyboard
+    ]
+    assert [button.callback_data for button in buttons] == [
+        "ttt:friendly:advanced",
+        "ttt:wager:advanced",
+    ]
+
+    monkeypatch.setattr(tic_tac_toe.settings, "TELEGRAM_WIDGET_BETA_ENABLED", True)
+    callback.data = "ttt:friendly:advanced"
+    state = SimpleNamespace(set_state=AsyncMock(), update_data=AsyncMock())
+    await friendly_game(callback, state)
+    state.update_data.assert_awaited_once_with(
+        mode="friendly", currency=None, amount=0, variant="advanced"
+    )
+
+    callback.data = "ttt:wager:advanced"
+    await wager_game(callback)
+    buttons = [
+        row[0]
+        for row in callback.message.edit_text.await_args.kwargs[
+            "reply_markup"
+        ].inline_keyboard
+    ]
+    assert [button.callback_data for button in buttons] == [
+        "ttt:currency:coin:advanced",
+        "ttt:currency:diamond:advanced",
+    ]
+    callback.data = "ttt:currency:coin:advanced"
+    state.update_data.reset_mock()
+    await currency_game(callback, state)
+    state.update_data.assert_awaited_once_with(
+        mode="wager", currency="coin", variant="advanced"
+    )
 
 
 def _callback(data: str) -> SimpleNamespace:
@@ -159,6 +219,91 @@ def test_invitation_uses_game_details_premium_icons_and_colored_buttons() -> Non
     text = invitation_text(friendly, "AtilA").as_kwargs()["text"]
     assert "نوع بازی: دوستانه" in text
     assert "مقدار شرط:" not in text
+
+
+def test_sent_invitation_has_cancel_button() -> None:
+    button = sent_invitation_keyboard(17).inline_keyboard[0][0]
+    assert (button.text, button.callback_data, button.style) == (
+        "لغو درخواست",
+        "ttt:cancel:17",
+        "danger",
+    )
+
+
+@pytest.mark.asyncio
+async def test_challenger_cancellation_deletes_opponents_invitation(
+    monkeypatch,
+) -> None:
+    game = TicTacToeGame(
+        id=17,
+        challenger_id=10,
+        opponent_id=20,
+        status="cancelled",
+        challenger_message_id=42,
+        opponent_message_id=43,
+    )
+    callback = _callback("ttt:cancel:17")
+    callback.from_user = SimpleNamespace(id=100)
+    callback.bot = SimpleNamespace(delete_message=AsyncMock(return_value=True))
+    session = SimpleNamespace(commit=AsyncMock())
+    monkeypatch.setattr(
+        tic_tac_toe.users,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(id=10)),
+    )
+    monkeypatch.setattr(tic_tac_toe, "cancel_invite", AsyncMock(return_value=game))
+    monkeypatch.setattr(tic_tac_toe, "_accounts", AsyncMock(return_value=(100, 200)))
+    monkeypatch.setattr(tic_tac_toe, "edit_flow_message", AsyncMock())
+
+    await cancel_callback(callback, session)
+
+    tic_tac_toe.cancel_invite.assert_awaited_once_with(
+        session, 17, 10, by_challenger=True
+    )
+    session.commit.assert_awaited_once()
+    callback.bot.delete_message.assert_awaited_once_with(200, 43)
+    tic_tac_toe.edit_flow_message.assert_awaited_once_with(
+        callback.bot, 100, 42, "درخواست بازی را لغو کردی."
+    )
+    callback.answer.assert_awaited_once_with("درخواست لغو شد.", show_alert=False)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_invitation_removes_buttons_when_delete_fails(
+    monkeypatch,
+) -> None:
+    game = TicTacToeGame(
+        id=17,
+        challenger_id=10,
+        opponent_id=20,
+        status="cancelled",
+        challenger_message_id=42,
+        opponent_message_id=43,
+    )
+    callback = _callback("ttt:cancel:17")
+    callback.from_user = SimpleNamespace(id=100)
+    callback.bot = SimpleNamespace(delete_message=AsyncMock(return_value=False))
+    session = SimpleNamespace(commit=AsyncMock())
+    monkeypatch.setattr(
+        tic_tac_toe.users,
+        "get_active_by_telegram_user_id",
+        AsyncMock(return_value=SimpleNamespace(id=10)),
+    )
+    monkeypatch.setattr(tic_tac_toe, "cancel_invite", AsyncMock(return_value=game))
+    monkeypatch.setattr(tic_tac_toe, "_accounts", AsyncMock(return_value=(100, 200)))
+    monkeypatch.setattr(tic_tac_toe, "edit_flow_message", AsyncMock())
+
+    await cancel_callback(callback, session)
+
+    assert tic_tac_toe.edit_flow_message.await_args_list[-1].args == (
+        callback.bot,
+        200,
+        43,
+        "درخواست بازی لغو شد.",
+    )
+    callback.answer.assert_awaited_once_with(
+        "درخواست لغو شد، ولی حذف پیام حریف انجام نشد.", show_alert=True
+    )
 
 
 def test_game_result_reports_net_wager_change() -> None:

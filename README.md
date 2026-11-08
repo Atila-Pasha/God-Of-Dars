@@ -100,10 +100,13 @@ sprite made from the rank tiers' Telegram custom emoji thumbnails.
 
 ## Tic-tac-toe
 
-Use `/game` in the bot's private chat. The menu offers tic-tac-toe against the
+Use `/game` in the bot's private chat. The menu offers classic tic-tac-toe and
+advanced tic-tac-toe (five in a row on a 10×10 board), each against the
 computer or a real opponent. Human matches can be friendly or wagered in coins
 (gold) or diamonds. Enter an opponent's `@username` or numeric Telegram ID;
 they must have started the bot before they can receive an invitation.
+The advanced game displays the entire 10×10 board in a Telegram widget. Tap an
+empty square directly to place a piece. Older 15×15 matches remain playable.
 
 When a wagered invitation is accepted, both stakes move out of spendable
 balances into the match. The winner receives both stakes; a draw refunds both.
@@ -111,10 +114,11 @@ Each turn has 60 seconds, measured on the server, and an expired turn loses.
 Invitations expire after five minutes. Match and escrow state are stored in
 PostgreSQL so restarts do not reset the deadline or stake.
 
-With `TELEGRAM_WIDGET_BETA_ENABLED=true`, a supporting Telegram client shows
-the interactive HTML game board inside the message. The bot uses inline buttons
-when widget sending is unavailable. The widget feature is in the beta API;
-use a compatible beta client to test the embedded board.
+Advanced tic-tac-toe requires `TELEGRAM_WIDGET_BETA_ENABLED=true` and a Telegram
+client that supports message widgets. Its HTML board is the only play interface;
+if sending it fails, the match is cancelled and any reserved stakes are refunded.
+Classic tic-tac-toe still uses inline buttons when a widget is unavailable.
+The widget feature is in the beta API; use a compatible beta client to test it.
 
 Notifications use an at-least-once outbox. A provider timeout after Telegram
 accepted a message can therefore produce a duplicate, but notifications are

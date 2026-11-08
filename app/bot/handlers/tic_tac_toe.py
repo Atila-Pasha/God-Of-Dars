@@ -7,7 +7,7 @@ import logging
 from contextlib import suppress
 from typing import cast
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -22,6 +22,7 @@ from aiogram.utils.formatting import Bold, CustomEmoji, Text
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.advanced_tic_tac_toe_widget import HTML as ADVANCED_HTML
 from app.bot.tic_tac_toe_widget import (
     HTML,
     fallback_keyboard,
@@ -29,10 +30,12 @@ from app.bot.tic_tac_toe_widget import (
     state_json,
     widget_api,
 )
+from app.core.config import settings
 from app.models.tic_tac_toe import TicTacToeGame
 from app.models.user import User
 from app.services.tic_tac_toe_service import (
     GameError,
+    abort_game,
     accept_game,
     cancel_invite,
     create_game,
@@ -138,7 +141,7 @@ def result_text(game: TicTacToeGame, player_id: int) -> Text:
 
 def invitation_text(game: TicTacToeGame, challenger_name: str) -> Text:
     parts = [
-        "درخواست بازی دوز ",
+        f"درخواست بازی {'دوز پیشرفته' if game.variant == 'advanced' else 'دوز'} ",
         CustomEmoji("🎮", custom_emoji_id="4972415571384599106"),
         "\nاسم حریف: ",
         challenger_name,
@@ -159,6 +162,9 @@ def invitation_text(game: TicTacToeGame, challenger_name: str) -> Text:
                 ),
             )
         )
+    if game.variant == "advanced":
+        size = "۱۰×۱۰" if len(game.board) == 100 else "۱۵×۱۵"
+        parts.append(f"\nقانون: پنج مهرهٔ پشت سر هم روی صفحهٔ {size}.")
     parts.append("\nقبول میکنی؟")
     return Text(*parts)
 
@@ -184,12 +190,28 @@ def invitation_keyboard(game_id: int) -> InlineKeyboardMarkup:
     )
 
 
-async def publish_board(bot, session: AsyncSession, game: TicTacToeGame) -> None:
+def sent_invitation_keyboard(game_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="لغو درخواست",
+                    callback_data=f"ttt:cancel:{game_id}",
+                    style="danger",
+                )
+            ]
+        ]
+    )
+
+
+async def publish_board(bot, session: AsyncSession, game: TicTacToeGame) -> bool:
     """Persist the game before talking to Telegram, then record message IDs."""
     await session.commit()
     challenger_tg, opponent_tg = await _accounts(session, game)
     await session.commit()
     state = state_json(game, challenger_tg, opponent_tg)
+    data_key = "chat_data" if game.variant == "advanced" else "public_data"
+    all_sent = True
     for user_id, chat_id, message_attr, widget_attr in (
         (
             game.challenger_id,
@@ -207,10 +229,22 @@ async def publish_board(bot, session: AsyncSession, game: TicTacToeGame) -> None
             response = await widget_api(
                 bot,
                 "editMessageWidgetData",
-                {"chat_id": chat_id, "message_id": message_id, "public_data": state},
+                {"chat_id": chat_id, "message_id": message_id, data_key: state},
             )
             if response is not None:
                 continue
+            if game.variant == "advanced":
+                logger.error(
+                    "Could not update advanced game widget %s for %s", game.id, chat_id
+                )
+                all_sent = False
+                continue
+        if game.variant == "advanced" and message_id is not None:
+            logger.error(
+                "Advanced game %s has a non-widget message for %s", game.id, chat_id
+            )
+            all_sent = False
+            continue
         if message_id is not None and not is_widget:
             try:
                 await bot.edit_message_text(
@@ -228,10 +262,10 @@ async def publish_board(bot, session: AsyncSession, game: TicTacToeGame) -> None
                 "sendWidget",
                 {
                     "chat_id": chat_id,
-                    "html": HTML,
-                    "width": 300,
+                    "html": ADVANCED_HTML if game.variant == "advanced" else HTML,
+                    "width": 320 if game.variant == "advanced" else 300,
                     "height": 0,
-                    "public_data": state,
+                    data_key: state,
                     "allow_queries": True,
                 },
             )
@@ -240,6 +274,12 @@ async def publish_board(bot, session: AsyncSession, game: TicTacToeGame) -> None
                 setattr(game, widget_attr, True)
                 await session.commit()
                 continue
+        if game.variant == "advanced":
+            logger.error(
+                "Could not send advanced game widget %s to %s", game.id, chat_id
+            )
+            all_sent = False
+            continue
         try:
             sent = await bot.send_message(
                 chat_id,
@@ -261,6 +301,7 @@ async def publish_board(bot, session: AsyncSession, game: TicTacToeGame) -> None
                     await bot.send_message(
                         chat_id, **result_text(game, player_id).as_kwargs()
                     )
+    return all_sent
 
 
 @router.message(Command("game"), F.chat.type.in_({"group", "supergroup"}))
@@ -287,73 +328,108 @@ async def game_private(message: Message, state: FSMContext) -> None:
                         callback_data="ttt:select",
                         icon_custom_emoji_id="5222158908805632010",
                     )
-                ]
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="دوز پیشرفته", callback_data="ttt:select:advanced"
+                    )
+                ],
             ]
         ),
         **rendered,
     )
 
 
-@router.callback_query(F.data == "ttt:select")
+@router.callback_query(F.data.in_({"ttt:select", "ttt:select:advanced"}))
 async def select_game(callback: CallbackQuery) -> None:
     message = cast(Message, callback.message)
+    suffix = ":advanced" if (callback.data or "").endswith(":advanced") else ""
     await message.edit_text(
         "میخوای با ربات بازی کنی یا حریف واقعی؟",
         reply_markup=menu(
-            ("ربات", "ttt:computer", "5803143039060808890"),
-            ("حریف واقعی", "ttt:human", "5258011929993026890"),
+            ("ربات", f"ttt:computer{suffix}", "5803143039060808890"),
+            ("حریف واقعی", f"ttt:human{suffix}", "5258011929993026890"),
         ),
     )
     await callback.answer()
 
 
-@router.callback_query(F.data == "ttt:computer")
+@router.callback_query(F.data.in_({"ttt:computer", "ttt:computer:advanced"}))
 async def computer_game(
     callback: CallbackQuery, session: AsyncSession, state: FSMContext
 ) -> None:
     message = cast(Message, callback.message)
     await state.clear()
+    if (callback.data or "").endswith(
+        ":advanced"
+    ) and not settings.TELEGRAM_WIDGET_BETA_ENABLED:
+        await callback.answer("ویجت بازی روی این ربات فعال نیست.", show_alert=True)
+        return
     player = await users.get_or_create_from_telegram(session, callback.from_user)
     try:
-        game = await create_game(session, player.id, None, "computer")
+        variant = (
+            "advanced" if (callback.data or "").endswith(":advanced") else "classic"
+        )
+        game = await create_game(session, player.id, None, "computer", variant=variant)
     except GameError as exc:
         await callback.answer(str(exc), show_alert=True)
         return
     await message.answer("بازی با ربات شروع شد. نوبت توئه!")
-    await publish_board(callback.bot, session, game)
+    sent = await publish_board(callback.bot, session, game)
+    if variant == "advanced" and sent is False:
+        await abort_game(session, game.id)
+        await publish_board(callback.bot, session, game)
+        await message.answer("ارسال ویجت بازی انجام نشد؛ بازی لغو شد.")
     await callback.answer()
 
 
-@router.callback_query(F.data == "ttt:human")
+@router.callback_query(F.data.in_({"ttt:human", "ttt:human:advanced"}))
 async def human_game(callback: CallbackQuery) -> None:
     message = cast(Message, callback.message)
+    suffix = ":advanced" if (callback.data or "").endswith(":advanced") else ""
     await message.answer(
         "میخوای دوستانه بازی کنی یا شرطی؟",
         reply_markup=menu(
-            ("دوستانه", "ttt:friendly", "5944970130554359187"),
-            ("شرطی", "ttt:wager", "5255934553096202209"),
+            ("دوستانه", f"ttt:friendly{suffix}", "5944970130554359187"),
+            ("شرطی", f"ttt:wager{suffix}", "5255934553096202209"),
         ),
     )
     await callback.answer()
 
 
-@router.callback_query(F.data == "ttt:friendly")
+@router.callback_query(F.data.in_({"ttt:friendly", "ttt:friendly:advanced"}))
 async def friendly_game(callback: CallbackQuery, state: FSMContext) -> None:
     message = cast(Message, callback.message)
+    if (callback.data or "").endswith(
+        ":advanced"
+    ) and not settings.TELEGRAM_WIDGET_BETA_ENABLED:
+        await callback.answer("ویجت بازی روی این ربات فعال نیست.", show_alert=True)
+        return
     await state.set_state(GameFlow.target)
-    await state.update_data(mode="friendly", currency=None, amount=0)
+    if (callback.data or "").endswith(":advanced"):
+        await state.update_data(
+            mode="friendly", currency=None, amount=0, variant="advanced"
+        )
+    else:
+        await state.update_data(mode="friendly", currency=None, amount=0)
     await message.answer(**TARGET_PROMPT.as_kwargs())
     await callback.answer()
 
 
-@router.callback_query(F.data == "ttt:wager")
+@router.callback_query(F.data.in_({"ttt:wager", "ttt:wager:advanced"}))
 async def wager_game(callback: CallbackQuery) -> None:
     message = cast(Message, callback.message)
+    if (callback.data or "").endswith(
+        ":advanced"
+    ) and not settings.TELEGRAM_WIDGET_BETA_ENABLED:
+        await callback.answer("ویجت بازی روی این ربات فعال نیست.", show_alert=True)
+        return
+    suffix = ":advanced" if (callback.data or "").endswith(":advanced") else ""
     await message.edit_text(
         "میخوای با طلا شرط ببندی یا الماس؟",
         reply_markup=menu(
-            ("طلا", "ttt:currency:coin", "5825699971076202989"),
-            ("الماس", "ttt:currency:diamond", "5235630047959727475"),
+            ("طلا", f"ttt:currency:coin{suffix}", "5825699971076202989"),
+            ("الماس", f"ttt:currency:diamond{suffix}", "5235630047959727475"),
         ),
     )
     await callback.answer()
@@ -362,12 +438,16 @@ async def wager_game(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("ttt:currency:"))
 async def currency_game(callback: CallbackQuery, state: FSMContext) -> None:
     message = cast(Message, callback.message)
-    currency = (callback.data or "").rsplit(":", 1)[-1]
+    parts = (callback.data or "").split(":")
+    currency = parts[2] if len(parts) >= 3 else ""
     if currency not in {"coin", "diamond"}:
         await callback.answer("این گزینه معتبر نیست.", show_alert=True)
         return
     await state.set_state(GameFlow.amount)
-    await state.update_data(mode="wager", currency=currency)
+    if len(parts) == 4 and parts[3] == "advanced":
+        await state.update_data(mode="wager", currency=currency, variant="advanced")
+    else:
+        await state.update_data(mode="wager", currency=currency)
     await message.answer(
         f"چقدر {'طلا' if currency == 'coin' else 'الماس'} میخوای شرط ببندی؟ عددش رو بفرست."
     )
@@ -437,6 +517,7 @@ async def target_game(
             details["mode"],
             details.get("currency"),
             details.get("amount", 0),
+            details.get("variant", "classic"),
         )
     except GameError as exc:
         await message.answer(str(exc))
@@ -456,7 +537,10 @@ async def target_game(
         )
         await state.clear()
         return
-    pending = await message.answer("درخواستت رو ارسال کردم. منتظر بمون. بهت خبر میدم.")
+    pending = await message.answer(
+        "درخواستت رو ارسال کردم. منتظر بمون. بهت خبر میدم.",
+        reply_markup=sent_invitation_keyboard(game.id),
+    )
     game.challenger_message_id = pending.message_id
     game.opponent_message_id = sent.message_id
     await session.commit()
@@ -494,7 +578,18 @@ async def accept_callback(callback: CallbackQuery, session: AsyncSession) -> Non
         )
         game.challenger_message_id = None
         game.opponent_message_id = None
-        await publish_board(callback.bot, session, game)
+        sent = await publish_board(callback.bot, session, game)
+        if game.variant == "advanced" and sent is False:
+            await abort_game(session, game.id)
+            await publish_board(callback.bot, session, game)
+            challenger_tg, opponent_tg = await _accounts(session, game)
+            bot = callback.bot
+            for chat_id in (challenger_tg, opponent_tg):
+                if chat_id is not None and bot is not None:
+                    with suppress(TelegramAPIError):
+                        await bot.send_message(
+                            chat_id, "ارسال ویجت بازی انجام نشد؛ بازی و شرط آن لغو شد."
+                        )
     await callback.answer()
 
 
@@ -505,7 +600,7 @@ async def decline_callback(callback: CallbackQuery, session: AsyncSession) -> No
         user = await users.get_active_by_telegram_user_id(
             session, callback.from_user.id
         )
-        game = await cancel_invite(session, game_id, user.id)
+        game = await cancel_invite(session, game_id, user.id, by_challenger=False)
     except (ValueError, GameError):
         await callback.answer("این دعوت دیگر فعال نیست.", show_alert=True)
         return
@@ -518,6 +613,50 @@ async def decline_callback(callback: CallbackQuery, session: AsyncSession) -> No
         "درخواست بازی رو رد کردی.",
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ttt:cancel:"))
+async def cancel_callback(callback: CallbackQuery, session: AsyncSession) -> None:
+    bot = cast(Bot, callback.bot)
+    try:
+        game_id = int((callback.data or "").rsplit(":", 1)[-1])
+        user = await users.get_active_by_telegram_user_id(
+            session, callback.from_user.id
+        )
+        game = await cancel_invite(session, game_id, user.id, by_challenger=True)
+    except (ValueError, GameError):
+        await callback.answer("این دعوت دیگر فعال نیست.", show_alert=True)
+        return
+    await session.commit()
+    challenger_tg, opponent_tg = await _accounts(session, game)
+    if game.challenger_message_id is not None:
+        with suppress(TelegramAPIError):
+            await edit_flow_message(
+                bot,
+                challenger_tg,
+                game.challenger_message_id,
+                "درخواست بازی را لغو کردی.",
+            )
+    deleted = False
+    if opponent_tg is not None and game.opponent_message_id is not None:
+        try:
+            deleted = await bot.delete_message(opponent_tg, game.opponent_message_id)
+        except TelegramAPIError:
+            logger.warning("Could not delete cancelled invitation %s", game.id)
+        if not deleted:
+            with suppress(TelegramAPIError):
+                await edit_flow_message(
+                    bot,
+                    opponent_tg,
+                    game.opponent_message_id,
+                    "درخواست بازی لغو شد.",
+                )
+    await callback.answer(
+        "درخواست لغو شد."
+        if deleted
+        else "درخواست لغو شد، ولی حذف پیام حریف انجام نشد.",
+        show_alert=not deleted,
+    )
 
 
 @router.callback_query(F.data.startswith("ttt:move:"))

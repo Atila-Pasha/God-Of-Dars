@@ -38,6 +38,24 @@ def now() -> datetime:
 
 
 def outcome(board: str) -> str | None:
+    if len(board) in (100, 225):
+        size = 10 if len(board) == 100 else 15
+        for row in range(size):
+            for col in range(size):
+                mark = board[row * size + col]
+                if mark == ".":
+                    continue
+                for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+                    if (
+                        0 <= row + 4 * dr < size
+                        and 0 <= col + 4 * dc < size
+                        and all(
+                            board[(row + step * dr) * size + col + step * dc] == mark
+                            for step in range(1, 5)
+                        )
+                    ):
+                        return mark
+        return "draw" if "." not in board else None
     for a, b, c in LINES:
         if board[a] != "." and board[a] == board[b] == board[c]:
             return board[a]
@@ -46,6 +64,9 @@ def outcome(board: str) -> str | None:
 
 def computer_move(board: str) -> int:
     """Perfect play, with center/corner preference for equal scores."""
+
+    if len(board) in (100, 225):
+        return advanced_computer_move(board)
 
     @cache
     def score(position: str, cpu_turn: bool, depth: int) -> int:
@@ -69,6 +90,67 @@ def computer_move(board: str) -> int:
 
     choices = [i for i in (4, 0, 2, 6, 8, 1, 3, 5, 7) if board[i] == "."]
     return max(choices, key=lambda i: score(board[:i] + "O" + board[i + 1 :], False, 0))
+
+
+def advanced_computer_move(board: str) -> int:
+    """Pick a nearby move, prioritising wins, blocks and open lines."""
+    size = 10 if len(board) == 100 else 15
+    stones = [i for i, value in enumerate(board) if value != "."]
+    if not stones:
+        return (size // 2) * size + size // 2
+    candidates = {
+        row * size + col
+        for stone in stones
+        for row in range(max(0, stone // size - 2), min(size, stone // size + 3))
+        for col in range(max(0, stone % size - 2), min(size, stone % size + 3))
+        if board[row * size + col] == "."
+    }
+    if not candidates:
+        raise GameError("صفحه پر شده است.")
+
+    def strength(cell: int, mark: str) -> int:
+        row, col = divmod(cell, size)
+        total = 0
+        for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+            count = 1
+            open_ends = 0
+            for direction in (1, -1):
+                step = 1
+                while (
+                    0 <= row + direction * step * dr < size
+                    and 0 <= col + direction * step * dc < size
+                    and board[
+                        (row + direction * step * dr) * size
+                        + col
+                        + direction * step * dc
+                    ]
+                    == mark
+                ):
+                    count += 1
+                    step += 1
+                end_row = row + direction * step * dr
+                end_col = col + direction * step * dc
+                if (
+                    0 <= end_row < size
+                    and 0 <= end_col < size
+                    and board[end_row * size + end_col] == "."
+                ):
+                    open_ends += 1
+            if count >= 5:
+                return 1_000_000
+            if open_ends:
+                total += (4 ** min(count, 4)) * (2 if open_ends == 2 else 1)
+        return total
+
+    return max(
+        sorted(candidates),
+        key=lambda cell: (
+            strength(cell, "O") >= 1_000_000,
+            strength(cell, "X") >= 1_000_000,
+            strength(cell, "O") + strength(cell, "X") * 1.1,
+            -abs(cell // size - size // 2) - abs(cell % size - size // 2),
+        ),
+    )
 
 
 async def _active_for(
@@ -137,7 +219,10 @@ async def create_game(
     mode: str,
     stake_type: str | None = None,
     amount: int = 0,
+    variant: str = "classic",
 ) -> TicTacToeGame:
+    if variant not in {"classic", "advanced"}:
+        raise GameError("این بازی معتبر نیست.")
     if mode not in {"computer", "friendly", "wager"} or (mode == "computer") != (
         opponent_id is None
     ):
@@ -167,6 +252,8 @@ async def create_game(
         challenger_id=challenger_id,
         opponent_id=opponent_id,
         mode=mode,
+        variant=variant,
+        board="." * (100 if variant == "advanced" else 9),
         stake_type=stake_type,
         stake_amount=amount,
         status="active" if mode == "computer" else "invited",
@@ -252,17 +339,37 @@ async def _finish(
 
 
 async def cancel_invite(
-    session: AsyncSession, game_id: int, actor_id: int
+    session: AsyncSession,
+    game_id: int,
+    actor_id: int,
+    *,
+    by_challenger: bool | None = None,
 ) -> TicTacToeGame:
     game = await session.scalar(
-        select(TicTacToeGame).where(TicTacToeGame.id == game_id).with_for_update()
+        select(TicTacToeGame)
+        .where(TicTacToeGame.id == game_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if (
         game is None
         or actor_id not in (game.challenger_id, game.opponent_id)
+        or (by_challenger is True and actor_id != game.challenger_id)
+        or (by_challenger is False and actor_id != game.opponent_id)
         or game.status != "invited"
     ):
         raise GameError("این دعوت دیگه فعال نیست.")
+    await _finish(session, game, None, "cancelled")
+    return game
+
+
+async def abort_game(session: AsyncSession, game_id: int) -> TicTacToeGame:
+    """Cancel an unplayable match and return any reserved stakes."""
+    game = await session.scalar(
+        select(TicTacToeGame).where(TicTacToeGame.id == game_id).with_for_update()
+    )
+    if game is None or game.status != "active":
+        raise GameError("بازی فعال نیست.")
     await _finish(session, game, None, "cancelled")
     return game
 
@@ -292,10 +399,11 @@ async def move(
         return game
     if game.turn_id != actor_id:
         raise GameError("الان نوبت تو نیست.")
-    if cell not in range(9) or game.board[cell] != ".":
+    if cell not in range(len(game.board)) or game.board[cell] != ".":
         raise GameError("این خونه پره یا معتبر نیست.")
     mark = "X" if actor_id == game.challenger_id else "O"
     game.board = game.board[:cell] + mark + game.board[cell + 1 :]
+    game.last_move = cell
     result = outcome(game.board)
     if result is not None:
         await _finish(session, game, actor_id if result != "draw" else None)
@@ -303,6 +411,7 @@ async def move(
     if game.mode == "computer":
         cpu = computer_move(game.board)
         game.board = game.board[:cpu] + "O" + game.board[cpu + 1 :]
+        game.last_move = cpu
         result = outcome(game.board)
         if result is not None:
             await _finish(session, game, -1 if result == "O" else None)

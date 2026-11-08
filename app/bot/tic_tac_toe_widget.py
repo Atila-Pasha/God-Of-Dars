@@ -42,6 +42,7 @@ def state_json(
         {
             "id": game.id,
             "board": game.board,
+            "last_move": game.last_move,
             "status": game.status,
             "turn": challenger_telegram_id
             if game.turn_id == game.challenger_id
@@ -59,6 +60,8 @@ def state_json(
             if game.deadline_at
             else 0,
             "mode": game.mode,
+            "variant": game.variant,
+            "challenger": challenger_telegram_id,
             "currency": game.stake_type,
             "stake": game.stake_amount,
         },
