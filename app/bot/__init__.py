@@ -4,6 +4,8 @@ from app.bot.custom_emojis import install as install_custom_emojis
 from app.bot.handlers.archers import router as archer_router
 from app.bot.handlers.battle import router as battle_router
 from app.bot.handlers.buffet import router as buffet_router
+from app.bot.handlers.car_game import handle_widget_query as handle_car_widget_query
+from app.bot.handlers.car_game import router as car_game_router
 from app.bot.handlers.chance import router as chance_router
 from app.bot.handlers.daily import router as daily_router
 from app.bot.handlers.leaderboard import router as leaderboard_router
@@ -27,7 +29,10 @@ class GameDispatcher(Dispatcher):
     async def _listen_update(self, update, **kwargs):
         payload = (update.model_extra or {}).get("widget_query")
         if payload is not None:
-            await handle_widget_query(payload, kwargs["bot"], kwargs["session"])
+            if (payload.get("data") or "").startswith("car:"):
+                await handle_car_widget_query(payload, kwargs["bot"], kwargs["session"])
+            else:
+                await handle_widget_query(payload, kwargs["bot"], kwargs["session"])
             return None
         return await super()._listen_update(update, **kwargs)
 
@@ -50,6 +55,7 @@ def create_dispatcher() -> Dispatcher:
     # Explicit leaderboard commands and group phrases must win over generic
     # text handlers used by active FSM flows such as question answers.
     dispatcher.include_router(quick_router)
+    dispatcher.include_router(car_game_router)
     dispatcher.include_router(tic_tac_toe_router)
     dispatcher.include_router(leaderboard_router)
     dispatcher.include_router(school_router)

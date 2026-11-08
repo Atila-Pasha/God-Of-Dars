@@ -336,6 +336,13 @@ async def game_private(message: Message, state: FSMContext) -> None:
                         icon_custom_emoji_id="5222158908805632010",
                     )
                 ],
+                [
+                    InlineKeyboardButton(
+                        text="ماشین",
+                        callback_data="car:open",
+                        icon_custom_emoji_id="5307565089400839127",
+                    )
+                ],
             ]
         ),
         **rendered,

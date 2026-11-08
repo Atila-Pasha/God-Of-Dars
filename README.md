@@ -120,6 +120,16 @@ if sending it fails, the match is cancelled and any reserved stakes are refunded
 Classic tic-tac-toe still uses inline buttons when a widget is unavailable.
 The widget feature is in the beta API; use a compatible beta client to test it.
 
+## Car game
+
+The `/game` menu also offers a three-lane car game in a private Telegram widget.
+Tap Start, then use the left and right buttons to dodge obstacles and collect
+coins and diamonds. Road events and lane changes are scored on the server; the
+pace increases during a run. At a collision, the collected rewards are added to
+the player's balance in one transaction. Rewards are capped by actual play time
+at 50 coins and 10 diamonds per minute. A new run starts from `/game` after a
+crash. This game requires the beta widget API and a compatible Telegram client.
+
 Notifications use an at-least-once outbox. A provider timeout after Telegram
 accepted a message can therefore produce a duplicate, but notifications are
 not silently lost.
