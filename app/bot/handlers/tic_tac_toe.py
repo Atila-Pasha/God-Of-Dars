@@ -331,7 +331,9 @@ async def game_private(message: Message, state: FSMContext) -> None:
                 ],
                 [
                     InlineKeyboardButton(
-                        text="دوز پیشرفته", callback_data="ttt:select:advanced"
+                        text="دوز پیشرفته",
+                        callback_data="ttt:select:advanced",
+                        icon_custom_emoji_id="5222158908805632010",
                     )
                 ],
             ]

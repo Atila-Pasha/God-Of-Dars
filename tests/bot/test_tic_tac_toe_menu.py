@@ -17,6 +17,7 @@ from app.bot.handlers.tic_tac_toe import (
     result_text,
     select_game,
     sent_invitation_keyboard,
+    target_game,
     wager_game,
 )
 from app.models.tic_tac_toe import TicTacToeGame
@@ -40,6 +41,7 @@ async def test_game_menu_has_both_tic_tac_toe_variants() -> None:
     assert rows[0][0].icon_custom_emoji_id == "5222158908805632010"
     assert rows[1][0].text == "دوز پیشرفته"
     assert rows[1][0].callback_data == "ttt:select:advanced"
+    assert rows[1][0].icon_custom_emoji_id == rows[0][0].icon_custom_emoji_id
 
 
 @pytest.mark.asyncio
@@ -228,6 +230,52 @@ def test_sent_invitation_has_cancel_button() -> None:
         "ttt:cancel:17",
         "danger",
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("variant", ["classic", "advanced"])
+async def test_sending_either_variant_shows_cancel_button(monkeypatch, variant) -> None:
+    game = TicTacToeGame(
+        id=17,
+        variant=variant,
+        mode="friendly",
+        stake_amount=0,
+        board="." * (100 if variant == "advanced" else 9),
+    )
+    bot = SimpleNamespace(
+        send_message=AsyncMock(return_value=SimpleNamespace(message_id=43))
+    )
+    message = SimpleNamespace(
+        bot=bot,
+        from_user=SimpleNamespace(id=100),
+        text="200",
+        answer=AsyncMock(return_value=SimpleNamespace(message_id=42)),
+    )
+    state = SimpleNamespace(
+        get_data=AsyncMock(return_value={"mode": "friendly", "variant": variant}),
+        clear=AsyncMock(),
+    )
+    session = SimpleNamespace(
+        scalar=AsyncMock(
+            return_value=SimpleNamespace(id=20, telegram_user_id=200, is_active=True)
+        ),
+        commit=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        tic_tac_toe.users,
+        "get_or_create_from_telegram",
+        AsyncMock(return_value=SimpleNamespace(id=10, first_name="Atila")),
+    )
+    monkeypatch.setattr(tic_tac_toe, "create_game", AsyncMock(return_value=game))
+
+    await target_game(message, state, session)
+
+    pending = message.answer.await_args
+    assert pending.kwargs["reply_markup"].inline_keyboard[0][0].callback_data == (
+        "ttt:cancel:17"
+    )
+    assert game.challenger_message_id == 42
+    assert game.opponent_message_id == 43
 
 
 @pytest.mark.asyncio
