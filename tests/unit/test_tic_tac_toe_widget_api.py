@@ -6,7 +6,6 @@ import pytest
 
 from app.bot import custom_emojis
 from app.bot.tic_tac_toe_widget import widget_api
-from app.core.config import settings
 
 
 class FakeResponse:
@@ -26,7 +25,6 @@ class FakeResponse:
 
 @pytest.mark.asyncio
 async def test_widget_api_shares_bot_limit_and_retries_rate_limit(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "TELEGRAM_WIDGET_BETA_ENABLED", True)
     gate = asyncio.Semaphore(0)
     monkeypatch.setattr(custom_emojis, "_telegram_api_semaphore", gate)
     responses = iter(
@@ -40,7 +38,14 @@ async def test_widget_api_shares_bot_limit_and_retries_rate_limit(monkeypatch) -
     )
     bot = SimpleNamespace(
         token="123:test",
-        session=SimpleNamespace(create_session=AsyncMock(return_value=session)),
+        session=SimpleNamespace(
+            create_session=AsyncMock(return_value=session),
+            api=SimpleNamespace(
+                api_url=lambda *, token, method: (
+                    f"https://api.telegram.org/bot{token}/{method}"
+                )
+            ),
+        ),
     )
     task = asyncio.create_task(widget_api(bot, "sendWidget", {"chat_id": 1}))
     await asyncio.sleep(0)
@@ -48,3 +53,7 @@ async def test_widget_api_shares_bot_limit_and_retries_rate_limit(monkeypatch) -
     gate.release()
     assert (await task)["result"]["message_id"] == 12
     assert session.post.call_count == 2
+    assert (
+        session.post.call_args.args[0]
+        == "https://api.telegram.org/bot123:test/sendWidget"
+    )

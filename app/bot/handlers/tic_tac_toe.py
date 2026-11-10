@@ -30,7 +30,6 @@ from app.bot.tic_tac_toe_widget import (
     state_json,
     widget_api,
 )
-from app.core.config import settings
 from app.models.tic_tac_toe import TicTacToeGame
 from app.models.user import User
 from app.services.tic_tac_toe_service import (
@@ -369,11 +368,6 @@ async def computer_game(
 ) -> None:
     message = cast(Message, callback.message)
     await state.clear()
-    if (callback.data or "").endswith(
-        ":advanced"
-    ) and not settings.TELEGRAM_WIDGET_BETA_ENABLED:
-        await callback.answer("ویجت بازی روی این ربات فعال نیست.", show_alert=True)
-        return
     player = await users.get_or_create_from_telegram(session, callback.from_user)
     try:
         variant = (
@@ -409,11 +403,6 @@ async def human_game(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.in_({"ttt:friendly", "ttt:friendly:advanced"}))
 async def friendly_game(callback: CallbackQuery, state: FSMContext) -> None:
     message = cast(Message, callback.message)
-    if (callback.data or "").endswith(
-        ":advanced"
-    ) and not settings.TELEGRAM_WIDGET_BETA_ENABLED:
-        await callback.answer("ویجت بازی روی این ربات فعال نیست.", show_alert=True)
-        return
     await state.set_state(GameFlow.target)
     if (callback.data or "").endswith(":advanced"):
         await state.update_data(
@@ -428,11 +417,6 @@ async def friendly_game(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.in_({"ttt:wager", "ttt:wager:advanced"}))
 async def wager_game(callback: CallbackQuery) -> None:
     message = cast(Message, callback.message)
-    if (callback.data or "").endswith(
-        ":advanced"
-    ) and not settings.TELEGRAM_WIDGET_BETA_ENABLED:
-        await callback.answer("ویجت بازی روی این ربات فعال نیست.", show_alert=True)
-        return
     suffix = ":advanced" if (callback.data or "").endswith(":advanced") else ""
     await message.edit_text(
         "میخوای با طلا شرط ببندی یا الماس؟",

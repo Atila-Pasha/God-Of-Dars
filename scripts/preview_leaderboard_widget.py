@@ -57,7 +57,7 @@ small{{color:#9dadc6}}</style>
 <h1>پیش‌نمایش ویجت لیدربرد</h1>
 <nav><a href="/commander">فرمانده</a><a href="/student">دانش‌آموز</a><a href="/global">رنک سراسری</a></nav>
 <iframe title="Telegram widget" srcdoc="{widget_attribute}"></iframe>
-<small>این صفحه ظاهر HTML را نشان می‌دهد؛ اجرای واقعی داخل تلگرام به Bot API 10.4 beta و کلاینت پشتیبان ویجت نیاز دارد.</small>
+<small>این صفحه ظاهر HTML را نشان می‌دهد؛ اجرای واقعی داخل تلگرام به Bot API 10.4 و کلاینت پشتیبان ویجت نیاز دارد.</small>
 </html>"""
         content = page.encode("utf-8")
         self.send_response(200)

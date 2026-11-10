@@ -1,4 +1,4 @@
-"""Telegram widget-sandbox leaderboard cards (Bot API 10.4 beta)."""
+"""Telegram widget-sandbox leaderboard cards (Bot API 10.4)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from importlib.resources import files
 from typing import Any
 from zoneinfo import ZoneInfo
 
-import aiohttp
 from aiogram.types import InlineKeyboardMarkup, ReplyParameters
 
+from app.bot.tic_tac_toe_widget import widget_api
 from app.core.config import settings
 from app.services.leaderboard_service import (
     FighterPage,
@@ -198,8 +198,9 @@ async def send_leaderboard_widget(
     reply_markup: InlineKeyboardMarkup | None = None,
     reply_parameters: ReplyParameters | None = None,
 ) -> bool:
-    """Send through Bot API 10.4 beta; return False for unsupported endpoints."""
-    if not settings.TELEGRAM_WIDGET_BETA_ENABLED:
+    """Send through Bot API 10.4; return False if the API rejects the widget."""
+    # Telegram currently accepts production widgets only in private bot chats.
+    if chat_id < 0:
         return False
     try:
         validate_widget_size(html)
@@ -217,19 +218,4 @@ async def send_leaderboard_widget(
         payload["reply_markup"] = reply_markup.model_dump(exclude_none=True)
     if reply_parameters is not None:
         payload["reply_parameters"] = reply_parameters.model_dump(exclude_none=True)
-    api_base = settings.TELEGRAM_WIDGET_API_BASE.rstrip("/")
-    url = f"{api_base}/bot{bot.token}/sendWidget"
-    timeout = aiohttp.ClientTimeout(total=settings.TELEGRAM_REQUEST_TIMEOUT_SECONDS)
-    try:
-        session = await bot.session.create_session()
-        async with session.post(url, json=payload, timeout=timeout) as response:
-            result = await response.json(content_type=None)
-        if result.get("ok") is True:
-            return True
-        logger.warning(
-            "Telegram widget unavailable: %s",
-            result.get("description", "unknown error"),
-        )
-    except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
-        logger.warning("Telegram widget request failed: %s", type(exc).__name__)
-    return False
+    return await widget_api(bot, "sendWidget", payload) is not None

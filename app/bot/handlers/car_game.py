@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.car_game_widget import HTML
 from app.bot.tic_tac_toe_widget import widget_api
-from app.core.config import settings
 from app.services.car_game_service import CarGameError, act, create_game, state_json
 from app.services.school_errors import SchoolUserNotFound
 from app.services.user_service import UserInactiveError, UserService
@@ -22,9 +21,6 @@ users = UserService()
 
 @router.callback_query(F.data == "car:open")
 async def open_car_game(callback: CallbackQuery, session: AsyncSession) -> None:
-    if not settings.TELEGRAM_WIDGET_BETA_ENABLED:
-        await callback.answer("ویجت بازی روی این ربات فعال نیست.", show_alert=True)
-        return
     message = cast(Message, callback.message)
     if message.chat.type != "private":
         await callback.answer("بازی ماشین فقط در پی‌وی ربات فعاله.", show_alert=True)

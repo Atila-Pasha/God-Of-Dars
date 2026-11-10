@@ -115,38 +115,26 @@ def fallback_keyboard(
 async def widget_api(
     bot: Any, method: str, payload: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if not settings.TELEGRAM_WIDGET_BETA_ENABLED:
-        return None
     session = await bot.session.create_session()
-    base = settings.TELEGRAM_WIDGET_API_BASE.rstrip("/")
+    url = bot.session.api.api_url(token=bot.token, method=method)
     timeout = aiohttp.ClientTimeout(total=settings.TELEGRAM_REQUEST_TIMEOUT_SECONDS)
-    for suffix in (f"/bot{bot.token}/{method}", f"/bot{bot.token}/test/{method}"):
-        for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
-            try:
-                async with (
-                    telegram_api_semaphore(),
-                    session.post(
-                        base + suffix, json=payload, timeout=timeout
-                    ) as response,
-                ):
-                    result = await response.json(content_type=None)
-                if result.get("ok"):
-                    return result
-                if (
-                    response.status == 429
-                    and attempt < settings.TELEGRAM_RETRY_AFTER_MAX
-                ):
-                    retry_after = result.get("parameters", {}).get("retry_after", 1)
-                    if 0 <= retry_after <= settings.TELEGRAM_MAX_RETRY_DELAY_SECONDS:
-                        await asyncio.sleep(retry_after)
-                        continue
-                if response.status != 404:
-                    logger.warning(
-                        "Widget %s failed: %s", method, result.get("description")
-                    )
-                    return None
-                break
-            except (aiohttp.ClientError, TimeoutError, ValueError, TypeError):
-                logger.exception("Widget %s request failed", method)
-                return None
+    for attempt in range(settings.TELEGRAM_RETRY_AFTER_MAX + 1):
+        try:
+            async with (
+                telegram_api_semaphore(),
+                session.post(url, json=payload, timeout=timeout) as response,
+            ):
+                result = await response.json(content_type=None)
+            if result.get("ok"):
+                return result
+            if response.status == 429 and attempt < settings.TELEGRAM_RETRY_AFTER_MAX:
+                retry_after = result.get("parameters", {}).get("retry_after", 1)
+                if 0 <= retry_after <= settings.TELEGRAM_MAX_RETRY_DELAY_SECONDS:
+                    await asyncio.sleep(retry_after)
+                    continue
+            logger.warning("Widget %s failed: %s", method, result.get("description"))
+            return None
+        except (aiohttp.ClientError, TimeoutError, ValueError, TypeError):
+            logger.exception("Widget %s request failed", method)
+            return None
     return None

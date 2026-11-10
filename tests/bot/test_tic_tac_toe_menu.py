@@ -75,7 +75,6 @@ async def test_advanced_selection_keeps_variant_through_human_flow(monkeypatch) 
         "ttt:wager:advanced",
     ]
 
-    monkeypatch.setattr(tic_tac_toe.settings, "TELEGRAM_WIDGET_BETA_ENABLED", True)
     callback.data = "ttt:friendly:advanced"
     state = SimpleNamespace(set_state=AsyncMock(), update_data=AsyncMock())
     await friendly_game(callback, state)

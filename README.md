@@ -79,19 +79,19 @@ python scripts/dispatcher_load_test.py --help
 ## Leaderboard widget preview
 
 Telegram's [widget-sandbox](https://github.com/TelegramMessenger/widget-sandbox)
-uses the Bot API 10.4 beta `sendWidget` method. To test the HTML cards locally:
+uses the production Bot API 10.4 `sendWidget` method. To test the HTML cards locally:
 
 ```bash
 python -m scripts.preview_leaderboard_widget
 ```
 
 Open `http://127.0.0.1:8765/` for sample commander, student, and global-rank
-cards. To send real widgets from a local bot, set
-`TELEGRAM_WIDGET_BETA_ENABLED=true` in `.env` and run `python -m app.main`.
-This switches that bot process to `https://api.telegram.org/beta`; use a bot
-token and chat that you intend to test there. Older Telegram clients may show
-only the widget caption. If the beta widget method rejects a message, the bot
-falls back to its existing leaderboard text.
+cards. To send real widgets, run `python -m app.main` with a production bot
+token. Older Telegram clients may show only the widget caption. If Telegram
+rejects a widget, the bot falls back to its existing leaderboard text.
+Production widgets currently work only in private chats with the bot. Telegram
+automatically protects these messages, so users cannot forward the widgets;
+`protect_content=false` does not override this server-side restriction.
 
 Leaderboard rows, pagination counts, and user positions are cached per bot
 process for one hour (`LEADERBOARD_CACHE_TTL_SECONDS=3600`). Cards show the
@@ -114,11 +114,11 @@ Each turn has 60 seconds, measured on the server, and an expired turn loses.
 Invitations expire after five minutes. Match and escrow state are stored in
 PostgreSQL so restarts do not reset the deadline or stake.
 
-Advanced tic-tac-toe requires `TELEGRAM_WIDGET_BETA_ENABLED=true` and a Telegram
-client that supports message widgets. Its HTML board is the only play interface;
+Advanced tic-tac-toe requires a Telegram client that supports message widgets.
+Its HTML board is the only play interface;
 if sending it fails, the match is cancelled and any reserved stakes are refunded.
 Classic tic-tac-toe still uses inline buttons when a widget is unavailable.
-The widget feature is in the beta API; use a compatible beta client to test it.
+The widget feature is available in the production Bot API 10.4.
 
 ## Car game
 
@@ -128,7 +128,7 @@ coins and diamonds. Road events and lane changes are scored on the server; the
 pace increases during a run. At a collision, the collected rewards are added to
 the player's balance in one transaction. Rewards are capped by actual play time
 at 50 coins and 10 diamonds per minute. A new run starts from `/game` after a
-crash. This game requires the beta widget API and a compatible Telegram client.
+crash. This game requires Bot API 10.4 and a compatible Telegram client.
 
 Notifications use an at-least-once outbox. A provider timeout after Telegram
 accepted a message can therefore produce a duplicate, but notifications are
