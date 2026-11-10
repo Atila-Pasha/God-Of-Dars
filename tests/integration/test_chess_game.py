@@ -1,11 +1,14 @@
 """Chess rules and wager settlement against the local PostgreSQL database."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import chess
 import pytest
 from sqlalchemy import delete, select
 
+from app.bot import GameDispatcher
 from app.bot.chess_widget import HTML, state_json
 from app.db.session import AsyncSessionLocal
 from app.models.chess_game import ChessGame
@@ -25,6 +28,7 @@ from app.services.chess_service import (
 def test_widget_and_chess_rules() -> None:
     assert "TelegramWidget" in HTML
     assert "chatDataChanged" in HTML
+    assert "T.request('chess:move:'+S.id+':'+uci)" in HTML
     board = chess.Board()
     board.push_uci("e2e4")
     reply = computer_move(board)
@@ -33,6 +37,23 @@ def test_widget_and_chess_rules() -> None:
     assert board.is_valid()
     game = ChessGame(moves="g1f3 g8f6 f3g1 f6g8 " * 2)
     assert board_for(game).can_claim_threefold_repetition()
+
+
+@pytest.mark.asyncio
+async def test_chess_widget_move_reaches_chess_handler(monkeypatch) -> None:
+    chess_handler = AsyncMock()
+    tic_tac_toe_handler = AsyncMock()
+    monkeypatch.setattr("app.bot.handle_chess_widget_query", chess_handler)
+    monkeypatch.setattr("app.bot.handle_widget_query", tic_tac_toe_handler)
+    payload = {"data": "chess:move:42:e2e4"}
+    update = SimpleNamespace(model_extra={"widget_query": payload})
+    bot = object()
+    session = object()
+
+    await GameDispatcher()._listen_update(update, bot=bot, session=session)
+
+    chess_handler.assert_awaited_once_with(payload, bot, session)
+    tic_tac_toe_handler.assert_not_awaited()
 
 
 @pytest.mark.asyncio
