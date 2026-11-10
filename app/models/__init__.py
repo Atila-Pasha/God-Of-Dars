@@ -8,6 +8,7 @@ from app.models.castle import Castle
 from app.models.chance_box import ChanceBox
 from app.models.chance_box_attempt import ChanceBoxAttempt
 from app.models.chance_card import ChanceCard
+from app.models.chess_game import ChessGame
 from app.models.daily_quest import DailyQuest, DailyQuestEvent, DailyQuestProgress
 from app.models.defense import Defense
 from app.models.group import Group
@@ -42,6 +43,7 @@ __all__ = [
     "BroadcastJob",
     "Castle",
     "CarGame",
+    "ChessGame",
     "ChanceBox",
     "ChanceBoxAttempt",
     "ChanceCard",

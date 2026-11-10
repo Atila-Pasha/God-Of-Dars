@@ -9,6 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ResourceType
+from app.models.chess_game import ChessGame
 from app.models.resource import Resource
 from app.models.tic_tac_toe import TicTacToeGame
 from app.models.transaction import Transaction
@@ -164,7 +165,13 @@ async def _active_for(
     )
     if except_id is not None:
         stmt = stmt.where(TicTacToeGame.id != except_id)
-    return (await session.scalar(stmt.limit(1))) is not None
+    if (await session.scalar(stmt.limit(1))) is not None:
+        return True
+    chess_stmt = select(ChessGame.id).where(
+        ChessGame.status.in_(LIVE),
+        or_(ChessGame.challenger_id == user_id, ChessGame.opponent_id == user_id),
+    )
+    return (await session.scalar(chess_stmt.limit(1))) is not None
 
 
 async def _lock_users(session: AsyncSession, ids: list[int]) -> None:

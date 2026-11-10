@@ -7,6 +7,8 @@ from app.bot.handlers.buffet import router as buffet_router
 from app.bot.handlers.car_game import handle_widget_query as handle_car_widget_query
 from app.bot.handlers.car_game import router as car_game_router
 from app.bot.handlers.chance import router as chance_router
+from app.bot.handlers.chess_game import handle_widget_query as handle_chess_widget_query
+from app.bot.handlers.chess_game import router as chess_game_router
 from app.bot.handlers.daily import router as daily_router
 from app.bot.handlers.leaderboard import router as leaderboard_router
 from app.bot.handlers.library import router as library_router
@@ -31,6 +33,10 @@ class GameDispatcher(Dispatcher):
         if payload is not None:
             if (payload.get("data") or "").startswith("car:"):
                 await handle_car_widget_query(payload, kwargs["bot"], kwargs["session"])
+            elif (payload.get("data") or "").startswith("chess:"):
+                await handle_chess_widget_query(
+                    payload, kwargs["bot"], kwargs["session"]
+                )
             else:
                 await handle_widget_query(payload, kwargs["bot"], kwargs["session"])
             return None
@@ -56,6 +62,7 @@ def create_dispatcher() -> Dispatcher:
     # text handlers used by active FSM flows such as question answers.
     dispatcher.include_router(quick_router)
     dispatcher.include_router(car_game_router)
+    dispatcher.include_router(chess_game_router)
     dispatcher.include_router(tic_tac_toe_router)
     dispatcher.include_router(leaderboard_router)
     dispatcher.include_router(school_router)

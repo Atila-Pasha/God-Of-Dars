@@ -76,12 +76,14 @@ async def test_runtime_roles_do_not_duplicate_pollers_or_senders(
     clean = AsyncMock()
     timeout = AsyncMock()
     car = AsyncMock()
+    chess = AsyncMock()
     rank = AsyncMock()
     monkeypatch.setattr(runtime, "_attack_worker", attack)
     monkeypatch.setattr(runtime, "run_notification_worker", notification)
     monkeypatch.setattr(runtime, "run_game_message_cleanup_worker", clean)
     monkeypatch.setattr(runtime, "run_tic_tac_toe_timeouts", timeout)
     monkeypatch.setattr(runtime, "run_car_game_ticks", car)
+    monkeypatch.setattr(runtime, "run_chess_timeouts", chess)
     monkeypatch.setattr(runtime, "_rank_worker", rank)
     await runtime.run_workers(SimpleNamespace())
     assert attack.await_count == attacks
@@ -89,6 +91,7 @@ async def test_runtime_roles_do_not_duplicate_pollers_or_senders(
     assert clean.await_count == cleanup
     assert timeout.await_count == cleanup
     assert car.await_count == cleanup
+    assert chess.await_count == cleanup
     assert rank.await_count == rank_sweeps
 
 

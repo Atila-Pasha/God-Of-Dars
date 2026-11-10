@@ -11,6 +11,8 @@ from app.bot import create_dispatcher
 from app.core.config import settings
 from app.db.session import engine
 from app.workers.car_game_tick import run_car_game_ticks
+from app.workers.chess_timeout import run_chess_timeouts
+from app.workers.tic_tac_toe_timeout import run_tic_tac_toe_timeouts
 
 
 async def main() -> None:
@@ -26,7 +28,9 @@ async def main() -> None:
             raise SystemExit("Refusing to poll a bot other than @godofdarstestbot")
         dispatcher = create_dispatcher()
         worker = asyncio.create_task(run_car_game_ticks(bot))
-        print(f"Local car test ready: @{account.username}", flush=True)
+        chess_worker = asyncio.create_task(run_chess_timeouts(bot))
+        tic_tac_toe_worker = asyncio.create_task(run_tic_tac_toe_timeouts(bot))
+        print(f"Local game test ready: @{account.username}", flush=True)
         try:
             await dispatcher.start_polling(
                 bot,
@@ -39,8 +43,14 @@ async def main() -> None:
             )
         finally:
             worker.cancel()
+            chess_worker.cancel()
+            tic_tac_toe_worker.cancel()
             with suppress(asyncio.CancelledError):
                 await worker
+            with suppress(asyncio.CancelledError):
+                await chess_worker
+            with suppress(asyncio.CancelledError):
+                await tic_tac_toe_worker
     await engine.dispose()
 
 

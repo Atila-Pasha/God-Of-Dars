@@ -342,6 +342,13 @@ async def game_private(message: Message, state: FSMContext) -> None:
                         icon_custom_emoji_id="5307565089400839127",
                     )
                 ],
+                [
+                    InlineKeyboardButton(
+                        text="شطرنج",
+                        callback_data="chess:select",
+                        icon_custom_emoji_id="5348078124334599889",
+                    )
+                ],
             ]
         ),
         **rendered,

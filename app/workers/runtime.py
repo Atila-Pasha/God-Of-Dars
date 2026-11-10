@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.services.rank_service import settle_expired_seasons
 from app.workers.attack_resolver import resolve_due_archer_shots, resolve_due_attacks
 from app.workers.car_game_tick import run_car_game_ticks
+from app.workers.chess_timeout import run_chess_timeouts
 from app.workers.game_message_cleanup import run_game_message_cleanup_worker
 from app.workers.notification_worker import run_notification_worker
 from app.workers.tic_tac_toe_timeout import run_tic_tac_toe_timeouts
@@ -56,6 +57,7 @@ async def run_workers(bot: Bot) -> None:
                 task_group.create_task(_attack_worker(bot, worker_id))
         if settings.RUNTIME_ROLE in {"combined", "bot"}:
             task_group.create_task(run_car_game_ticks(bot))
+            task_group.create_task(run_chess_timeouts(bot))
             task_group.create_task(run_tic_tac_toe_timeouts(bot))
             task_group.create_task(run_game_message_cleanup_worker(bot))
             for worker_id in range(settings.NOTIFICATION_WORKER_COUNT):

@@ -36,7 +36,7 @@ async def test_game_menu_has_both_tic_tac_toe_variants() -> None:
     assert len(call.kwargs["entities"]) == 1
     assert call.kwargs["entities"][0].custom_emoji_id == "4972415571384599106"
     rows = call.kwargs["reply_markup"].inline_keyboard
-    assert len(rows) == 3 and all(len(row) == 1 for row in rows)
+    assert len(rows) == 4 and all(len(row) == 1 for row in rows)
     assert rows[0][0].text == "دوز"
     assert rows[0][0].icon_custom_emoji_id == "5222158908805632010"
     assert rows[1][0].text == "دوز پیشرفته"
@@ -45,6 +45,9 @@ async def test_game_menu_has_both_tic_tac_toe_variants() -> None:
     assert rows[2][0].text == "ماشین"
     assert rows[2][0].callback_data == "car:open"
     assert rows[2][0].icon_custom_emoji_id == "5307565089400839127"
+    assert rows[3][0].text == "شطرنج"
+    assert rows[3][0].callback_data == "chess:select"
+    assert rows[3][0].icon_custom_emoji_id == "5348078124334599889"
 
 
 @pytest.mark.asyncio

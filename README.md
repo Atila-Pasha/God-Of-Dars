@@ -130,6 +130,28 @@ the player's balance in one transaction. Rewards are capped by actual play time
 at 50 coins and 10 diamonds per minute. A new run starts from `/game` after a
 crash. This game requires Bot API 10.4 and a compatible Telegram client.
 
+## Chess
+
+The `/game` menu also offers chess in a Telegram message widget. The challenger
+plays white; the opponent or computer plays black. Tap a piece and then its
+destination. Pawn promotion offers queen, rook, bishop, and knight. The server
+validates all moves, including check, castling, en passant, and draws. As with
+tic-tac-toe, invitations expire after five minutes and each turn has 60 seconds.
+Human matches can be friendly or wagered in coins or diamonds; stakes are held
+when the invitation is accepted and settled at the end of the match.
+
+To try chess locally with `@godofdarstestbot`, set a local PostgreSQL
+`DATABASE_URL` and the test bot's `BOT_TOKEN` in `.env`, then run:
+
+```bash
+python -m alembic upgrade head
+python -m scripts.run_local_game_test
+```
+
+The test runner refuses non-local databases and tokens for other bots. Open
+`@godofdarstestbot` in Telegram, send `/game`, and choose Chess. The production
+server remains on the current version until this local flow is approved.
+
 Notifications use an at-least-once outbox. A provider timeout after Telegram
 accepted a message can therefore produce a duplicate, but notifications are
 not silently lost.
